@@ -8,6 +8,9 @@
 
 namespace APP\plugins\generic\kisiTypesetter\classes;
 
+require_once __DIR__ . '/DocxParser.php';
+require_once __DIR__ . '/HealthTableFormatter.php';
+
 use DOMDocument;
 use DOMElement;
 use DOMXPath;
@@ -36,7 +39,8 @@ class DocxGenerator
             return false;
         }
 
-        $docXml = $zip->getFromName('word/document.xml');
+        $docEntry = DocxParser::resolveZipEntryName($zip, 'word/document.xml');
+        $docXml = $zip->getFromName($docEntry);
         if (!$docXml) {
             $zip->close();
             return false;
@@ -64,7 +68,7 @@ class DocxGenerator
         }
 
         $updatedDocXml = $dom->saveXML();
-        $zip->addFromString('word/document.xml', $updatedDocXml);
+        $zip->addFromString($docEntry, $updatedDocXml);
 
         // 3. Update Footers (footer1.xml, footer2.xml and their .rels)
         $articleUrl = trim($data['article_url'] ?? 'https://kisiberkelanjutan.com/index.php/smk/article/view/76');
@@ -409,8 +413,7 @@ class DocxGenerator
             foreach ($xpath->query('.//w:txbxContent/w:p', $body) as $tbPara) {
                 self::clearElementChildren($tbPara);
                 $r1 = $dom->createElementNS(self::NS_W, 'w:r');
-                $t1 = $dom->createElementNS(self::NS_W, 'w:t', $retypesetText . '.');
-                $r1->appendChild($t1);
+                $r1->appendChild(self::createTextElement($dom, $retypesetText . '.', false));
                 $tbPara->appendChild($r1);
             }
         }
@@ -505,8 +508,7 @@ class DocxGenerator
         $p->appendChild($pPr);
 
         $r = $dom->createElementNS(self::NS_W, 'w:r');
-        $t = $dom->createElementNS(self::NS_W, 'w:t', $title);
-        $r->appendChild($t);
+        $r->appendChild(self::createTextElement($dom, $title, false));
         $p->appendChild($r);
         return $p;
     }
@@ -535,9 +537,7 @@ class DocxGenerator
         $p->appendChild($pPr);
 
         $r = $dom->createElementNS(self::NS_W, 'w:r');
-        $t = $dom->createElementNS(self::NS_W, 'w:t', $text);
-        $t->setAttribute('xml:space', 'preserve');
-        $r->appendChild($t);
+        $r->appendChild(self::createTextElement($dom, $text, true));
         $p->appendChild($r);
         return $p;
     }
@@ -1040,12 +1040,22 @@ class DocxGenerator
         }
 
         $r->appendChild($rPr);
-
-        $t = $dom->createElementNS(self::NS_W, 'w:t', $text);
-        $t->setAttribute('xml:space', 'preserve');
-        $r->appendChild($t);
+        $r->appendChild(self::createTextElement($dom, $text, true));
 
         return $r;
+    }
+
+    /**
+     * Create a safely XML-escaped <w:t> text node without entity-reference warnings.
+     */
+    private static function createTextElement(DOMDocument $dom, string $text, bool $preserveSpace = true): DOMElement
+    {
+        $t = $dom->createElementNS(self::NS_W, 'w:t');
+        if ($preserveSpace) {
+            $t->setAttribute('xml:space', 'preserve');
+        }
+        $t->appendChild($dom->createTextNode($text));
+        return $t;
     }
 
     /**
@@ -1059,7 +1069,8 @@ class DocxGenerator
         string $articleUrl,
         string $footerIssueLine
     ): void {
-        $fXml = $zip->getFromName($footerEntry);
+        $resolvedFooter = DocxParser::resolveZipEntryName($zip, $footerEntry);
+        $fXml = $zip->getFromName($resolvedFooter);
         if ($fXml) {
             $dom = new DOMDocument('1.0', 'UTF-8');
             $dom->preserveWhiteSpace = true;
@@ -1097,22 +1108,22 @@ class DocxGenerator
                 $rPr->appendChild($szCs);
                 $r->appendChild($rPr);
 
-                $t = $dom->createElementNS(self::NS_W, 'w:t', $footerIssueLine);
-                $r->appendChild($t);
+                $r->appendChild(self::createTextElement($dom, $footerIssueLine, false));
                 $p3->appendChild($r);
             }
 
-            $zip->addFromString($footerEntry, $dom->saveXML());
+            $zip->addFromString($resolvedFooter, $dom->saveXML());
         }
 
-        $rXml = $zip->getFromName($relsEntry);
+        $resolvedRels = DocxParser::resolveZipEntryName($zip, $relsEntry);
+        $rXml = $zip->getFromName($resolvedRels);
         if ($rXml) {
             $rXmlUpdated = preg_replace(
                 '/Target="[^"]+"/i',
                 'Target="' . htmlspecialchars($articleUrl, ENT_QUOTES, 'UTF-8') . '"',
                 $rXml
             );
-            $zip->addFromString($relsEntry, $rXmlUpdated);
+            $zip->addFromString($resolvedRels, $rXmlUpdated);
         }
     }
 

@@ -70,7 +70,8 @@ class DocxParser
             return $result;
         }
 
-        $xmlContent = $zip->getFromName('word/document.xml');
+        $docEntry = self::resolveZipEntryName($zip, 'word/document.xml');
+        $xmlContent = $zip->getFromName($docEntry);
         $zip->close();
 
         if (!$xmlContent) {
@@ -650,5 +651,28 @@ class DocxParser
             }
         }
         return implode('', $texts);
+    }
+
+    /**
+     * Resolve a ZIP entry name supporting POSIX '/' and Windows '\' path separators.
+     */
+    public static function resolveZipEntryName(ZipArchive $zip, string $canonicalPath): string
+    {
+        $canonicalPath = str_replace('\\', '/', $canonicalPath);
+        if ($zip->locateName($canonicalPath) !== false) {
+            return $canonicalPath;
+        }
+        $backslashPath = str_replace('/', '\\', $canonicalPath);
+        if ($zip->locateName($backslashPath) !== false) {
+            return $backslashPath;
+        }
+        $targetLower = strtolower($canonicalPath);
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $name = (string) $zip->getNameIndex($i);
+            if (strtolower(str_replace('\\', '/', $name)) === $targetLower) {
+                return $name;
+            }
+        }
+        return $canonicalPath;
     }
 }
