@@ -1,0 +1,462 @@
+{
+    "behaviour":  {
+                      "source":  "AMA Manual of Style / Merriam-Webster",
+                      "category":  "english_uk_us_ama",
+                      "baku":  "behavior"
+                  },
+    "behaviours":  {
+                       "source":  "AMA Manual of Style / Merriam-Webster",
+                       "category":  "english_uk_us_ama",
+                       "baku":  "behaviors"
+                   },
+    "behavioural":  {
+                        "source":  "AMA Manual of Style / Merriam-Webster",
+                        "category":  "english_uk_us_ama",
+                        "baku":  "behavioral"
+                    },
+    "analyse":  {
+                    "source":  "AMA Manual of Style / Merriam-Webster",
+                    "category":  "english_uk_us_ama",
+                    "baku":  "analyze"
+                },
+    "analysed":  {
+                     "source":  "AMA Manual of Style / Merriam-Webster",
+                     "category":  "english_uk_us_ama",
+                     "baku":  "analyzed"
+                 },
+    "analysing":  {
+                      "source":  "AMA Manual of Style / Merriam-Webster",
+                      "category":  "english_uk_us_ama",
+                      "baku":  "analyzing"
+                  },
+    "randomised":  {
+                       "source":  "AMA Manual of Style / Merriam-Webster",
+                       "category":  "english_uk_us_ama",
+                       "baku":  "randomized"
+                   },
+    "utilised":  {
+                     "source":  "AMA Manual of Style / Merriam-Webster",
+                     "category":  "english_uk_us_ama",
+                     "baku":  "utilized"
+                 },
+    "characterised":  {
+                          "source":  "AMA Manual of Style / Merriam-Webster",
+                          "category":  "english_uk_us_ama",
+                          "baku":  "characterized"
+                      },
+    "categorised":  {
+                        "source":  "AMA Manual of Style / Merriam-Webster",
+                        "category":  "english_uk_us_ama",
+                        "baku":  "categorized"
+                    },
+    "optimised":  {
+                      "source":  "AMA Manual of Style / Merriam-Webster",
+                      "category":  "english_uk_us_ama",
+                      "baku":  "optimized"
+                  },
+    "organisation":  {
+                         "source":  "AMA Manual of Style / Merriam-Webster",
+                         "category":  "english_uk_us_ama",
+                         "baku":  "organization"
+                     },
+    "organisations":  {
+                          "source":  "AMA Manual of Style / Merriam-Webster",
+                          "category":  "english_uk_us_ama",
+                          "baku":  "organizations"
+                      },
+    "centre":  {
+                   "source":  "AMA Manual of Style / Merriam-Webster",
+                   "category":  "english_uk_us_ama",
+                   "baku":  "center"
+               },
+    "centres":  {
+                    "source":  "AMA Manual of Style / Merriam-Webster",
+                    "category":  "english_uk_us_ama",
+                    "baku":  "centers"
+                },
+    "paediatric":  {
+                       "source":  "AMA Manual of Style / Merriam-Webster",
+                       "category":  "english_uk_us_ama",
+                       "baku":  "pediatric"
+                   },
+    "paediatrics":  {
+                        "source":  "AMA Manual of Style / Merriam-Webster",
+                        "category":  "english_uk_us_ama",
+                        "baku":  "pediatrics"
+                    },
+    "oedema":  {
+                   "source":  "AMA Manual of Style / Merriam-Webster",
+                   "category":  "english_uk_us_ama",
+                   "baku":  "edema"
+               },
+    "haemorrhage":  {
+                        "source":  "AMA Manual of Style / Merriam-Webster",
+                        "category":  "english_uk_us_ama",
+                        "baku":  "hemorrhage"
+                    },
+    "haemoglobin":  {
+                        "source":  "AMA Manual of Style / Merriam-Webster",
+                        "category":  "english_uk_us_ama",
+                        "baku":  "hemoglobin"
+                    },
+    "anaemia":  {
+                    "source":  "AMA Manual of Style / Merriam-Webster",
+                    "category":  "english_uk_us_ama",
+                    "baku":  "anemia"
+                },
+    "diarrhoea":  {
+                      "source":  "AMA Manual of Style / Merriam-Webster",
+                      "category":  "english_uk_us_ama",
+                      "baku":  "diarrhea"
+                  },
+    "foetal":  {
+                   "source":  "AMA Manual of Style / Merriam-Webster",
+                   "category":  "english_uk_us_ama",
+                   "baku":  "fetal"
+               },
+    "foetus":  {
+                   "source":  "AMA Manual of Style / Merriam-Webster",
+                   "category":  "english_uk_us_ama",
+                   "baku":  "fetus"
+               },
+    "gynaecology":  {
+                        "source":  "AMA Manual of Style / Merriam-Webster",
+                        "category":  "english_uk_us_ama",
+                        "baku":  "gynecology"
+                    },
+    "tumour":  {
+                   "source":  "AMA Manual of Style / Merriam-Webster",
+                   "category":  "english_uk_us_ama",
+                   "baku":  "tumor"
+               },
+    "tumours":  {
+                    "source":  "AMA Manual of Style / Merriam-Webster",
+                    "category":  "english_uk_us_ama",
+                    "baku":  "tumors"
+                },
+    "colour":  {
+                   "source":  "AMA Manual of Style / Merriam-Webster",
+                   "category":  "english_uk_us_ama",
+                   "baku":  "color"
+               },
+    "favour":  {
+                   "source":  "AMA Manual of Style / Merriam-Webster",
+                   "category":  "english_uk_us_ama",
+                   "baku":  "favor"
+               },
+    "labour":  {
+                   "source":  "AMA Manual of Style / Merriam-Webster",
+                   "category":  "english_uk_us_ama",
+                   "baku":  "labor"
+               },
+    "programme":  {
+                      "source":  "AMA Manual of Style / Merriam-Webster",
+                      "category":  "english_uk_us_ama",
+                      "baku":  "program"
+                  },
+    "labelled":  {
+                     "source":  "AMA Manual of Style / Merriam-Webster",
+                     "category":  "english_uk_us_ama",
+                     "baku":  "labeled"
+                 },
+    "counselling":  {
+                        "source":  "AMA Manual of Style / Merriam-Webster",
+                        "category":  "english_uk_us_ama",
+                        "baku":  "counseling"
+                    },
+    "aetiology":  {
+                      "source":  "AMA Manual of Style / Merriam-Webster",
+                      "category":  "english_uk_us_ama",
+                      "baku":  "etiology"
+                  },
+    "leukaemia":  {
+                      "source":  "AMA Manual of Style / Merriam-Webster",
+                      "category":  "english_uk_us_ama",
+                      "baku":  "leukemia"
+                  },
+    "caecum":  {
+                   "source":  "AMA Manual of Style / Merriam-Webster",
+                   "category":  "english_uk_us_ama",
+                   "baku":  "cecum"
+               },
+    "oesophagus":  {
+                       "source":  "AMA Manual of Style / Merriam-Webster",
+                       "category":  "english_uk_us_ama",
+                       "baku":  "esophagus"
+                   },
+    "recieve":  {
+                    "source":  "SCOWL US English / Merriam-Webster",
+                    "category":  "english_typo",
+                    "baku":  "receive"
+                },
+    "recieved":  {
+                     "source":  "SCOWL US English / Merriam-Webster",
+                     "category":  "english_typo",
+                     "baku":  "received"
+                 },
+    "occured":  {
+                    "source":  "SCOWL US English / Merriam-Webster",
+                    "category":  "english_typo",
+                    "baku":  "occurred"
+                },
+    "occurence":  {
+                      "source":  "SCOWL US English / Merriam-Webster",
+                      "category":  "english_typo",
+                      "baku":  "occurrence"
+                  },
+    "seperate":  {
+                     "source":  "SCOWL US English / Merriam-Webster",
+                     "category":  "english_typo",
+                     "baku":  "separate"
+                 },
+    "definately":  {
+                       "source":  "SCOWL US English / Merriam-Webster",
+                       "category":  "english_typo",
+                       "baku":  "definitely"
+                   },
+    "questionaire":  {
+                         "source":  "SCOWL US English / Merriam-Webster",
+                         "category":  "english_typo",
+                         "baku":  "questionnaire"
+                     },
+    "questioniare":  {
+                         "source":  "SCOWL US English / Merriam-Webster",
+                         "category":  "english_typo",
+                         "baku":  "questionnaire"
+                     },
+    "managment":  {
+                      "source":  "SCOWL US English / Merriam-Webster",
+                      "category":  "english_typo",
+                      "baku":  "management"
+                  },
+    "treatement":  {
+                       "source":  "SCOWL US English / Merriam-Webster",
+                       "category":  "english_typo",
+                       "baku":  "treatment"
+                   },
+    "assesssment":  {
+                        "source":  "SCOWL US English / Merriam-Webster",
+                        "category":  "english_typo",
+                        "baku":  "assessment"
+                    },
+    "signficant":  {
+                       "source":  "SCOWL US English / Merriam-Webster",
+                       "category":  "english_typo",
+                       "baku":  "significant"
+                   },
+    "signifficant":  {
+                         "source":  "SCOWL US English / Merriam-Webster",
+                         "category":  "english_typo",
+                         "baku":  "significant"
+                     },
+    "statisical":  {
+                       "source":  "SCOWL US English / Merriam-Webster",
+                       "category":  "english_typo",
+                       "baku":  "statistical"
+                   },
+    "brestfeeding":  {
+                         "source":  "SCOWL US English / Merriam-Webster",
+                         "category":  "english_typo",
+                         "baku":  "breastfeeding"
+                     },
+    "postpartem":  {
+                       "source":  "AMA Manual of Style / Merriam-Webster",
+                       "category":  "english_typo",
+                       "baku":  "postpartum"
+                   },
+    "reseach":  {
+                    "source":  "SCOWL US English / Merriam-Webster",
+                    "category":  "english_typo",
+                    "baku":  "research"
+                },
+    "anlaysis":  {
+                     "source":  "SCOWL US English / Merriam-Webster",
+                     "category":  "english_typo",
+                     "baku":  "analysis"
+                 },
+    "conculsion":  {
+                       "source":  "SCOWL US English / Merriam-Webster",
+                       "category":  "english_typo",
+                       "baku":  "conclusion"
+                   },
+    "recomendation":  {
+                          "source":  "SCOWL US English / Merriam-Webster",
+                          "category":  "english_typo",
+                          "baku":  "recommendation"
+                      },
+    "recomendations":  {
+                           "source":  "SCOWL US English / Merriam-Webster",
+                           "category":  "english_typo",
+                           "baku":  "recommendations"
+                       },
+    "informations":  {
+                         "source":  "Oxford / Merriam-Webster (Uncountable Noun)",
+                         "category":  "english_nonstandard",
+                         "baku":  "information"
+                     },
+    "childrens":  {
+                      "source":  "Oxford / Merriam-Webster",
+                      "category":  "english_nonstandard",
+                      "baku":  "children"
+                  },
+    "peoples":  {
+                    "source":  "Oxford / Merriam-Webster (in clinical counts use people/participants)",
+                    "category":  "english_nonstandard",
+                    "baku":  "people"
+                },
+    "datas":  {
+                  "source":  "AMA Manual of Style / Oxford",
+                  "category":  "english_nonstandard",
+                  "baku":  "data"
+              },
+    "evidences":  {
+                      "source":  "Oxford / Merriam-Webster (Uncountable Noun)",
+                      "category":  "english_nonstandard",
+                      "baku":  "evidence"
+                  },
+    "researches":  {
+                       "source":  "AMA Manual of Style / Oxford (use \"studies\" or \"research\")",
+                       "category":  "english_nonstandard",
+                       "baku":  "studies"
+                   },
+    "teh":  {
+                "source":  "SCOWL US English",
+                "category":  "english_typo",
+                "baku":  "the"
+            },
+    "adn":  {
+                "source":  "SCOWL US English",
+                "category":  "english_typo",
+                "baku":  "and"
+            },
+    "hte":  {
+                "source":  "SCOWL US English",
+                "category":  "english_typo",
+                "baku":  "the"
+            },
+    "accomodate":  {
+                       "source":  "SCOWL US English / Merriam-Webster",
+                       "category":  "english_typo",
+                       "baku":  "accommodate"
+                   },
+    "untill":  {
+                   "source":  "SCOWL US English / Merriam-Webster",
+                   "category":  "english_typo",
+                   "baku":  "until"
+               },
+    "occuring":  {
+                     "source":  "SCOWL US English / Merriam-Webster",
+                     "category":  "english_typo",
+                     "baku":  "occurring"
+                 },
+    "refered":  {
+                    "source":  "SCOWL US English / Merriam-Webster",
+                    "category":  "english_typo",
+                    "baku":  "referred"
+                },
+    "begining":  {
+                     "source":  "SCOWL US English / Merriam-Webster",
+                     "category":  "english_typo",
+                     "baku":  "beginning"
+                 },
+    "enviroment":  {
+                       "source":  "SCOWL US English / Merriam-Webster",
+                       "category":  "english_typo",
+                       "baku":  "environment"
+                   },
+    "goverment":  {
+                      "source":  "SCOWL US English / Merriam-Webster",
+                      "category":  "english_typo",
+                      "baku":  "government"
+                  },
+    "independant":  {
+                        "source":  "SCOWL US English / Merriam-Webster",
+                        "category":  "english_typo",
+                        "baku":  "independent"
+                    },
+    "dependant":  {
+                      "source":  "AMA Manual of Style / Merriam-Webster",
+                      "category":  "english_typo",
+                      "baku":  "dependent"
+                  },
+    "prevelance":  {
+                       "source":  "SCOWL US English / Merriam-Webster",
+                       "category":  "english_typo",
+                       "baku":  "prevalence"
+                   },
+    "prevelence":  {
+                       "source":  "SCOWL US English / Merriam-Webster",
+                       "category":  "english_typo",
+                       "baku":  "prevalence"
+                   },
+    "incidense":  {
+                      "source":  "SCOWL US English / Merriam-Webster",
+                      "category":  "english_typo",
+                      "baku":  "incidence"
+                  },
+    "hypertention":  {
+                         "source":  "SCOWL US English / Merriam-Webster",
+                         "category":  "english_typo",
+                         "baku":  "hypertension"
+                     },
+    "diabetis":  {
+                     "source":  "SCOWL US English / Merriam-Webster",
+                     "category":  "english_typo",
+                     "baku":  "diabetes"
+                 },
+    "nutriton":  {
+                     "source":  "SCOWL US English / Merriam-Webster",
+                     "category":  "english_typo",
+                     "baku":  "nutrition"
+                 },
+    "pregnacy":  {
+                     "source":  "SCOWL US English / Merriam-Webster",
+                     "category":  "english_typo",
+                     "baku":  "pregnancy"
+                 },
+    "pregnent":  {
+                     "source":  "SCOWL US English / Merriam-Webster",
+                     "category":  "english_typo",
+                     "baku":  "pregnant"
+                 },
+    "maternall":  {
+                      "source":  "SCOWL US English / Merriam-Webster",
+                      "category":  "english_typo",
+                      "baku":  "maternal"
+                  },
+    "healths":  {
+                    "source":  "Oxford / Merriam-Webster",
+                    "category":  "english_nonstandard",
+                    "baku":  "health"
+                },
+    "knowledges":  {
+                       "source":  "Oxford / Merriam-Webster",
+                       "category":  "english_nonstandard",
+                       "baku":  "knowledge"
+                   },
+    "equipments":  {
+                       "source":  "Oxford / Merriam-Webster",
+                       "category":  "english_nonstandard",
+                       "baku":  "equipment"
+                   },
+    "staf":  {
+                 "source":  "SCOWL US English",
+                 "category":  "english_typo",
+                 "baku":  "staff"
+             },
+    "responden":  {
+                      "source":  "SCOWL US English",
+                      "category":  "english_typo",
+                      "baku":  "respondents"
+                  },
+    "analisis":  {
+                     "source":  "SCOWL US English",
+                     "category":  "english_typo",
+                     "baku":  "analysis"
+                 },
+    "metode":  {
+                   "source":  "SCOWL US English",
+                   "category":  "english_typo",
+                   "baku":  "methods"
+               }
+}

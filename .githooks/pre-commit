@@ -1,0 +1,62 @@
+#!/bin/sh
+# Pre-commit validation hook for KisiTypesetter (OJS 3.5)
+
+set -e
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACM)
+if [ -z "$STAGED" ]; then
+    exit 0
+fi
+
+# 1. Block forbidden OS / artifact files
+for f in $STAGED; do
+    case "$f" in
+        *desktop.ini*|*Thumbs.db*|*.DS_Store)
+            echo "[pre-commit] ERROR: Forbidden OS file staged: $f"
+            exit 1
+            ;;
+    esac
+done
+
+# 2. Check UTF-8 BOM, CRLF on Linux deployment files, and accidental secrets/usernames
+for f in $STAGED; do
+    if [ ! -f "$f" ]; then
+        continue
+    fi
+    case "$f" in
+        *.php|*.yml|*.yaml|*.sh|*.xml|*.po|*.json)
+            if head -c 3 "$f" | grep -q "$(printf '\xef\xbb\xbf')"; then
+                echo "[pre-commit] ERROR: UTF-8 BOM detected in $f"
+                exit 1
+            fi
+            ;;
+    esac
+
+    case "$f" in
+        .cpanel.yml|.githooks/*|*.sh)
+            if grep -q "$(printf '\r')" "$f"; then
+                echo "[pre-commit] ERROR: CRLF line endings detected in $f (must be LF)"
+                exit 1
+            fi
+            ;;
+    esac
+
+    if [ "$f" != ".githooks/pre-commit" ] && [ "$f" != "scripts/build-release.ps1" ] && [ "$f" != ".github/workflows/ci-release.yml" ]; then
+        if grep -qiE '/home/[a-z0-9_]+/public_html|USERNAME_CPANEL|AIzaSy[0-9A-Za-z_-]{20,}' "$f"; then
+            echo "[pre-commit] ERROR: Hardcoded cPanel path or API key detected in $f"
+            exit 1
+        fi
+    fi
+
+    # 3. Run php -l if PHP CLI is available locally
+    case "$f" in
+        *.php)
+            if command -v php >/dev/null 2>&1; then
+                php -l "$f" >/dev/null
+            fi
+            ;;
+    esac
+done
+
+echo "[pre-commit] All checks passed."
+exit 0

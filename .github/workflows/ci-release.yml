@@ -1,0 +1,108 @@
+name: CI & Release Packaging (KisiTypesetter OJS 3.5)
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  test-and-package:
+    name: PHP Lint, Unit Tests & Plugin Archive (${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: [ '8.2', '8.3' ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: dom, xml, zip, curl, mbstring, zlib
+          coverage: none
+
+      - name: Check for forbidden files, BOM, and hardcoded secrets
+        run: |
+          if find . -not -path './.git/*' -name 'desktop.ini' | grep -q .; then
+            echo "Found forbidden desktop.ini file" && exit 1
+          fi
+          if grep -rnI --exclude-dir=.git --exclude=pre-commit --exclude=build-release.ps1 --exclude=ci-release.yml -E '/home/[a-z0-9_]+/public_html|USERNAME_CPANEL|AIzaSy[0-9A-Za-z_-]{20,}' .; then
+            echo "Found forbidden hardcoded credential/username" && exit 1
+          fi
+
+      - name: PHP syntax check (php -l)
+        run: |
+          find . -name '*.php' -not -path './.git/*' -print0 | xargs -0 -n1 php -l
+
+      - name: Validate JSON lexicons & XML manifests
+        run: |
+          php -r '
+            foreach (glob("resources/lexicon/*.json") as $f) {
+                $d = json_decode(file_get_contents($f), true);
+                if (!is_array($d)) { fwrite(STDERR, "Invalid JSON: $f\n"); exit(1); }
+            }
+            $dom = new DOMDocument();
+            if (!$dom->load("version.xml")) { fwrite(STDERR, "Invalid version.xml\n"); exit(1); }
+            echo "JSON & XML manifests valid.\n";
+          '
+
+      - name: Run automated KisiTypesetter test suite
+        run: php tests/run-tests.php
+
+      - name: Build clean kisiTypesetter.tar.gz package
+        if: matrix.php == '8.3'
+        run: |
+          mkdir -p build/kisiTypesetter
+          cp -f index.php KisiTypesetterPlugin.php version.xml README.md build/kisiTypesetter/
+          cp -R classes locale resources templates build/kisiTypesetter/
+          find build/kisiTypesetter -name 'desktop.ini' -delete
+          tar -czf kisiTypesetter.tar.gz -C build kisiTypesetter
+          tar -tzf kisiTypesetter.tar.gz
+
+      - name: Upload kisiTypesetter.tar.gz artifact
+        if: matrix.php == '8.3'
+        uses: actions/upload-artifact@v4
+        with:
+          name: kisiTypesetter-plugin
+          path: kisiTypesetter.tar.gz
+
+      - name: Publish GitHub Release on version tag
+        if: matrix.php == '8.3' && startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: kisiTypesetter.tar.gz
+          generate_release_notes: true
+
+  deploy-ftp:
+    name: Auto-Deploy via FTP (Optional when FTP Secrets configured)
+    needs: test-and-package
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && vars.ENABLE_FTP_DEPLOY == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Sync plugin files to OJS server via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          server-dir: ${{ secrets.FTP_REMOTE_DIR }}
+          exclude: |
+            **/.git*
+            **/.github/**
+            **/.githooks/**
+            **/.cpanel.yml
+            **/tests/**
+            **/scripts/**
+            **/dist/**
+            **/desktop.ini
+            **/*.tar.gz
+            **/*.zip

@@ -1,0 +1,9 @@
+---
+deployment:
+  tasks:
+    # Menggunakan $HOME & /bin/cp agar kompatibel dengan CloudLinux/CageFS tanpa ssh/rsync
+    - export DEPLOYPATH=$HOME/public_html/plugins/generic/kisiTypesetter/
+    - /bin/mkdir -p $DEPLOYPATH
+    - /bin/rm -rf $DEPLOYPATH/classes $DEPLOYPATH/locale $DEPLOYPATH/resources $DEPLOYPATH/templates
+    - /bin/cp -f index.php KisiTypesetterPlugin.php version.xml README.md $DEPLOYPATH
+    - /bin/cp -R classes locale resources templates $DEPLOYPATH

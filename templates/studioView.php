@@ -1,0 +1,2062 @@
+<?php
+/**
+ * @file plugins/generic/kisiTypesetter/templates/studioView.php
+ *
+ * Interactive Re-Layout & AmeliCA JATS XML Studio UI for OJS 3.5
+ */
+$defaultArticle = $activeArticleData ?: [
+    'submission_id' => 76,
+    'elocation_id' => 'e76',
+    'article_type' => 'ORIGINAL ARTICLE',
+    'title_id' => '',
+    'title_en' => '',
+    'authors' => [
+        ['name' => '', 'affiliation' => '', 'email' => '', 'is_corresponding' => true],
+    ],
+    'corresponding_name' => '',
+    'corresponding_email' => '',
+    'citation' => '',
+    'doi' => '',
+    'review_editor' => '',
+    'published_date' => 'March 30, 2024',
+    'copyright_year' => '2024',
+    'volume' => '1',
+    'issue_number' => '1',
+    'footer_issue_line' => 'Volume 1 Nomor 1, Januari-Maret 2024',
+    'article_url' => 'https://kisiberkelanjutan.com/index.php/smk/article/view/76',
+    'journal_path' => $context ? $context->getPath() : 'smk',
+    'journal_title' => $settings['journalTitle'] ?? 'Kisi Berkelanjutan: Sains Medis Dan Kesehatan',
+    'journal_short_footer' => $settings['journalShortFooter'] ?? 'Kisi Berkelanjutan: SMK',
+    'publisher_name' => $settings['publisherName'] ?? 'PT Karya Inovasi Berkelanjutan',
+    'eissn' => $settings['eissn'] ?? '3062-9063',
+    'funding' => $settings['defaultFunding'] ?? 'none',
+    'competing_interests' => $settings['defaultCompetingInterests'] ?? 'The authors have declared that no competing interests exist.',
+    'retypeset_note' => $settings['retypesetNote'] ?? "This article was re-typeset in 2026 to standardize the journal's visual layout. No changes were made to the scientific substance, data, or metadata of the original Version of Record.",
+    'abstract_id' => [
+        'pendahuluan_metode' => '',
+        'hasil' => '',
+        'kesimpulan_saran' => '',
+        'raw' => '',
+    ],
+    'keywords_id' => '',
+    'abstract_en' => [
+        'intro_methods' => '',
+        'results' => '',
+        'conclusions_recommendations' => '',
+        'raw' => '',
+    ],
+    'keywords_en' => '',
+    'sections' => [
+        'pendahuluan' => [],
+        'metode' => [],
+        'hasil' => [],
+        'pembahasan' => [],
+        'kesimpulan_saran' => [],
+    ],
+    'referensi' => [],
+];
+?>
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Studio Re-Layout &amp; AmeliCA JATS XML — Kisi Berkelanjutan (OJS 3.5)</title>
+    <style>
+        :root {
+            --kisi-navy: #0a1d30;
+            --kisi-blue: #1565c0;
+            --kisi-teal: #00796b;
+            --kisi-bg: #f4f6f9;
+            --kisi-card: #ffffff;
+            --kisi-border: #dce2ec;
+            --kisi-text: #1e293b;
+            --kisi-muted: #64748b;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+            background: var(--kisi-bg);
+            color: var(--kisi-text);
+            padding-bottom: 90px;
+        }
+        .topbar {
+            background: linear-gradient(135deg, #0a1d30 0%, #133b5c 100%);
+            color: #fff;
+            padding: 14px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+        }
+        .topbar-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .topbar-title h1 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 700;
+        }
+        .topbar-title span.badge {
+            background: rgba(255,255,255,0.16);
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .container {
+            max-width: 1440px;
+            margin: 18px auto;
+            padding: 0 20px;
+        }
+        .card {
+            background: var(--kisi-card);
+            border: 1px solid var(--kisi-border);
+            border-radius: 10px;
+            padding: 18px;
+            margin-bottom: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 14px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--kisi-border);
+        }
+        .card-header h2 {
+            margin: 0;
+            font-size: 15px;
+            color: var(--kisi-navy);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .grid-selector {
+            display: grid;
+            grid-template-columns: 280px 1fr auto;
+            gap: 12px;
+            align-items: end;
+        }
+        .studio-layout {
+            display: grid;
+            grid-template-columns: 380px 1fr;
+            gap: 18px;
+            align-items: start;
+        }
+        @media (max-width: 1024px) {
+            .grid-selector, .studio-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+        label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--kisi-navy);
+            margin-bottom: 4px;
+        }
+        label span.hint {
+            font-weight: 400;
+            color: var(--kisi-muted);
+        }
+        input[type="text"], input[type="password"], select, textarea {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: inherit;
+            color: var(--kisi-text);
+            background: #fff;
+        }
+        textarea {
+            resize: vertical;
+            line-height: 1.5;
+        }
+        .field-group {
+            margin-bottom: 12px;
+        }
+        .row-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .row-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid transparent;
+            text-decoration: none;
+            transition: all 0.15s ease;
+        }
+        .btn-primary {
+            background: var(--kisi-blue);
+            color: #fff;
+        }
+        .btn-primary:hover { background: #0d47a1; }
+        .btn-navy {
+            background: var(--kisi-navy);
+            color: #fff;
+        }
+        .btn-navy:hover { background: #163654; }
+        .btn-teal {
+            background: var(--kisi-teal);
+            color: #fff;
+        }
+        .btn-teal:hover { background: #004d40; }
+        .btn-ai {
+            background: linear-gradient(135deg, #6d28d9, #2563eb);
+            color: #fff;
+        }
+        .btn-ai:hover { opacity: 0.93; }
+        .btn-outline {
+            background: #fff;
+            border-color: #cbd5e1;
+            color: var(--kisi-text);
+        }
+        .btn-outline:hover { background: #f8fafc; }
+        .btn-sm {
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+        .tabs {
+            display: flex;
+            gap: 6px;
+            border-bottom: 2px solid var(--kisi-border);
+            margin-bottom: 16px;
+        }
+        .tab-btn {
+            padding: 9px 16px;
+            background: transparent;
+            border: none;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--kisi-muted);
+            cursor: pointer;
+        }
+        .tab-btn.active {
+            color: var(--kisi-blue);
+            border-bottom-color: var(--kisi-blue);
+        }
+        .tab-pane { display: none; }
+        .tab-pane.active { display: block; }
+        .author-row {
+            display: grid;
+            grid-template-columns: auto 1.1fr 1.7fr 1fr auto auto;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 8px;
+            background: #f8fafc;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid #e2e8f0;
+        }
+        .section-card {
+            margin-bottom: 18px;
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            padding: 14px;
+            background: #ffffff;
+            transition: border-color 0.15s ease, background-color 0.15s ease;
+        }
+        .section-card.section-drag-over {
+            border-color: #2563eb;
+            background: #eff6ff;
+        }
+        .section-dropzone-empty {
+            border: 1.5px dashed #cbd5e1;
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+            color: var(--kisi-muted);
+            font-size: 12px;
+            background: #f8fafc;
+        }
+        .block-item {
+            border: 1px solid #e2e8f0;
+            background: #f8fafc;
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-bottom: 10px;
+            transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .block-item.is-dragging {
+            opacity: 0.45;
+            border-style: dashed;
+        }
+        .block-item.drop-above {
+            border-top: 3px solid #2563eb;
+        }
+        .block-item.drop-below {
+            border-bottom: 3px solid #2563eb;
+        }
+        .block-item.block-flash {
+            animation: kisiBlockFlash 1.1s ease;
+        }
+        @keyframes kisiBlockFlash {
+            0% { box-shadow: 0 0 0 3px rgba(37,99,235,0.45); background: #eff6ff; }
+            100% { box-shadow: none; background: #f8fafc; }
+        }
+        .block-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 8px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--kisi-muted);
+        }
+        .block-header-left, .block-header-controls {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .block-drag-handle {
+            cursor: grab;
+            padding: 2px 7px;
+            border-radius: 4px;
+            background: #e2e8f0;
+            color: #334155;
+            font-size: 13px;
+            user-select: none;
+            letter-spacing: -1px;
+        }
+        .block-drag-handle:active {
+            cursor: grabbing;
+        }
+        .block-select-mini {
+            width: auto !important;
+            padding: 3px 6px !important;
+            font-size: 11.5px !important;
+            font-weight: 600;
+            border-radius: 5px;
+            background: #ffffff;
+            color: #0f172a;
+        }
+        .btn-xs {
+            padding: 3px 7px;
+            font-size: 11.5px;
+            line-height: 1.2;
+        }
+        table.preview-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 6px;
+            font-size: 12px;
+            background: #fff;
+            border-top: 2px solid #0a1d30;
+            border-bottom: 2px solid #0a1d30;
+            font-variant-numeric: tabular-nums;
+        }
+        table.preview-table thead tr:last-child th {
+            border-bottom: 1.5px solid #0a1d30;
+        }
+        table.preview-table th, table.preview-table td {
+            border-left: none;
+            border-right: none;
+            padding: 5px 6px;
+            vertical-align: middle;
+        }
+        table.preview-table th {
+            font-weight: 700;
+            background: #f8fafc;
+            border-bottom: 1px solid #cbd5e1;
+        }
+        table.preview-table td {
+            border-bottom: 1px dashed #e2e8f0;
+        }
+        table.preview-table tr.row-type-group td {
+            background: #f1f5f9;
+            font-weight: 700;
+            color: #0a1d30;
+        }
+        table.preview-table tr.row-type-subitem td:first-child input {
+            padding-left: 18px;
+        }
+        table.preview-table tr.row-type-total td {
+            border-top: 1.5px solid #475569;
+            font-weight: 700;
+            background: #f8fafc;
+        }
+        .table-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 8px;
+            padding: 6px 8px;
+            background: #f1f5f9;
+            border-radius: 6px;
+        }
+        .col-align-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 6px;
+            font-size: 11px;
+            color: #475569;
+        }
+        .audit-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        .audit-stat-box {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 10px 12px;
+        }
+        .audit-stat-num {
+            font-size: 20px;
+            font-weight: 800;
+            color: var(--kisi-navy);
+        }
+        .audit-stat-label {
+            font-size: 11.5px;
+            color: var(--kisi-muted);
+            font-weight: 600;
+        }
+        .audit-issue-card {
+            border: 1px solid #e2e8f0;
+            border-left: 4px solid #f59e0b;
+            border-radius: 8px;
+            padding: 12px 14px;
+            margin-bottom: 10px;
+            background: #ffffff;
+        }
+        .audit-issue-card.sev-error {
+            border-left-color: #dc2626;
+        }
+        .audit-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        .audit-badge-err { background: #fee2e2; color: #b91c1c; }
+        .audit-badge-warn { background: #fef3c7; color: #92400e; }
+        .audit-badge-lang { background: #e0f2fe; color: #0369a1; }
+        .audit-badge-src { background: #f1f5f9; color: #334155; }
+        .audit-context {
+            background: #f8fafc;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 12.5px;
+            margin: 6px 0;
+            color: #334155;
+            font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+        }
+        .sticky-footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #fff;
+            border-top: 1px solid var(--kisi-border);
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 -4px 16px rgba(0,0,0,0.06);
+            z-index: 999;
+        }
+        .status-toast {
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            display: none;
+        }
+        .status-toast.info { display: inline-block; background: #e0f2fe; color: #0369a1; }
+        .status-toast.success { display: inline-block; background: #dcfce7; color: #15803d; }
+        .status-toast.error { display: inline-block; background: #fee2e2; color: #b91c1c; }
+        .aff-preview-box {
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            border-radius: 6px;
+            padding: 10px 12px;
+            font-size: 12px;
+            color: #166534;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="topbar">
+    <div class="topbar-title">
+        <h1>⚡ Kisi Berkelanjutan — Studio Re-Layout 2026 &amp; AmeliCA JATS XML</h1>
+        <span class="badge">OJS 3.5 Integrated Plugin</span>
+    </div>
+    <div style="display:flex;gap:10px;">
+        <button type="button" class="btn btn-outline btn-sm" onclick="toggleSettingsDrawer()" style="background:rgba(255,255,255,0.12);color:#fff;border-color:rgba(255,255,255,0.25);">
+            ⚙️ Pengaturan Gemini AI &amp; Default Jurnal
+        </button>
+        <a href="<?php echo htmlspecialchars($dispatcher->url($request, PKPApplication::ROUTE_PAGE, $context->getPath(), 'submissions'), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline btn-sm" style="background:rgba(255,255,255,0.12);color:#fff;border-color:rgba(255,255,255,0.25);">
+            ← Kembali ke Dashboard OJS
+        </a>
+    </div>
+</div>
+
+<div class="container">
+
+    <!-- Collapsible Settings Drawer -->
+    <div id="settingsDrawer" class="card" style="display:none;border-color:#93c5fd;background:#f8fafc;">
+        <div class="card-header">
+            <h2>⚙️ Pengaturan Plugin (API Key Gemini &amp; Identitas Jurnal Kisi Berkelanjutan)</h2>
+            <button type="button" class="btn btn-primary btn-sm" onclick="savePluginSettings()">💾 Simpan Pengaturan</button>
+        </div>
+        <div class="row-3">
+            <div class="field-group">
+                <label>Google Gemini API Key <span class="hint">(Untuk otomatis pecah abstrak &amp; struktur)</span></label>
+                <input type="password" id="cfg_geminiApiKey" value="<?php echo htmlspecialchars($settings['geminiApiKey'] ?? '', ENT_QUOTES, 'UTF-8'); ?>" placeholder="AIzaSy...">
+            </div>
+            <div class="field-group">
+                <label>Model Gemini</label>
+                <input type="text" id="cfg_geminiModel" value="<?php echo htmlspecialchars($settings['geminiModel'] ?? 'gemini-2.5-flash', ENT_QUOTES, 'UTF-8'); ?>">
+            </div>
+            <div class="field-group">
+                <label>E-ISSN Jurnal</label>
+                <input type="text" id="cfg_eissn" value="<?php echo htmlspecialchars($settings['eissn'] ?? '3062-9063', ENT_QUOTES, 'UTF-8'); ?>">
+            </div>
+        </div>
+        <div class="row-3">
+            <div class="field-group">
+                <label>Nama Jurnal Lengkap (Untuk Sitasi APA &amp; JATS XML)</label>
+                <input type="text" id="cfg_journalTitle" value="<?php echo htmlspecialchars($settings['journalTitle'] ?? 'Kisi Berkelanjutan: Sains Medis Dan Kesehatan', ENT_QUOTES, 'UTF-8'); ?>">
+            </div>
+            <div class="field-group">
+                <label>Nama Pendek Jurnal (Untuk Footer DOCX)</label>
+                <input type="text" id="cfg_journalShortFooter" value="<?php echo htmlspecialchars($settings['journalShortFooter'] ?? 'Kisi Berkelanjutan: SMK', ENT_QUOTES, 'UTF-8'); ?>">
+            </div>
+            <div class="field-group">
+                <label>Nama Penerbit</label>
+                <input type="text" id="cfg_publisherName" value="<?php echo htmlspecialchars($settings['publisherName'] ?? 'PT Karya Inovasi Berkelanjutan', ENT_QUOTES, 'UTF-8'); ?>">
+            </div>
+        </div>
+        <div class="field-group">
+            <label>Teks Kotak Catatan Re-Typeset 2026 (Publisher's Note Box)</label>
+            <input type="text" id="cfg_retypesetNote" value="<?php echo htmlspecialchars($settings['retypesetNote'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+        </div>
+        <div class="row-2">
+            <div class="field-group">
+                <label>Digest Otomatis JATS XML ke Halaman Full-Text Artikel (`/article/view/{id}`)</label>
+                <select id="cfg_enableFullTextDigest">
+                    <option value="1" <?php echo (($settings['enableFullTextDigest'] ?? '1') !== '0') ? 'selected' : ''; ?>>✅ Aktif (Langsung tampilkan Full-Text HTML dari JATS XML di halaman artikel)</option>
+                    <option value="0" <?php echo (($settings['enableFullTextDigest'] ?? '1') === '0') ? 'selected' : ''; ?>>Nonaktif (Hanya gunakan plugin eksternal seperti JATS Parser / Lens)</option>
+                </select>
+            </div>
+            <div class="field-group">
+                <label>Tampilan Abstrak di Halaman Full-Text Artikel</label>
+                <select id="cfg_replaceDefaultAbstract">
+                    <option value="1" <?php echo (($settings['replaceDefaultAbstract'] ?? '1') !== '0') ? 'selected' : ''; ?>>✅ Tampilkan Tab Abstrak Terstruktur 2 Bahasa (ID &amp; EN) dari JATS XML</option>
+                    <option value="0" <?php echo (($settings['replaceDefaultAbstract'] ?? '1') === '0') ? 'selected' : ''; ?>>Gunakan tampilan Abstrak bawaan tema OJS</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 1: Select OJS Issue & Article + Load DOCX -->
+    <div class="card">
+        <div class="card-header">
+            <h2>1️⃣ Pilih Artikel Edisi 1–3 dari Database OJS &amp; Muat File Naskah (.docx)</h2>
+            <span id="statusToast" class="status-toast"></span>
+        </div>
+        <form method="get" action="<?php echo htmlspecialchars($baseUrl . '/studio', ENT_QUOTES, 'UTF-8'); ?>" class="grid-selector">
+            <div>
+                <label>Filter Edisi (Issue OJS)</label>
+                <select name="issueId" onchange="this.form.submit()">
+                    <option value="0">— Semua Edisi (Edisi 1–3, dst.) —</option>
+                    <?php foreach ($issuesList as $iss): ?>
+                        <option value="<?php echo (int) $iss['id']; ?>" <?php echo ($selectedIssueId === (int) $iss['id']) ? 'selected' : ''; ?>>
+                            <?php echo htmlspecialchars($iss['label'], ENT_QUOTES, 'UTF-8'); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div>
+                <label>Pilih Artikel di OJS <span class="hint">(Otomatis menarik Judul, Penulis, DOI, &amp; Review Editor dari Metadata &gt; Subject)</span></label>
+                <select name="submissionId" onchange="this.form.submit()">
+                    <option value="0">— Pilih Artikel untuk Di-Layout Ulang —</option>
+                    <?php foreach ($submissionsList as $sub): ?>
+                        <option value="<?php echo (int) $sub['id']; ?>" <?php echo ($selectedSubmissionId === (int) $sub['id']) ? 'selected' : ''; ?>>
+                            [#<?php echo (int) $sub['id']; ?> / <?php echo htmlspecialchars($sub['pages'], ENT_QUOTES, 'UTF-8'); ?>] <?php echo htmlspecialchars(mb_strimwidth($sub['title'], 0, 95, '...'), ENT_QUOTES, 'UTF-8'); ?> (<?php echo htmlspecialchars($sub['authors'], ENT_QUOTES, 'UTF-8'); ?>)
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div>
+                <button type="submit" class="btn btn-navy">🔄 Muat Metadata OJS</button>
+            </div>
+        </form>
+
+        <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--kisi-border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <strong style="font-size:13px;color:var(--kisi-navy);">📄 Sumber Isi Naskah (.docx):</strong>
+                <?php if (!empty($attachedDocxFiles)): ?>
+                    <select id="ojsDocxFileSelect" style="width:auto;min-width:260px;">
+                        <?php foreach ($attachedDocxFiles as $df): ?>
+                            <option value="<?php echo (int) $df['id']; ?>">
+                                [File OJS #<?php echo (int) $df['id']; ?>] <?php echo htmlspecialchars($df['name'], ENT_QUOTES, 'UTF-8'); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="parseOjsDocxFile()">📂 Ekstrak dari File OJS Ini</button>
+                <?php else: ?>
+                    <span style="font-size:12px;color:var(--kisi-muted);">Tidak ada file .docx di tahapan OJS artikel ini, atau unggah langsung dari komputer:</span>
+                <?php endif; ?>
+
+                <label class="btn btn-outline btn-sm" style="margin:0;cursor:pointer;">
+                    📤 Upload File .docx dari Komputer
+                    <input type="file" id="uploadDocxInput" accept=".docx" style="display:none;" onchange="uploadAndParseLocalDocx(this)">
+                </label>
+            </div>
+
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button type="button" class="btn btn-outline btn-sm" onclick="quickOpenLanguageAudit()">
+                    🔍 Cek Typo &amp; Kata Baku (ID/EN)
+                </button>
+                <button type="button" class="btn btn-ai" onclick="runAiRestructure()">
+                    ✨ Rapikan Abstrak Terstruktur &amp; Terjemahan dengan Gemini AI
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 2: Interactive Preview & Form Editor -->
+    <div class="studio-layout">
+
+        <!-- Left Column: Sidebar Metadata (Matches Template Left Sidebar) -->
+        <div class="card">
+            <div class="card-header">
+                <h2>📌 Sidebar Metadata &amp; Footer</h2>
+                <button type="button" class="btn btn-outline btn-sm" onclick="rebuildApaCitation()">🔄 Rakit Sitasi</button>
+            </div>
+
+            <div class="row-2">
+                <div class="field-group">
+                    <label>Kategori Artikel</label>
+                    <input type="text" id="f_article_type" oninput="syncStateFromInputs()">
+                </div>
+                <div class="field-group">
+                    <label>Nomor Artikel (e-ID)</label>
+                    <input type="text" id="f_elocation_id" placeholder="e76" oninput="syncStateFromInputs()">
+                </div>
+            </div>
+
+            <div class="row-3">
+                <div class="field-group">
+                    <label>Volume</label>
+                    <input type="text" id="f_volume" oninput="syncStateFromInputs()">
+                </div>
+                <div class="field-group">
+                    <label>Nomor Edisi</label>
+                    <input type="text" id="f_issue_number" oninput="syncStateFromInputs()">
+                </div>
+                <div class="field-group">
+                    <label>Tahun Copyright</label>
+                    <input type="text" id="f_copyright_year" oninput="syncStateFromInputs()">
+                </div>
+            </div>
+
+            <div class="field-group">
+                <label>Baris Edisi di Footer DOCX</label>
+                <input type="text" id="f_footer_issue_line" placeholder="Volume 1 Nomor 1, Januari-Maret 2024" oninput="syncStateFromInputs()">
+            </div>
+
+            <div class="field-group">
+                <label>URL Artikel OJS <span class="hint">(Untuk Sitasi &amp; Hyperlink Footer)</span></label>
+                <input type="text" id="f_article_url" oninput="syncStateFromInputs()">
+            </div>
+
+            <div class="field-group">
+                <label>Citation (Format APA Kisi Berkelanjutan)</label>
+                <textarea id="f_citation" rows="4" oninput="syncStateFromInputs()"></textarea>
+            </div>
+
+            <div class="field-group">
+                <label>Digital Object Identifier (DOI)</label>
+                <input type="text" id="f_doi" placeholder="10.5281/zenodo.21865626" oninput="syncStateFromInputs()">
+            </div>
+
+            <div class="field-group">
+                <label>Review Editor <span class="hint">(Otomatis dari OJS Metadata &gt; Subject)</span></label>
+                <textarea id="f_review_editor" rows="3" placeholder="Hikmawati, S.Kep., Ns., M.Kep (Nursing Department, Health Polytechnic Ministry of Health Kendari, Southeast Sulawesi, Indonesia)" oninput="syncStateFromInputs()"></textarea>
+            </div>
+
+            <div class="field-group">
+                <label>Published Date <span class="hint">(Format: March 30, 2024)</span></label>
+                <input type="text" id="f_published_date" oninput="syncStateFromInputs()">
+            </div>
+
+            <div class="row-2">
+                <div class="field-group">
+                    <label>Funding</label>
+                    <input type="text" id="f_funding" oninput="syncStateFromInputs()">
+                </div>
+                <div class="field-group">
+                    <label>Competing Interests</label>
+                    <input type="text" id="f_competing_interests" oninput="syncStateFromInputs()">
+                </div>
+            </div>
+
+            <div class="field-group">
+                <label>Catatan Re-Typeset 2026 <span class="hint">(Kotak Bawah Artikel)</span></label>
+                <textarea id="f_retypeset_note" rows="2" oninput="syncStateFromInputs()"></textarea>
+            </div>
+        </div>
+
+        <!-- Right Column: Main Article Content -->
+        <div class="card">
+            <div class="card-header">
+                <h2>📝 Pratinjau &amp; Editor Konten Artikel (Template 2026 + JATS XML)</h2>
+            </div>
+
+            <!-- Bilingual Titles -->
+            <div class="field-group">
+                <label>Judul Artikel (Bahasa Indonesia — Bold 14pt)</label>
+                <textarea id="f_title_id" rows="2" oninput="syncStateFromInputs()"></textarea>
+            </div>
+            <div class="field-group">
+                <label>Judul Artikel (Bahasa Inggris — Italic 14pt)</label>
+                <textarea id="f_title_en" rows="2" oninput="syncStateFromInputs()"></textarea>
+            </div>
+
+            <!-- Authors & Auto-Deduplicated Affiliations -->
+            <div class="field-group" style="margin-top:14px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <label style="margin:0;">Daftar Penulis &amp; Afiliasi <span class="hint">(Afiliasi yang sama otomatis digabung menjadi 1 nomor urut!)</span></label>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="addAuthorRow()">+ Tambah Penulis</button>
+                </div>
+                <div id="authorsContainer"></div>
+                <div id="affDeduplicationPreview" class="aff-preview-box"></div>
+            </div>
+
+            <div class="row-2" style="margin-top:10px;">
+                <div class="field-group">
+                    <label>Nama Penulis Koresponden (*)</label>
+                    <input type="text" id="f_corresponding_name" oninput="syncStateFromInputs()">
+                </div>
+                <div class="field-group">
+                    <label>Email Penulis Koresponden</label>
+                    <input type="text" id="f_corresponding_email" oninput="syncStateFromInputs()">
+                </div>
+            </div>
+
+            <!-- Content Tabs -->
+            <div class="tabs" style="margin-top:16px;flex-wrap:wrap;">
+                <button type="button" class="tab-btn active" data-tab="tab-abstracts" onclick="switchTab('tab-abstracts', this)">
+                    1. ABSTRAK &amp; ABSTRACT (Terstruktur 2 Bahasa)
+                </button>
+                <button type="button" class="tab-btn" data-tab="tab-body" onclick="switchTab('tab-body', this)">
+                    2. ISI ARTIKEL &amp; TABEL (Geser Blok &amp; Tabel Kesehatan)
+                </button>
+                <button type="button" class="tab-btn" data-tab="tab-references" onclick="switchTab('tab-references', this)">
+                    3. SUMBER PUSTAKA (<span id="refCountBadge">0</span>)
+                </button>
+                <button type="button" class="tab-btn" data-tab="tab-fulltext-preview" onclick="switchTab('tab-fulltext-preview', this); loadFullTextDigestPreview();">
+                    4. 👁️ PRATINJAU FULL-TEXT (XML DIGEST)
+                </button>
+                <button type="button" class="tab-btn" data-tab="tab-language-audit" onclick="switchTab('tab-language-audit', this)">
+                    5. 🔍 AUDIT TYPO &amp; KATA BAKU (<span id="auditCountBadge">0</span>)
+                </button>
+            </div>
+
+            <!-- TAB 1: Bilingual Structured Abstracts -->
+            <div id="tab-abstracts" class="tab-pane active">
+                <div class="row-2">
+                    <!-- Indonesian Abstract -->
+                    <div style="background:#f8fafc;padding:14px;border-radius:8px;border:1px solid #e2e8f0;">
+                        <h3 style="margin:0 0 10px 0;font-size:14px;color:var(--kisi-navy);">🇮🇩 ABSTRAK (Bahasa Indonesia)</h3>
+                        <div class="field-group">
+                            <label>Pendahuluan dan Metode</label>
+                            <textarea id="f_ab_id_pm" rows="6" oninput="syncStateFromInputs()"></textarea>
+                        </div>
+                        <div class="field-group">
+                            <label>Hasil</label>
+                            <textarea id="f_ab_id_hasil" rows="4" oninput="syncStateFromInputs()"></textarea>
+                        </div>
+                        <div class="field-group">
+                            <label>Kesimpulan dan Saran</label>
+                            <textarea id="f_ab_id_kes" rows="4" oninput="syncStateFromInputs()"></textarea>
+                        </div>
+                        <div class="field-group">
+                            <label>Kata Kunci <span class="hint">(Pisahkan dengan titik koma ;)</span></label>
+                            <input type="text" id="f_keywords_id" placeholder="Sosial budaya; Pemberian ASI; Pemberian ASI sejak dini" oninput="syncStateFromInputs()">
+                        </div>
+                    </div>
+
+                    <!-- English Abstract -->
+                    <div style="background:#f8fafc;padding:14px;border-radius:8px;border:1px solid #e2e8f0;">
+                        <h3 style="margin:0 0 10px 0;font-size:14px;color:var(--kisi-navy);">🇬🇧 ABSTRACT (Bahasa Inggris — Otomatis Cetak Miring)</h3>
+                        <div class="field-group">
+                            <label>Introduction and Methods</label>
+                            <textarea id="f_ab_en_im" rows="6" oninput="syncStateFromInputs()"></textarea>
+                        </div>
+                        <div class="field-group">
+                            <label>Results</label>
+                            <textarea id="f_ab_en_res" rows="4" oninput="syncStateFromInputs()"></textarea>
+                        </div>
+                        <div class="field-group">
+                            <label>Conclusions and Recommendations</label>
+                            <textarea id="f_ab_en_conc" rows="4" oninput="syncStateFromInputs()"></textarea>
+                        </div>
+                        <div class="field-group">
+                            <label>Keywords <span class="hint">(Pisahkan dengan titik koma ;)</span></label>
+                            <input type="text" id="f_keywords_en" placeholder="Breastfeeding; Early initiation of breastfeeding; Socio-cultural" oninput="syncStateFromInputs()">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: Main Body Sections & Tables -->
+            <div id="tab-body" class="tab-pane">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;background:#f8fafc;border:1px solid #cbd5e1;padding:10px 14px;border-radius:8px;">
+                    <div style="font-size:12.5px;color:#334155;">
+                        💡 <strong>Atur Urutan &amp; Level Manual:</strong> Seret ikon <strong>⋮⋮</strong> atau klik tombol <strong>▲ / ▼</strong> untuk menggeser blok naik-turun maupun lintas bab (<em>PENDAHULUAN ↔ METODE ↔ HASIL ↔ PEMBAHASAN ↔ KESIMPULAN</em>). Gunakan dropdown <strong>Level Blok</strong> untuk ubah <em>Paragraf ↔ Sub-Judul</em>.
+                    </div>
+                    <button type="button" class="btn btn-teal btn-sm" onclick="formatAllTablesHealthStandard(true)">
+                        🏥 Format Semua Tabel (Standar Ilmiah Kesehatan)
+                    </button>
+                </div>
+                <div id="bodySectionsContainer"></div>
+            </div>
+
+            <!-- TAB 3: References -->
+            <div id="tab-references" class="tab-pane">
+                <div class="field-group">
+                    <label>Daftar Sumber Pustaka <span class="hint">(Satu referensi per baris — otomatis diformat hanging indent di DOCX dan &lt;mixed-citation&gt; di JATS XML)</span></label>
+                    <textarea id="f_referensi" rows="16" oninput="syncReferencesFromInput()" placeholder="Depkes RI. (2013). Profil Kesehatan Indonesia. Jakarta, Departemen Kesehatan Republik Indonesia."></textarea>
+                </div>
+            </div>
+
+            <!-- TAB 4: Full-Text Digest Preview (Exactly as rendered on /article/view/{id}) -->
+            <div id="tab-fulltext-preview" class="tab-pane">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;background:#f0fdf4;border:1px solid #bbf7d0;padding:10px 14px;border-radius:8px;">
+                    <div style="font-size:13px;color:#166534;">
+                        ✅ <strong>Pratinjau Live Digest JATS XML:</strong> Ini adalah tampilan <em>Full-Text HTML</em> yang otomatis muncul di halaman utama artikel jurnal (<code>/article/view/ID</code>) saat Anda menyimpan JATS XML ke Galley OJS.
+                    </div>
+                    <button type="button" class="btn btn-teal btn-sm" onclick="loadFullTextDigestPreview()">🔄 Segarkan Pratinjau Full-Text</button>
+                </div>
+                <div id="fullTextDigestPreviewBox" style="border:1px solid #cbd5e1;border-radius:10px;padding:16px 24px;background:#ffffff;min-height:300px;">
+                    Klik "Segarkan Pratinjau Full-Text" untuk melihat hasil digest JATS XML...
+                </div>
+            </div>
+
+            <!-- TAB 5: Bilingual Typo & Non-Standard Word Auditor -->
+            <div id="tab-language-audit" class="tab-pane">
+                <div style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:14px;margin-bottom:14px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px;">
+                        <div>
+                            <strong style="font-size:14px;color:var(--kisi-navy);">🔍 Pemeriksa Typo &amp; Kata Tidak Baku (Bahasa Indonesia &amp; Inggris)</strong>
+                            <div style="font-size:12px;color:var(--kisi-muted);margin-top:2px;">
+                                Sumber terpercaya: <strong>KBBI VI &amp; EYD V (Badan Bahasa Kemendikbudristek)</strong>, <strong>Hunspell ID</strong>, <strong>SCOWL US English</strong>, serta <strong>AMA Manual of Style / Merriam-Webster</strong>.
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <button type="button" class="btn btn-primary btn-sm" onclick="runLanguageAudit()">🔍 Jalankan Audit Bahasa</button>
+                            <button type="button" class="btn btn-teal btn-sm" id="btnApplyAllSafeFixes" onclick="applyAllSafeAuditFixes()" style="display:none;">✨ Terapkan Semua Perbaikan Aman</button>
+                        </div>
+                    </div>
+
+                    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding-top:8px;border-top:1px dashed #cbd5e1;font-size:12.5px;">
+                        <label style="margin:0;display:flex;align-items:center;gap:6px;">
+                            <span>Bahasa Isi Artikel:</span>
+                            <select id="auditBodyLang" style="width:auto;padding:4px 8px;font-size:12px;">
+                                <option value="auto">Deteksi Otomatis (ID / EN)</option>
+                                <option value="id">Bahasa Indonesia (KBBI &amp; EYD V)</option>
+                                <option value="en">English (SCOWL &amp; AMA Style)</option>
+                            </select>
+                        </label>
+                        <label style="margin:0;display:flex;align-items:center;gap:5px;cursor:pointer;font-weight:500;">
+                            <input type="checkbox" id="auditUseLanguageTool"> Sertakan LanguageTool API (Verifikasi Grammar EN)
+                        </label>
+                        <label style="margin:0;display:flex;align-items:center;gap:5px;cursor:pointer;font-weight:500;">
+                            <input type="checkbox" id="auditUseGemini"> Deep Audit Gemini AI (KBBI/EYD V + AMA)
+                        </label>
+                    </div>
+                </div>
+
+                <div id="languageAuditResultsBox">
+                    <div style="padding:28px;text-align:center;color:#64748b;border:1px dashed #cbd5e1;border-radius:8px;background:#fff;">
+                        Klik tombol <strong>"🔍 Jalankan Audit Bahasa"</strong> untuk memeriksa typo, kata tidak baku (mis. <em>analisa → analisis</em>, <em>resiko → risiko</em>, <em>mengkonsumsi → mengonsumsi</em>, <em>di lakukan → dilakukan</em>), serta ejaan Bahasa Inggris (US/AMA vs UK &amp; typo medis).
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- Sticky Bottom Action Bar -->
+<div class="sticky-footer">
+    <div style="font-size:13px;color:var(--kisi-muted);">
+        💡 <strong>Tips:</strong> Pastikan bagian <em>Review Editor</em> dan <em>ABSTRAK 3 bagian</em> sudah sesuai di pratinjau sebelum mengunduh atau menyimpan ke Galley.
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;">
+        <button type="button" class="btn btn-navy" onclick="downloadGeneratedFile('generateDocx')">
+            📄 Download Layout Baru (.docx)
+        </button>
+        <button type="button" class="btn btn-teal" onclick="downloadGeneratedFile('generateJats')">
+            🧬 Download AmeliCA / JATS XML (.xml)
+        </button>
+        <button type="button" class="btn btn-primary" onclick="saveDirectlyToOjsGalley()">
+            🚀 Simpan Otomatis ke Galley OJS 3.5 (JATS XML + DOCX)
+        </button>
+    </div>
+</div>
+
+<!-- Hidden form for file downloads -->
+<form id="downloadForm" method="post" target="_blank" style="display:none;">
+    <input type="hidden" name="articleJson" id="downloadArticleJson">
+</form>
+
+<script>
+const BASE_URL = <?php echo json_encode($baseUrl, JSON_UNESCAPED_UNICODE); ?>;
+let articleState = <?php echo json_encode($defaultArticle, JSON_UNESCAPED_UNICODE); ?>;
+
+const SECTION_LABELS = {
+    pendahuluan: 'PENDAHULUAN',
+    metode: 'METODE',
+    hasil: 'HASIL (Paragraf & Tabel Penelitian)',
+    pembahasan: 'PEMBAHASAN (Sub-Judul & Paragraf)',
+    kesimpulan_saran: 'KESIMPULAN DAN SARAN'
+};
+
+function showToast(msg, type = 'info') {
+    const el = document.getElementById('statusToast');
+    el.className = 'status-toast ' + type;
+    el.textContent = msg;
+}
+
+function toggleSettingsDrawer() {
+    const d = document.getElementById('settingsDrawer');
+    d.style.display = (d.style.display === 'none') ? 'block' : 'none';
+}
+
+function switchTab(tabId, btnEl) {
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(tabId).classList.add('active');
+    btnEl.classList.add('active');
+}
+
+function populateFormFromState() {
+    document.getElementById('f_article_type').value = articleState.article_type || 'ORIGINAL ARTICLE';
+    document.getElementById('f_elocation_id').value = articleState.elocation_id || ('e' + (articleState.submission_id || '76'));
+    document.getElementById('f_volume').value = articleState.volume || '1';
+    document.getElementById('f_issue_number').value = articleState.issue_number || '1';
+    document.getElementById('f_copyright_year').value = articleState.copyright_year || '2024';
+    document.getElementById('f_footer_issue_line').value = articleState.footer_issue_line || 'Volume 1 Nomor 1, Januari-Maret 2024';
+    document.getElementById('f_article_url').value = articleState.article_url || '';
+    document.getElementById('f_citation').value = articleState.citation || '';
+    document.getElementById('f_doi').value = articleState.doi || '';
+    document.getElementById('f_review_editor').value = articleState.review_editor || '';
+    document.getElementById('f_published_date').value = articleState.published_date || '';
+    document.getElementById('f_funding').value = articleState.funding || 'none';
+    document.getElementById('f_competing_interests').value = articleState.competing_interests || '';
+    document.getElementById('f_retypeset_note').value = articleState.retypeset_note || '';
+
+    document.getElementById('f_title_id').value = articleState.title_id || '';
+    document.getElementById('f_title_en').value = articleState.title_en || '';
+    document.getElementById('f_corresponding_name').value = articleState.corresponding_name || '';
+    document.getElementById('f_corresponding_email').value = articleState.corresponding_email || '';
+
+    const abId = articleState.abstract_id || {};
+    document.getElementById('f_ab_id_pm').value = abId.pendahuluan_metode || '';
+    document.getElementById('f_ab_id_hasil').value = abId.hasil || '';
+    document.getElementById('f_ab_id_kes').value = abId.kesimpulan_saran || '';
+    document.getElementById('f_keywords_id').value = articleState.keywords_id || '';
+
+    const abEn = articleState.abstract_en || {};
+    document.getElementById('f_ab_en_im').value = abEn.intro_methods || '';
+    document.getElementById('f_ab_en_res').value = abEn.results || '';
+    document.getElementById('f_ab_en_conc').value = abEn.conclusions_recommendations || '';
+    document.getElementById('f_keywords_en').value = articleState.keywords_en || '';
+
+    const refs = Array.isArray(articleState.referensi) ? articleState.referensi : [];
+    document.getElementById('f_referensi').value = refs.join('\n');
+    document.getElementById('refCountBadge').textContent = refs.length;
+
+    renderAuthorsEditor();
+    renderBodySectionsEditor();
+}
+
+function syncStateFromInputs() {
+    articleState.article_type = document.getElementById('f_article_type').value;
+    articleState.elocation_id = document.getElementById('f_elocation_id').value;
+    articleState.volume = document.getElementById('f_volume').value;
+    articleState.issue_number = document.getElementById('f_issue_number').value;
+    articleState.copyright_year = document.getElementById('f_copyright_year').value;
+    articleState.footer_issue_line = document.getElementById('f_footer_issue_line').value;
+    articleState.article_url = document.getElementById('f_article_url').value;
+    articleState.citation = document.getElementById('f_citation').value;
+    articleState.doi = document.getElementById('f_doi').value;
+    articleState.review_editor = document.getElementById('f_review_editor').value;
+    articleState.published_date = document.getElementById('f_published_date').value;
+    articleState.funding = document.getElementById('f_funding').value;
+    articleState.competing_interests = document.getElementById('f_competing_interests').value;
+    articleState.retypeset_note = document.getElementById('f_retypeset_note').value;
+
+    articleState.title_id = document.getElementById('f_title_id').value;
+    articleState.title_en = document.getElementById('f_title_en').value;
+    articleState.corresponding_name = document.getElementById('f_corresponding_name').value;
+    articleState.corresponding_email = document.getElementById('f_corresponding_email').value;
+
+    if (!articleState.abstract_id) articleState.abstract_id = {};
+    articleState.abstract_id.pendahuluan_metode = document.getElementById('f_ab_id_pm').value;
+    articleState.abstract_id.hasil = document.getElementById('f_ab_id_hasil').value;
+    articleState.abstract_id.kesimpulan_saran = document.getElementById('f_ab_id_kes').value;
+    articleState.keywords_id = document.getElementById('f_keywords_id').value;
+
+    if (!articleState.abstract_en) articleState.abstract_en = {};
+    articleState.abstract_en.intro_methods = document.getElementById('f_ab_en_im').value;
+    articleState.abstract_en.results = document.getElementById('f_ab_en_res').value;
+    articleState.abstract_en.conclusions_recommendations = document.getElementById('f_ab_en_conc').value;
+    articleState.keywords_en = document.getElementById('f_keywords_en').value;
+}
+
+function syncReferencesFromInput() {
+    const raw = document.getElementById('f_referensi').value;
+    articleState.referensi = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    document.getElementById('refCountBadge').textContent = articleState.referensi.length;
+}
+
+const SECTION_KEYS = ['pendahuluan', 'metode', 'hasil', 'pembahasan', 'kesimpulan_saran'];
+
+function renderAuthorsEditor() {
+    const container = document.getElementById('authorsContainer');
+    container.innerHTML = '';
+    if (!Array.isArray(articleState.authors) || articleState.authors.length === 0) {
+        articleState.authors = [{ name: '', affiliation: '', email: '', is_corresponding: true }];
+    }
+
+    articleState.authors.forEach((au, idx) => {
+        const row = document.createElement('div');
+        row.className = 'author-row';
+        row.innerHTML = `
+            <div style="display:flex;flex-direction:column;gap:2px;">
+                <button type="button" class="btn btn-outline btn-xs" onclick="moveAuthorRow(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} title="Geser Penulis Naik">▲</button>
+                <button type="button" class="btn btn-outline btn-xs" onclick="moveAuthorRow(${idx}, 1)" ${idx === articleState.authors.length - 1 ? 'disabled' : ''} title="Geser Penulis Turun">▼</button>
+            </div>
+            <input type="text" placeholder="Nama Penulis" value="${escapeHtml(au.name || '')}" oninput="updateAuthor(${idx}, 'name', this.value)">
+            <input type="text" placeholder="Afiliasi (Prodi, Fakultas, Universitas, Kota, Negara)" value="${escapeHtml(au.affiliation || '')}" oninput="updateAuthor(${idx}, 'affiliation', this.value)">
+            <input type="text" placeholder="Email" value="${escapeHtml(au.email || '')}" oninput="updateAuthor(${idx}, 'email', this.value)">
+            <label style="margin:0;display:flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap;">
+                <input type="checkbox" ${au.is_corresponding ? 'checked' : ''} onchange="updateAuthor(${idx}, 'is_corresponding', this.checked)"> * Koresponden
+            </label>
+            <button type="button" class="btn btn-outline btn-sm" onclick="removeAuthorRow(${idx})" title="Hapus Penulis">✕</button>
+        `;
+        container.appendChild(row);
+    });
+
+    updateAffDeduplicationPreview();
+}
+
+function moveAuthorRow(idx, delta) {
+    const target = idx + delta;
+    if (target < 0 || target >= articleState.authors.length) return;
+    const tmp = articleState.authors[idx];
+    articleState.authors[idx] = articleState.authors[target];
+    articleState.authors[target] = tmp;
+    renderAuthorsEditor();
+}
+
+function updateAuthor(idx, key, val) {
+    articleState.authors[idx][key] = val;
+    if (key === 'is_corresponding' && val) {
+        articleState.corresponding_name = articleState.authors[idx].name || '';
+        articleState.corresponding_email = articleState.authors[idx].email || '';
+        document.getElementById('f_corresponding_name').value = articleState.corresponding_name;
+        document.getElementById('f_corresponding_email').value = articleState.corresponding_email;
+    }
+    updateAffDeduplicationPreview();
+}
+
+function addAuthorRow() {
+    const defaultAff = (articleState.authors[0] && articleState.authors[0].affiliation) ? articleState.authors[0].affiliation : '';
+    articleState.authors.push({ name: '', affiliation: defaultAff, email: '', is_corresponding: false });
+    renderAuthorsEditor();
+}
+
+function removeAuthorRow(idx) {
+    if (articleState.authors.length <= 1) return;
+    articleState.authors.splice(idx, 1);
+    renderAuthorsEditor();
+}
+
+function updateAffDeduplicationPreview() {
+    const uniqueAffs = [];
+    const authorFormatted = [];
+    (articleState.authors || []).forEach(au => {
+        const aff = (au.affiliation || 'Indonesia').trim() || 'Indonesia';
+        let pos = uniqueAffs.indexOf(aff);
+        if (pos === -1) {
+            uniqueAffs.push(aff);
+            pos = uniqueAffs.length - 1;
+        }
+        const num = pos + 1;
+        authorFormatted.push(`${escapeHtml(au.name || 'Penulis')}<sup>${num}</sup>${au.is_corresponding ? '*' : ''}`);
+    });
+
+    const affLines = uniqueAffs.map((a, i) => `<div><strong>${i + 1}.</strong> ${escapeHtml(a)}</div>`).join('');
+    document.getElementById('affDeduplicationPreview').innerHTML = `
+        <div style="margin-bottom:4px;"><strong>Pratinjau Baris Penulis di DOCX:</strong> ${authorFormatted.join(', ')}</div>
+        ${affLines}
+    `;
+}
+
+let dragBlockState = { srcSec: null, srcIdx: null };
+
+function renderBodySectionsEditor(flashTarget = null) {
+    const container = document.getElementById('bodySectionsContainer');
+    container.innerHTML = '';
+    if (!articleState.sections) articleState.sections = {};
+
+    SECTION_KEYS.forEach((secKey, secPos) => {
+        if (!Array.isArray(articleState.sections[secKey])) {
+            articleState.sections[secKey] = [];
+        }
+        const blocks = articleState.sections[secKey];
+        const secCard = document.createElement('div');
+        secCard.className = 'section-card';
+        secCard.dataset.secKey = secKey;
+
+        secCard.addEventListener('dragover', (ev) => {
+            if (!dragBlockState.srcSec) return;
+            ev.preventDefault();
+            secCard.classList.add('section-drag-over');
+        });
+        secCard.addEventListener('dragleave', (ev) => {
+            if (!secCard.contains(ev.relatedTarget)) {
+                secCard.classList.remove('section-drag-over');
+            }
+        });
+        secCard.addEventListener('drop', (ev) => {
+            if (!dragBlockState.srcSec) return;
+            ev.preventDefault();
+            secCard.classList.remove('section-drag-over');
+            performBlockRelocation(dragBlockState.srcSec, dragBlockState.srcIdx, secKey, articleState.sections[secKey].length);
+        });
+
+        let headerHtml = `
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+                <h3 style="margin:0;font-size:14px;color:var(--kisi-navy);">${SECTION_LABELS[secKey]} (${blocks.length} blok)</h3>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <button type="button" class="btn btn-outline btn-sm" onclick="addSectionBlock('${secKey}', 'subheading')">+ Sub-Judul (L2)</button>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="addSectionBlock('${secKey}', 'subheading_l3')">+ Sub-Sub (L3)</button>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="addSectionBlock('${secKey}', 'paragraph')">+ Paragraf</button>
+                    <button type="button" class="btn btn-teal btn-sm" onclick="addSectionBlock('${secKey}', 'table')">+ Tabel Hasil</button>
+                </div>
+            </div>
+        `;
+
+        const blocksContainer = document.createElement('div');
+        if (blocks.length === 0) {
+            const emptyDrop = document.createElement('div');
+            emptyDrop.className = 'section-dropzone-empty';
+            emptyDrop.textContent = 'Belum ada blok di bab ini. Klik tombol "+ ..." di atas atau seret blok dari bab lain ke sini.';
+            blocksContainer.appendChild(emptyDrop);
+        }
+
+        blocks.forEach((blk, bIdx) => {
+            if (typeof blk === 'string') {
+                blk = { type: 'paragraph', text: blk };
+                articleState.sections[secKey][bIdx] = blk;
+            }
+            const item = document.createElement('div');
+            const shouldFlash = flashTarget && flashTarget.sec === secKey && flashTarget.idx === bIdx;
+            item.className = 'block-item' + (shouldFlash ? ' block-flash' : '');
+            item.dataset.secKey = secKey;
+            item.dataset.bIdx = String(bIdx);
+
+            const canMoveUp = !(secPos === 0 && bIdx === 0);
+            const canMoveDown = !(secPos === SECTION_KEYS.length - 1 && bIdx === blocks.length - 1);
+
+            const moveSecOptions = SECTION_KEYS.map(k =>
+                `<option value="${k}" ${k === secKey ? 'selected' : ''}>Bab: ${escapeHtml(k.replace('_', ' ').toUpperCase())}</option>`
+            ).join('');
+
+            const isTextBlock = (blk.type !== 'table');
+            const levelSelectHtml = isTextBlock ? `
+                <select class="block-select-mini" title="Ubah Level Blok (Paragraf / Sub-Judul)" onchange="changeBlockLevel('${secKey}', ${bIdx}, this.value)">
+                    <option value="paragraph" ${(blk.type === 'paragraph' || !blk.type) ? 'selected' : ''}>Level: Paragraf</option>
+                    <option value="subheading" ${blk.type === 'subheading' ? 'selected' : ''}>Level: Sub-Judul (L2)</option>
+                    <option value="subheading_l3" ${blk.type === 'subheading_l3' ? 'selected' : ''}>Level: Sub-Sub-Judul (L3)</option>
+                </select>
+            ` : '';
+
+            const badgeText = blk.type === 'table'
+                ? '📊 TABEL PENELITIAN'
+                : (blk.type === 'subheading' ? '🔖 SUB-JUDUL (L2 BOLD)' : (blk.type === 'subheading_l3' ? '🏷️ SUB-SUB-JUDUL (L3)' : '¶ PARAGRAF'));
+
+            const blockHeaderHtml = `
+                <div class="block-item-header">
+                    <div class="block-header-left">
+                        <span class="block-drag-handle" title="Seret atas-bawah atau pindah ke bab lain" onmousedown="armBlockDrag(this)">⋮⋮</span>
+                        <span>${badgeText}</span>
+                    </div>
+                    <div class="block-header-controls">
+                        ${levelSelectHtml}
+                        <select class="block-select-mini" title="Pindahkan blok ke bab/level lain" onchange="moveBlockToSection('${secKey}', ${bIdx}, this.value)">
+                            ${moveSecOptions}
+                        </select>
+                        <button type="button" class="btn btn-outline btn-xs" onclick="moveBlockVertical('${secKey}', ${bIdx}, -1)" ${!canMoveUp ? 'disabled' : ''} title="${bIdx === 0 && secPos > 0 ? 'Geser naik ke bab sebelumnya' : 'Geser ke atas'}">▲</button>
+                        <button type="button" class="btn btn-outline btn-xs" onclick="moveBlockVertical('${secKey}', ${bIdx}, 1)" ${!canMoveDown ? 'disabled' : ''} title="${bIdx === blocks.length - 1 && secPos < SECTION_KEYS.length - 1 ? 'Geser turun ke bab berikutnya' : 'Geser ke bawah'}">▼</button>
+                        <button type="button" class="btn btn-outline btn-xs" onclick="removeSectionBlock('${secKey}', ${bIdx})" title="Hapus blok">✕</button>
+                    </div>
+                </div>
+            `;
+
+            if (blk.type === 'table') {
+                item.innerHTML = blockHeaderHtml + `
+                    <div class="field-group" style="margin-bottom:8px;">
+                        <label>Judul Tabel (Caption — otomatis di atas tabel, bold pada "Tabel N.")</label>
+                        <input type="text" value="${escapeHtml(blk.caption || '')}" oninput="articleState.sections['${secKey}'][${bIdx}].caption = this.value">
+                    </div>
+                    ${renderTablePreviewHtml(secKey, bIdx, blk)}
+                    <div class="field-group" style="margin-top:8px;margin-bottom:0;">
+                        <label>Catatan Kaki Tabel (Footnote / Singkatan / Uji Statistik — otomatis di bawah garis penutup)</label>
+                        <textarea rows="2" placeholder="Contoh: Keterangan: F/n, frekuensi; χ², nilai uji Chi-square; p < 0,05 menunjukkan hubungan bermakna secara statistik." oninput="articleState.sections['${secKey}'][${bIdx}].footnote = this.value">${escapeHtml(blk.footnote || '')}</textarea>
+                    </div>
+                `;
+            } else if (blk.type === 'subheading' || blk.type === 'subheading_l3') {
+                item.innerHTML = blockHeaderHtml + `
+                    <input type="text" style="font-weight:700;${blk.type === 'subheading_l3' ? 'font-style:italic;' : ''}" value="${escapeHtml(blk.text || '')}" oninput="articleState.sections['${secKey}'][${bIdx}].text = this.value">
+                `;
+            } else {
+                item.innerHTML = blockHeaderHtml + `
+                    <textarea rows="3" oninput="articleState.sections['${secKey}'][${bIdx}].text = this.value">${escapeHtml(blk.text || '')}</textarea>
+                `;
+            }
+
+            // Drag-and-drop handlers on .block-item
+            item.addEventListener('dragstart', (ev) => {
+                dragBlockState = { srcSec: secKey, srcIdx: bIdx };
+                ev.dataTransfer.effectAllowed = 'move';
+                ev.dataTransfer.setData('text/plain', secKey + ':' + bIdx);
+                item.classList.add('is-dragging');
+            });
+            item.addEventListener('dragend', () => {
+                item.classList.remove('is-dragging');
+                item.setAttribute('draggable', 'false');
+                document.querySelectorAll('.block-item').forEach(el => el.classList.remove('drop-above', 'drop-below'));
+                document.querySelectorAll('.section-card').forEach(el => el.classList.remove('section-drag-over'));
+                dragBlockState = { srcSec: null, srcIdx: null };
+            });
+            item.addEventListener('dragover', (ev) => {
+                if (!dragBlockState.srcSec) return;
+                ev.preventDefault();
+                ev.stopPropagation();
+                const rect = item.getBoundingClientRect();
+                const isBefore = (ev.clientY - rect.top) < (rect.height / 2);
+                item.classList.toggle('drop-above', isBefore);
+                item.classList.toggle('drop-below', !isBefore);
+            });
+            item.addEventListener('dragleave', () => {
+                item.classList.remove('drop-above', 'drop-below');
+            });
+            item.addEventListener('drop', (ev) => {
+                if (!dragBlockState.srcSec) return;
+                ev.preventDefault();
+                ev.stopPropagation();
+                const rect = item.getBoundingClientRect();
+                const isBefore = (ev.clientY - rect.top) < (rect.height / 2);
+                item.classList.remove('drop-above', 'drop-below');
+                const insertIdx = isBefore ? bIdx : bIdx + 1;
+                performBlockRelocation(dragBlockState.srcSec, dragBlockState.srcIdx, secKey, insertIdx);
+            });
+
+            blocksContainer.appendChild(item);
+            if (shouldFlash) {
+                setTimeout(() => item.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+            }
+        });
+
+        secCard.innerHTML = headerHtml;
+        secCard.appendChild(blocksContainer);
+        container.appendChild(secCard);
+    });
+}
+
+function armBlockDrag(handleEl) {
+    const item = handleEl.closest('.block-item');
+    if (item) {
+        item.setAttribute('draggable', 'true');
+    }
+}
+
+function performBlockRelocation(srcSec, srcIdx, targetSec, rawTargetIdx) {
+    if (!articleState.sections[srcSec] || srcIdx < 0 || srcIdx >= articleState.sections[srcSec].length) return;
+    const [moved] = articleState.sections[srcSec].splice(srcIdx, 1);
+    let targetIdx = Math.max(0, Math.min(rawTargetIdx, articleState.sections[targetSec].length));
+    if (srcSec === targetSec && srcIdx < rawTargetIdx) {
+        targetIdx = Math.max(0, rawTargetIdx - 1);
+    }
+    articleState.sections[targetSec].splice(targetIdx, 0, moved);
+    dragBlockState = { srcSec: null, srcIdx: null };
+    renderBodySectionsEditor({ sec: targetSec, idx: targetIdx });
+}
+
+function moveBlockVertical(secKey, bIdx, delta) {
+    const blocks = articleState.sections[secKey] || [];
+    const secPos = SECTION_KEYS.indexOf(secKey);
+
+    if (delta < 0) {
+        if (bIdx > 0) {
+            const tmp = blocks[bIdx - 1];
+            blocks[bIdx - 1] = blocks[bIdx];
+            blocks[bIdx] = tmp;
+            renderBodySectionsEditor({ sec: secKey, idx: bIdx - 1 });
+        } else if (secPos > 0) {
+            const prevSec = SECTION_KEYS[secPos - 1];
+            const [moved] = blocks.splice(bIdx, 1);
+            articleState.sections[prevSec].push(moved);
+            renderBodySectionsEditor({ sec: prevSec, idx: articleState.sections[prevSec].length - 1 });
+            showToast('Blok dipindahkan naik ke akhir bab ' + prevSec.toUpperCase(), 'info');
+        }
+    } else if (delta > 0) {
+        if (bIdx < blocks.length - 1) {
+            const tmp = blocks[bIdx + 1];
+            blocks[bIdx + 1] = blocks[bIdx];
+            blocks[bIdx] = tmp;
+            renderBodySectionsEditor({ sec: secKey, idx: bIdx + 1 });
+        } else if (secPos < SECTION_KEYS.length - 1) {
+            const nextSec = SECTION_KEYS[secPos + 1];
+            const [moved] = blocks.splice(bIdx, 1);
+            articleState.sections[nextSec].unshift(moved);
+            renderBodySectionsEditor({ sec: nextSec, idx: 0 });
+            showToast('Blok dipindahkan turun ke awal bab ' + nextSec.toUpperCase(), 'info');
+        }
+    }
+}
+
+function moveBlockToSection(srcSec, bIdx, targetSec) {
+    if (srcSec === targetSec) return;
+    const [moved] = articleState.sections[srcSec].splice(bIdx, 1);
+    articleState.sections[targetSec].push(moved);
+    renderBodySectionsEditor({ sec: targetSec, idx: articleState.sections[targetSec].length - 1 });
+    showToast('Blok dipindahkan ke bab ' + targetSec.replace('_', ' ').toUpperCase(), 'success');
+}
+
+function changeBlockLevel(secKey, bIdx, newType) {
+    const blk = articleState.sections[secKey][bIdx];
+    if (!blk || blk.type === 'table') return;
+    blk.type = newType;
+    renderBodySectionsEditor({ sec: secKey, idx: bIdx });
+}
+
+function renderTablePreviewHtml(secKey, bIdx, blk) {
+    const rows = Array.isArray(blk.rows) ? blk.rows : [];
+    let maxCols = 1;
+    rows.forEach(r => {
+        let sum = 0;
+        (r || []).forEach(c => { sum += Math.max(1, parseInt(c.colspan || 1, 10)); });
+        if (sum > maxCols) maxCols = sum;
+    });
+    const aligns = Array.isArray(blk.col_alignments) ? blk.col_alignments : [];
+
+    let alignHtml = '<div class="col-align-bar"><span><strong>Perataan Kolom (Standar Kesehatan):</strong></span>';
+    for (let ci = 0; ci < maxCols; ci++) {
+        const curA = aligns[ci] || (ci === 0 ? 'left' : 'center');
+        alignHtml += `
+            <label style="margin:0;display:inline-flex;align-items:center;gap:3px;font-weight:500;">
+                Kol ${ci + 1}:
+                <select class="block-select-mini" onchange="setTableColAlign('${secKey}', ${bIdx}, ${ci}, this.value)">
+                    <option value="left" ${curA === 'left' ? 'selected' : ''}>Kiri</option>
+                    <option value="center" ${curA === 'center' ? 'selected' : ''}>Tengah</option>
+                    <option value="right" ${curA === 'right' ? 'selected' : ''}>Kanan</option>
+                </select>
+            </label>
+        `;
+    }
+    alignHtml += '</div>';
+
+    let html = `
+        <div class="table-toolbar">
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+                <button type="button" class="btn btn-outline btn-xs" onclick="addTableRow('${secKey}', ${bIdx}, 'data')">+ Baris Data</button>
+                <button type="button" class="btn btn-outline btn-xs" onclick="addTableRow('${secKey}', ${bIdx}, 'group')">+ Grup Variabel</button>
+                <button type="button" class="btn btn-outline btn-xs" onclick="addTableRow('${secKey}', ${bIdx}, 'total')">+ Baris Total</button>
+                <button type="button" class="btn btn-outline btn-xs" onclick="addTableColumn('${secKey}', ${bIdx})">+ Kolom</button>
+                <button type="button" class="btn btn-outline btn-xs" onclick="removeLastTableColumn('${secKey}', ${bIdx})">- Kolom</button>
+            </div>
+            <button type="button" class="btn btn-teal btn-xs" onclick="formatAllTablesHealthStandard(true)">🏥 Terapkan Standar Kesehatan</button>
+        </div>
+        ${alignHtml}
+        <div style="overflow-x:auto;"><table class="preview-table">
+    `;
+
+    // Separate visual thead vs tbody
+    let inThead = false;
+    rows.forEach((r, rIdx) => {
+        const rowType = (r[0] && r[0].row_type) ? r[0].row_type : ((rIdx === 0 || (r[0] && r[0].header)) ? 'header' : 'data');
+        const isHdr = rowType === 'header';
+        if (isHdr && !inThead) {
+            html += '<thead>';
+            inThead = true;
+        } else if (!isHdr && inThead) {
+            html += '</thead><tbody>';
+            inThead = false;
+        } else if (rIdx === 0 && !isHdr) {
+            html += '<tbody>';
+        }
+
+        html += `<tr class="row-type-${escapeHtml(rowType)}">`;
+        let logicalCol = 0;
+        r.forEach((c, cIdx) => {
+            if (c.vmerge === 'continue') {
+                logicalCol += Math.max(1, parseInt(c.colspan || 1, 10));
+                return;
+            }
+            const tag = (isHdr || c.header) ? 'th' : 'td';
+            const cs = (c.colspan && c.colspan > 1) ? ` colspan="${c.colspan}"` : '';
+            const rs = (c.rowspan && c.rowspan > 1) ? ` rowspan="${c.rowspan}"` : '';
+            const cellAlign = c.align || aligns[logicalCol] || (logicalCol === 0 ? 'left' : 'center');
+            const isBold = isHdr || rowType === 'group' || rowType === 'total';
+            html += `<${tag}${cs}${rs} style="text-align:${cellAlign};">
+                <input type="text" style="border:none;background:transparent;text-align:${cellAlign};width:100%;font-weight:${isBold ? '700' : '400'};"
+                    value="${escapeHtml(c.text || '')}"
+                    oninput="articleState.sections['${secKey}'][${bIdx}].rows[${rIdx}][${cIdx}].text = this.value">
+            </${tag}>`;
+            logicalCol += Math.max(1, parseInt(c.colspan || 1, 10));
+        });
+
+        // Row controls cell (ignored in export, purely for Studio UI)
+        const ctrlTag = isHdr ? 'th' : 'td';
+        html += `<${ctrlTag} style="width:160px;white-space:nowrap;text-align:right;background:#f8fafc;">
+            <select class="block-select-mini" onchange="setTableRowType('${secKey}', ${bIdx}, ${rIdx}, this.value)" title="Tipe/Level Baris">
+                <option value="header" ${rowType === 'header' ? 'selected' : ''}>Header</option>
+                <option value="group" ${rowType === 'group' ? 'selected' : ''}>Grup Var</option>
+                <option value="subitem" ${rowType === 'subitem' ? 'selected' : ''}>Sub-item</option>
+                <option value="data" ${rowType === 'data' ? 'selected' : ''}>Data</option>
+                <option value="total" ${rowType === 'total' ? 'selected' : ''}>Total</option>
+            </select>
+            <button type="button" class="btn btn-outline btn-xs" onclick="moveTableRow('${secKey}', ${bIdx}, ${rIdx}, -1)" ${rIdx === 0 ? 'disabled' : ''}>▲</button>
+            <button type="button" class="btn btn-outline btn-xs" onclick="moveTableRow('${secKey}', ${bIdx}, ${rIdx}, 1)" ${rIdx === rows.length - 1 ? 'disabled' : ''}>▼</button>
+            <button type="button" class="btn btn-outline btn-xs" onclick="removeTableRow('${secKey}', ${bIdx}, ${rIdx})" ${rows.length <= 1 ? 'disabled' : ''}>✕</button>
+        </${ctrlTag}>`;
+        html += '</tr>';
+    });
+    if (inThead) {
+        html += '</thead>';
+    } else if (rows.length > 0) {
+        html += '</tbody>';
+    }
+    html += '</table></div>';
+    return html;
+}
+
+function setTableColAlign(secKey, bIdx, colIdx, align) {
+    const blk = articleState.sections[secKey][bIdx];
+    if (!blk.col_alignments) blk.col_alignments = [];
+    blk.col_alignments[colIdx] = align;
+    (blk.rows || []).forEach(r => {
+        let g = 0;
+        r.forEach(c => {
+            if (g === colIdx && !(c.header && (c.colspan || 1) > 1)) {
+                c.align = align;
+            }
+            g += Math.max(1, parseInt(c.colspan || 1, 10));
+        });
+    });
+    renderBodySectionsEditor();
+}
+
+function setTableRowType(secKey, bIdx, rIdx, rowType) {
+    const blk = articleState.sections[secKey][bIdx];
+    const row = blk.rows[rIdx];
+    if (!row) return;
+    if (rowType === 'group' && row.length > 1) {
+        // Merge empty trailing cells into a clean spanning variable-group row if appropriate
+        const hasOtherText = row.slice(1).some(c => (c.text || '').trim() !== '');
+        if (!hasOtherText) {
+            let totalCols = 0;
+            row.forEach(c => totalCols += Math.max(1, parseInt(c.colspan || 1, 10)));
+            blk.rows[rIdx] = [{
+                text: row[0].text || 'Variabel',
+                colspan: totalCols,
+                rowspan: 1,
+                vmerge: '',
+                header: false,
+                align: 'left',
+                row_type: 'group'
+            }];
+            renderBodySectionsEditor();
+            return;
+        }
+    }
+    row.forEach(c => {
+        c.row_type = rowType;
+        c.header = (rowType === 'header');
+    });
+    renderBodySectionsEditor();
+}
+
+function moveTableRow(secKey, bIdx, rIdx, delta) {
+    const rows = articleState.sections[secKey][bIdx].rows;
+    const target = rIdx + delta;
+    if (target < 0 || target >= rows.length) return;
+    const tmp = rows[rIdx];
+    rows[rIdx] = rows[target];
+    rows[target] = tmp;
+    renderBodySectionsEditor();
+}
+
+function addTableRow(secKey, bIdx, rowType) {
+    const blk = articleState.sections[secKey][bIdx];
+    const rows = blk.rows || [];
+    let colCount = 3;
+    if (rows.length > 0) {
+        colCount = 0;
+        rows[0].forEach(c => colCount += Math.max(1, parseInt(c.colspan || 1, 10)));
+    }
+    if (rowType === 'group') {
+        rows.push([{ text: 'Karakteristik / Variabel', colspan: colCount, rowspan: 1, vmerge: '', header: false, align: 'left', row_type: 'group' }]);
+    } else {
+        const newRow = [];
+        for (let i = 0; i < colCount; i++) {
+            newRow.push({
+                text: i === 0 ? (rowType === 'total' ? 'Jumlah' : '') : '',
+                colspan: 1,
+                rowspan: 1,
+                vmerge: '',
+                header: false,
+                align: i === 0 ? 'left' : 'center',
+                row_type: rowType
+            });
+        }
+        rows.push(newRow);
+    }
+    renderBodySectionsEditor();
+}
+
+function removeTableRow(secKey, bIdx, rIdx) {
+    const rows = articleState.sections[secKey][bIdx].rows;
+    if (rows.length <= 1) return;
+    rows.splice(rIdx, 1);
+    renderBodySectionsEditor();
+}
+
+function addTableColumn(secKey, bIdx) {
+    const blk = articleState.sections[secKey][bIdx];
+    (blk.rows || []).forEach((r, rIdx) => {
+        const rt = (r[0] && r[0].row_type) ? r[0].row_type : (rIdx === 0 ? 'header' : 'data');
+        if (rt === 'group' && r.length === 1) {
+            r[0].colspan = (r[0].colspan || 1) + 1;
+        } else {
+            r.push({ text: rIdx === 0 ? 'Kolom Baru' : '', colspan: 1, rowspan: 1, vmerge: '', header: (rt === 'header'), align: 'center', row_type: rt });
+        }
+    });
+    renderBodySectionsEditor();
+}
+
+function removeLastTableColumn(secKey, bIdx) {
+    const blk = articleState.sections[secKey][bIdx];
+    (blk.rows || []).forEach(r => {
+        if (r.length > 1) {
+            r.pop();
+        } else if (r.length === 1 && (r[0].colspan || 1) > 1) {
+            r[0].colspan = r[0].colspan - 1;
+        }
+    });
+    renderBodySectionsEditor();
+}
+
+async function formatAllTablesHealthStandard(forceReclassify = true) {
+    syncStateFromInputs();
+    showToast('🏥 Memformat seluruh tabel sesuai standar ilmiah kesehatan...', 'info');
+    const fd = new FormData();
+    fd.append('articleJson', JSON.stringify(articleState));
+    fd.append('forceReclassify', forceReclassify ? '1' : '0');
+    fd.append('suggestFootnote', '1');
+    try {
+        const res = await fetch(BASE_URL + '/formatHealthTables', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.ok && data.article) {
+            articleState = data.article;
+            renderBodySectionsEditor();
+            showToast(data.message || 'Tabel berhasil diformat.', 'success');
+        } else {
+            showToast(data.error || 'Gagal memformat tabel.', 'error');
+        }
+    } catch (e) {
+        showToast('Error: ' + e.message, 'error');
+    }
+}
+
+function addSectionBlock(secKey, type) {
+    if (type === 'table') {
+        const nextNum = countAllTables() + 1;
+        articleState.sections[secKey].push({
+            type: 'table',
+            caption: `Tabel ${nextNum}. Karakteristik Responden`,
+            footnote: 'Keterangan: n, frekuensi; %, persentase.',
+            col_alignments: ['left', 'center', 'center'],
+            rows: [
+                [
+                    { text: 'Karakteristik', colspan: 1, rowspan: 1, vmerge: '', header: true, align: 'left', row_type: 'header' },
+                    { text: 'Frekuensi (n)', colspan: 1, rowspan: 1, vmerge: '', header: true, align: 'center', row_type: 'header' },
+                    { text: 'Persentase (%)', colspan: 1, rowspan: 1, vmerge: '', header: true, align: 'center', row_type: 'header' }
+                ],
+                [
+                    { text: 'Kelompok Umur (tahun)', colspan: 3, rowspan: 1, vmerge: '', header: false, align: 'left', row_type: 'group' }
+                ],
+                [
+                    { text: '20–30', colspan: 1, rowspan: 1, vmerge: '', header: false, align: 'left', row_type: 'subitem' },
+                    { text: '0', colspan: 1, rowspan: 1, vmerge: '', header: false, align: 'center', row_type: 'subitem' },
+                    { text: '0,0', colspan: 1, rowspan: 1, vmerge: '', header: false, align: 'center', row_type: 'subitem' }
+                ],
+                [
+                    { text: 'Total', colspan: 1, rowspan: 1, vmerge: '', header: false, align: 'left', row_type: 'total' },
+                    { text: '0', colspan: 1, rowspan: 1, vmerge: '', header: false, align: 'center', row_type: 'total' },
+                    { text: '100,0', colspan: 1, rowspan: 1, vmerge: '', header: false, align: 'center', row_type: 'total' }
+                ]
+            ]
+        });
+    } else {
+        articleState.sections[secKey].push({ type: type, text: '' });
+    }
+    renderBodySectionsEditor({ sec: secKey, idx: articleState.sections[secKey].length - 1 });
+}
+
+function countAllTables() {
+    let count = 0;
+    SECTION_KEYS.forEach(k => {
+        (articleState.sections[k] || []).forEach(b => {
+            if (b && b.type === 'table') count++;
+        });
+    });
+    return count;
+}
+
+function removeSectionBlock(secKey, bIdx) {
+    articleState.sections[secKey].splice(bIdx, 1);
+    renderBodySectionsEditor();
+}
+
+// =========================================================================
+// Bilingual Typo & Non-Standard Word Auditor (ID KBBI/EYD V + EN SCOWL/AMA)
+// =========================================================================
+let auditState = { issues: [], filter: 'all', sources: [], bodyLang: 'id' };
+
+function quickOpenLanguageAudit() {
+    const tabBtn = document.querySelector('.tab-btn[data-tab="tab-language-audit"]');
+    if (tabBtn) {
+        switchTab('tab-language-audit', tabBtn);
+    }
+    runLanguageAudit();
+}
+
+async function runLanguageAudit() {
+    syncStateFromInputs();
+    syncReferencesFromInput();
+    const box = document.getElementById('languageAuditResultsBox');
+    box.innerHTML = '<div style="padding:28px;text-align:center;color:#64748b;">⏳ Memeriksa ejaan &amp; kata baku (KBBI VI, EYD V, SCOWL US English, AMA Style)...</div>';
+
+    const fd = new FormData();
+    fd.append('articleJson', JSON.stringify(articleState));
+    fd.append('bodyLang', document.getElementById('auditBodyLang').value);
+    fd.append('useLanguageTool', document.getElementById('auditUseLanguageTool').checked ? '1' : '0');
+    fd.append('useGemini', document.getElementById('auditUseGemini').checked ? '1' : '0');
+
+    try {
+        const res = await fetch(BASE_URL + '/auditLanguage', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!data.ok || !data.audit) {
+            box.innerHTML = '<div style="color:#b91c1c;padding:14px;">Gagal menjalankan audit bahasa: ' + escapeHtml(data.error || 'Unknown error') + '</div>';
+            return;
+        }
+        auditState.issues = data.audit.issues || [];
+        auditState.sources = data.audit.sources || [];
+        auditState.bodyLang = data.audit.body_lang_detected || 'id';
+        auditState.filter = 'all';
+        renderLanguageAuditResults();
+        showToast(`Audit bahasa selesai: ditemukan ${auditState.issues.length} catatan.`, auditState.issues.length === 0 ? 'success' : 'info');
+    } catch (e) {
+        box.innerHTML = '<div style="color:#b91c1c;padding:14px;">Error jaringan saat audit bahasa: ' + escapeHtml(e.message) + '</div>';
+    }
+}
+
+function renderLanguageAuditResults() {
+    const issues = auditState.issues || [];
+    document.getElementById('auditCountBadge').textContent = issues.length;
+    const safeFixCount = issues.filter(i => i.auto_fixable && i.suggestions && i.suggestions.length > 0).length;
+    const btnSafeAll = document.getElementById('btnApplyAllSafeFixes');
+    if (btnSafeAll) {
+        btnSafeAll.style.display = safeFixCount > 0 ? 'inline-flex' : 'none';
+        btnSafeAll.textContent = `✨ Terapkan ${safeFixCount} Perbaikan Otomatis Aman`;
+    }
+
+    const box = document.getElementById('languageAuditResultsBox');
+    if (issues.length === 0) {
+        box.innerHTML = `
+            <div style="padding:26px;text-align:center;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;color:#166534;">
+                ✅ <strong>Bagus! Tidak ditemukan typo atau kata tidak baku yang tersisa.</strong>
+                <div style="font-size:12px;margin-top:6px;">Bahasa isi terdeteksi: <strong>${auditState.bodyLang === 'en' ? 'English' : 'Bahasa Indonesia'}</strong> · Sumber aktif: ${auditState.sources.map(escapeHtml).join(' · ')}</div>
+            </div>
+        `;
+        return;
+    }
+
+    const cntTidakBaku = issues.filter(i => i.category === 'kata_tidak_baku' || i.category === 'serapan_medis').length;
+    const cntTypo = issues.filter(i => i.category === 'typo' || i.category === 'english_typo').length;
+    const cntEyd = issues.filter(i => ['eyd_v', 'imbuhan_eyd', 'preposisi_eyd', 'pleonasme'].includes(i.category)).length;
+    const cntEn = issues.filter(i => ['english_uk_us_ama', 'english_nonstandard', 'languagetool'].includes(i.category)).length;
+
+    const filtered = issues.filter(i => {
+        if (auditState.filter === 'all') return true;
+        if (auditState.filter === 'baku') return i.category === 'kata_tidak_baku' || i.category === 'serapan_medis';
+        if (auditState.filter === 'typo') return i.category === 'typo' || i.category === 'english_typo';
+        if (auditState.filter === 'eyd') return ['eyd_v', 'imbuhan_eyd', 'preposisi_eyd', 'pleonasme'].includes(i.category);
+        if (auditState.filter === 'en') return ['english_uk_us_ama', 'english_nonstandard', 'languagetool'].includes(i.category);
+        return true;
+    });
+
+    let html = `
+        <div class="audit-summary-grid">
+            <div class="audit-stat-box"><div class="audit-stat-num">${issues.length}</div><div class="audit-stat-label">Total Temuan</div></div>
+            <div class="audit-stat-box"><div class="audit-stat-num">${cntTidakBaku}</div><div class="audit-stat-label">Kata Tidak Baku (KBBI)</div></div>
+            <div class="audit-stat-box"><div class="audit-stat-num">${cntTypo}</div><div class="audit-stat-label">Dugaan Typo</div></div>
+            <div class="audit-stat-box"><div class="audit-stat-num">${cntEyd}</div><div class="audit-stat-label">Kaidah EYD V</div></div>
+            <div class="audit-stat-box"><div class="audit-stat-num">${cntEn}</div><div class="audit-stat-label">English / AMA Style</div></div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+            <button type="button" class="btn btn-xs ${auditState.filter === 'all' ? 'btn-navy' : 'btn-outline'}" onclick="setAuditFilter('all')">Semua (${issues.length})</button>
+            <button type="button" class="btn btn-xs ${auditState.filter === 'baku' ? 'btn-navy' : 'btn-outline'}" onclick="setAuditFilter('baku')">Kata Tidak Baku (${cntTidakBaku})</button>
+            <button type="button" class="btn btn-xs ${auditState.filter === 'typo' ? 'btn-navy' : 'btn-outline'}" onclick="setAuditFilter('typo')">Typo (${cntTypo})</button>
+            <button type="button" class="btn btn-xs ${auditState.filter === 'eyd' ? 'btn-navy' : 'btn-outline'}" onclick="setAuditFilter('eyd')">EYD V (${cntEyd})</button>
+            <button type="button" class="btn btn-xs ${auditState.filter === 'en' ? 'btn-navy' : 'btn-outline'}" onclick="setAuditFilter('en')">English / AMA (${cntEn})</button>
+        </div>
+    `;
+
+    filtered.forEach(iss => {
+        const isErr = iss.severity === 'error';
+        const suggs = Array.isArray(iss.suggestions) ? iss.suggestions : [];
+        const defaultSugg = suggs[0] || '';
+        const suggCtrl = suggs.length > 1
+            ? `<select id="audit_sugg_${iss.id}" class="block-select-mini" style="min-width:160px;">${suggs.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('')}</select>`
+            : `<input type="text" id="audit_sugg_${iss.id}" value="${escapeHtml(defaultSugg)}" placeholder="Ketik perbaikan manual..." style="width:190px;padding:3px 7px;font-size:12px;">`;
+
+        html += `
+            <div class="audit-issue-card ${isErr ? 'sev-error' : ''}">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+                    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                        <span class="audit-badge ${isErr ? 'audit-badge-err' : 'audit-badge-warn'}">${escapeHtml(iss.category_label || 'Temuan')}</span>
+                        <span class="audit-badge audit-badge-lang">${iss.language === 'en' ? 'EN' : 'ID'}</span>
+                        <strong style="font-size:12.5px;color:#0f172a;">${escapeHtml(iss.location_label || iss.field_path)}</strong>
+                    </div>
+                    <span class="audit-badge audit-badge-src">📚 ${escapeHtml(iss.source || 'KBBI / SCOWL')}</span>
+                </div>
+                <div class="audit-context">${escapeHtml(iss.context || iss.found)}</div>
+                <div style="font-size:12.5px;color:#475569;margin-bottom:8px;">${escapeHtml(iss.reason || '')}</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;">
+                        <span>Ditemukan: <code style="background:#fee2e2;color:#991b1b;padding:2px 6px;border-radius:4px;">${escapeHtml(iss.found)}</code></span>
+                        <span>→ Perbaikan:</span>
+                        ${suggCtrl}
+                    </div>
+                    <div style="display:flex;gap:6px;">
+                        <button type="button" class="btn btn-teal btn-xs" onclick="applyAuditFix('${iss.id}')">✅ Terapkan</button>
+                        <button type="button" class="btn btn-outline btn-xs" onclick="ignoreAuditIssue('${iss.id}')">🙈 Abaikan</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+
+    box.innerHTML = html;
+}
+
+function setAuditFilter(f) {
+    auditState.filter = f;
+    renderLanguageAuditResults();
+}
+
+function getFieldPathValue(path) {
+    const parts = path.split('.');
+    let cur = articleState;
+    for (let i = 0; i < parts.length; i++) {
+        if (cur == null) return null;
+        cur = cur[parts[i]];
+    }
+    return cur;
+}
+
+function setFieldPathValue(path, newVal) {
+    const parts = path.split('.');
+    let cur = articleState;
+    for (let i = 0; i < parts.length - 1; i++) {
+        if (cur[parts[i]] == null) return false;
+        cur = cur[parts[i]];
+    }
+    cur[parts[parts.length - 1]] = newVal;
+    return true;
+}
+
+function replaceOccurrenceSafely(text, found, replacement) {
+    if (typeof text !== 'string' || !found) return text;
+    if (/^[A-Za-zÀ-ÿ0-9\-\s]+$/u.test(found)) {
+        const escaped = found.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const rx = new RegExp('(^|[^A-Za-zÀ-ÿ0-9])' + escaped + '(?=$|[^A-Za-zÀ-ÿ0-9])', 'u');
+        if (rx.test(text)) {
+            return text.replace(rx, (_, p1) => p1 + replacement);
+        }
+    }
+    return text.replace(found, replacement);
+}
+
+function applyAuditFix(issueId) {
+    const idx = auditState.issues.findIndex(i => i.id === issueId);
+    if (idx === -1) return;
+    const iss = auditState.issues[idx];
+    const el = document.getElementById('audit_sugg_' + issueId);
+    const replacement = el ? el.value.trim() : ((iss.suggestions && iss.suggestions[0]) || '');
+    if (!replacement) {
+        showToast('Isi kata perbaikan terlebih dahulu sebelum menerapkan.', 'error');
+        return;
+    }
+
+    const curText = getFieldPathValue(iss.field_path);
+    if (typeof curText !== 'string') {
+        showToast('Lokasi field tidak ditemukan di state artikel.', 'error');
+        return;
+    }
+
+    const updatedText = replaceOccurrenceSafely(curText, iss.found, replacement);
+    setFieldPathValue(iss.field_path, updatedText);
+    auditState.issues.splice(idx, 1);
+
+    populateFormFromState();
+    renderLanguageAuditResults();
+    showToast(`Diperbaiki: "${iss.found}" → "${replacement}"`, 'success');
+}
+
+function applyAllSafeAuditFixes() {
+    let applied = 0;
+    const remaining = [];
+    auditState.issues.forEach(iss => {
+        if (iss.auto_fixable && Array.isArray(iss.suggestions) && iss.suggestions[0]) {
+            const curText = getFieldPathValue(iss.field_path);
+            if (typeof curText === 'string') {
+                const updated = replaceOccurrenceSafely(curText, iss.found, iss.suggestions[0]);
+                if (updated !== curText) {
+                    setFieldPathValue(iss.field_path, updated);
+                    applied++;
+                    return;
+                }
+            }
+        }
+        remaining.push(iss);
+    });
+    auditState.issues = remaining;
+    populateFormFromState();
+    renderLanguageAuditResults();
+    showToast(`✨ ${applied} perbaikan baku/EYD/typo aman berhasil diterapkan!`, 'success');
+}
+
+function ignoreAuditIssue(issueId) {
+    auditState.issues = auditState.issues.filter(i => i.id !== issueId);
+    renderLanguageAuditResults();
+}
+
+function rebuildApaCitation() {
+    syncStateFromInputs();
+    const firstAuthor = (articleState.authors && articleState.authors[0] && articleState.authors[0].name)
+        ? articleState.authors[0].name.trim().split(',')[0].trim().split(/\s+/).pop()
+        : 'Author';
+    const year = articleState.copyright_year || '2024';
+    const title = (articleState.title_en || articleState.title_id || '').replace(/\.$/, '');
+    const jTitle = document.getElementById('cfg_journalTitle').value || 'Kisi Berkelanjutan: Sains Medis Dan Kesehatan';
+    const vol = articleState.volume || '1';
+    const num = articleState.issue_number || '1';
+    const eloc = articleState.elocation_id || 'e76';
+    const url = articleState.article_url || '';
+
+    articleState.citation = `${firstAuthor} et al., (${year}). ${title}. ${jTitle}, ${vol}(${num}), ${eloc}. ${url}`;
+    document.getElementById('f_citation').value = articleState.citation;
+    showToast('Format Citation APA berhasil diperbarui.', 'success');
+}
+
+async function savePluginSettings() {
+    showToast('Menyimpan pengaturan...', 'info');
+    const fd = new FormData();
+    ['geminiApiKey', 'geminiModel', 'eissn', 'journalTitle', 'journalShortFooter', 'publisherName', 'retypesetNote', 'enableFullTextDigest', 'replaceDefaultAbstract'].forEach(k => {
+        const el = document.getElementById('cfg_' + k);
+        if (el) fd.append(k, el.value);
+    });
+    try {
+        const res = await fetch(BASE_URL + '/saveSettings', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.ok) {
+            showToast(data.message, 'success');
+        } else {
+            showToast(data.error || 'Gagal menyimpan pengaturan.', 'error');
+        }
+    } catch (e) {
+        showToast('Error jaringan: ' + e.message, 'error');
+    }
+}
+
+async function parseOjsDocxFile() {
+    const sel = document.getElementById('ojsDocxFileSelect');
+    if (!sel || !sel.value) return;
+    showToast('Mengekstrak isi dan tabel dari file .docx OJS...', 'info');
+    const fd = new FormData();
+    fd.append('submissionFileId', sel.value);
+    await sendParseDocxRequest(fd);
+}
+
+async function uploadAndParseLocalDocx(inputEl) {
+    if (!inputEl.files || !inputEl.files[0]) return;
+    showToast('Mengunggah & mengekstrak struktur file .docx...', 'info');
+    const fd = new FormData();
+    fd.append('docx_file', inputEl.files[0]);
+    await sendParseDocxRequest(fd);
+    inputEl.value = '';
+}
+
+async function sendParseDocxRequest(formData) {
+    try {
+        const res = await fetch(BASE_URL + '/parseDocx', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!data.ok) {
+            showToast(data.error || 'Gagal mengekstrak file .docx', 'error');
+            return;
+        }
+        const p = data.parsed;
+        if (p.title_id && !articleState.title_id) articleState.title_id = p.title_id;
+        if (p.title_en && !articleState.title_en) articleState.title_en = p.title_en;
+        if (p.review_editor && !articleState.review_editor) articleState.review_editor = p.review_editor;
+        if (p.doi && !articleState.doi) articleState.doi = p.doi;
+        if (p.keywords_id && !articleState.keywords_id) articleState.keywords_id = p.keywords_id;
+        if (p.keywords_en && !articleState.keywords_en) articleState.keywords_en = p.keywords_en;
+        if (p.authors && p.authors.length > 0 && (!articleState.authors || !articleState.authors[0].name)) {
+            articleState.authors = p.authors;
+            articleState.corresponding_name = p.corresponding_name || '';
+            articleState.corresponding_email = p.corresponding_email || '';
+        }
+        if (p.abstract_id && (p.abstract_id.pendahuluan_metode || p.abstract_id.raw)) {
+            articleState.abstract_id = p.abstract_id;
+        }
+        if (p.abstract_en && (p.abstract_en.intro_methods || p.abstract_en.raw)) {
+            articleState.abstract_en = p.abstract_en;
+        }
+        articleState.sections = p.sections || articleState.sections;
+        articleState.referensi = p.referensi || articleState.referensi;
+
+        populateFormFromState();
+        showToast('Berhasil mengekstrak naskah & tabel dari: ' + data.fileName, 'success');
+    } catch (e) {
+        showToast('Gagal memproses file .docx: ' + e.message, 'error');
+    }
+}
+
+async function runAiRestructure() {
+    syncStateFromInputs();
+    showToast('✨ Memproses restrukturisasi abstrak & metadata dengan AI...', 'info');
+    const fd = new FormData();
+    fd.append('articleJson', JSON.stringify(articleState));
+    try {
+        const res = await fetch(BASE_URL + '/aiRestructure', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.ok && data.article) {
+            articleState = data.article;
+            populateFormFromState();
+            showToast(data.message || 'Abstrak berhasil dirapikan!', 'success');
+        } else {
+            showToast(data.error || 'Gagal menjalankan restrukturisasi AI.', 'error');
+        }
+    } catch (e) {
+        showToast('Error jaringan saat memanggil AI: ' + e.message, 'error');
+    }
+}
+
+function downloadGeneratedFile(endpointOp) {
+    syncStateFromInputs();
+    syncReferencesFromInput();
+    const form = document.getElementById('downloadForm');
+    form.action = BASE_URL + '/' + endpointOp;
+    document.getElementById('downloadArticleJson').value = JSON.stringify(articleState);
+    form.submit();
+    showToast(endpointOp === 'generateDocx' ? '📄 Mengunduh file DOCX Template 2026...' : '🧬 Mengunduh file AmeliCA JATS XML...', 'success');
+}
+
+async function loadFullTextDigestPreview() {
+    syncStateFromInputs();
+    syncReferencesFromInput();
+    const box = document.getElementById('fullTextDigestPreviewBox');
+    box.innerHTML = '<div style="padding:30px;text-align:center;color:#64748b;">⏳ Membangun JATS 1.2 XML &amp; me-render Full-Text HTML...</div>';
+    const fd = new FormData();
+    fd.append('articleJson', JSON.stringify(articleState));
+    try {
+        const res = await fetch(BASE_URL + '/previewFullText', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.ok && data.html) {
+            box.innerHTML = data.html;
+        } else {
+            box.innerHTML = '<div style="color:#b91c1c;">Gagal memuat pratinjau: ' + escapeHtml(data.error || 'Unknown error') + '</div>';
+        }
+    } catch (e) {
+        box.innerHTML = '<div style="color:#b91c1c;">Error: ' + escapeHtml(e.message) + '</div>';
+    }
+}
+
+async function saveDirectlyToOjsGalley() {
+    syncStateFromInputs();
+    syncReferencesFromInput();
+    showToast('🚀 Menyimpan JATS XML & DOCX langsung ke Galley artikel OJS 3.5...', 'info');
+    const fd = new FormData();
+    fd.append('articleJson', JSON.stringify(articleState));
+    try {
+        const res = await fetch(BASE_URL + '/saveToGalley', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.ok) {
+            showToast(data.message, 'success');
+        } else {
+            showToast(data.error || 'Gagal menyimpan ke Galley OJS.', 'error');
+        }
+    } catch (e) {
+        showToast('Error saat menyimpan ke Galley OJS: ' + e.message, 'error');
+    }
+}
+
+function escapeHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+document.addEventListener('DOMContentLoaded', populateFormFromState);
+</script>
+</body>
+</html>
