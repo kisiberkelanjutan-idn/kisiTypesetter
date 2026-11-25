@@ -322,7 +322,7 @@ assertTrue(
 );
 
 // Check Vol 1-2 DOCX preserves re-typeset box AND translates English footer month if accidentally provided
-$vol1DocxTest = array_merge($sampleData, [
+$vol1DocxTest = array_merge($articleFull, [
     'volume' => '1',
     'issue_number' => '1',
     'footer_issue_line' => 'Volume 1 Nomor 1, January-March 2024',
