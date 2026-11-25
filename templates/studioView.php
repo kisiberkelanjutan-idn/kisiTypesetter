@@ -519,7 +519,10 @@ $defaultArticle = $activeArticleData ?: [
         <button type="button" class="btn btn-outline btn-sm" onclick="toggleSettingsDrawer()" style="background:rgba(255,255,255,0.12);color:#fff;border-color:rgba(255,255,255,0.25);">
             ⚙️ Pengaturan Gemini AI &amp; Default Jurnal
         </button>
-        <a href="<?php echo htmlspecialchars($dispatcher->url($request, PKPApplication::ROUTE_PAGE, $context->getPath(), 'submissions'), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline btn-sm" style="background:rgba(255,255,255,0.12);color:#fff;border-color:rgba(255,255,255,0.25);">
+        <a href="<?php echo htmlspecialchars($dispatcher->url($request, PKPApplication::ROUTE_PAGE, $context->getPath(), 'manageIssues'), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline btn-sm" style="background:rgba(255,255,255,0.12);color:#fff;border-color:rgba(255,255,255,0.25);">
+            📚 Kelola Terbitan (Issues)
+        </a>
+        <a href="<?php echo htmlspecialchars($dispatcher->url($request, PKPApplication::ROUTE_PAGE, $context->getPath(), 'dashboard', 'editorial'), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline btn-sm" style="background:rgba(255,255,255,0.12);color:#fff;border-color:rgba(255,255,255,0.25);">
             ← Kembali ke Dashboard OJS
         </a>
     </div>

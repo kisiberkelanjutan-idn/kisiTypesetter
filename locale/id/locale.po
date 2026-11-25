@@ -19,3 +19,6 @@ msgstr "Otomatisasi Re-Layout Template DOCX 2026 dan Generator JATS 1.2 XML (Sta
 
 msgid "plugins.generic.kisiTypesetter.openStudio"
 msgstr "Buka Studio Re-Layout & JATS XML (Edisi 1-3)"
+
+msgid "plugins.generic.kisiTypesetter.navTitle"
+msgstr "Kisi Typesetter"

@@ -21,6 +21,7 @@ use PKP\linkAction\LinkAction;
 use PKP\linkAction\request\RedirectAction;
 use PKP\plugins\GenericPlugin;
 use PKP\plugins\Hook;
+use PKP\security\Role;
 
 class KisiTypesetterPlugin extends GenericPlugin
 {
@@ -219,17 +220,13 @@ HTML;
             }
         }
 
-        // B. Editorial Backend Quick-Launch Button
+        // B. Editorial Backend Menu (directly below Issues) & Quick-Launch Shortcut
         $router = $request->getRouter();
         if (!method_exists($router, 'getRequestedPage')) {
             return false;
         }
 
         $page = (string) $router->getRequestedPage($request);
-        if (!in_array($page, ['workflow', 'authorDashboard', 'submissions', 'manageIssues', 'management'], true)) {
-            return false;
-        }
-
         $dispatcher = $request->getDispatcher();
         $studioUrl = $dispatcher->url(
             $request,
@@ -239,23 +236,42 @@ HTML;
             'studio'
         );
 
+        // Inject "Kisi Typesetter" directly below "Issues" in OJS 3.5 <pkp-side-nav :links="menu">
+        $this->injectBackendSidebarMenu($templateMgr, $request, $context, $studioUrl, $page);
+
+        if (!in_array($page, ['dashboard', 'dashboards', 'workflow', 'authorDashboard', 'submissions', 'manageIssues', 'management', 'stats'], true)) {
+            return false;
+        }
+
         $escapedUrl = htmlspecialchars($studioUrl, ENT_QUOTES, 'UTF-8');
 
         $script = <<<HTML
 <script>
 (function() {
     if (document.getElementById('kisi-typesetter-fab')) return;
+    function resolveTypesetterUrl(baseUrl) {
+        var mPath = window.location.pathname.match(/\/workflow\/(?:index|access)\/(\d+)/);
+        var mSearch = window.location.search.match(/(?:workflowSubmissionId|submissionId)=(\d+)/);
+        var subId = (mPath && mPath[1]) || (mSearch && mSearch[1]) || '';
+        if (!subId) return baseUrl;
+        return baseUrl + (baseUrl.indexOf('?') === -1 ? '?' : '&') + 'submissionId=' + encodeURIComponent(subId);
+    }
     document.addEventListener('DOMContentLoaded', function() {
         if (document.getElementById('kisi-typesetter-fab')) return;
         var baseUrl = "{$escapedUrl}";
-        var m = window.location.pathname.match(/\/workflow\/(?:index|access)\/(\d+)/) || window.location.search.match(/submissionId=(\d+)/);
-        var targetUrl = m ? (baseUrl + (baseUrl.indexOf('?') === -1 ? '?' : '&') + 'submissionId=' + m[1]) : baseUrl;
         var btn = document.createElement('a');
         btn.id = 'kisi-typesetter-fab';
-        btn.href = targetUrl;
+        btn.href = resolveTypesetterUrl(baseUrl);
         btn.innerHTML = '⚡ <strong>Kisi Re-Layout &amp; JATS XML</strong>';
+        btn.title = 'Buka Kisi Typesetter Studio (otomatis mendeteksi naskah yang sedang dibuka)';
         btn.style.cssText = 'position:fixed;bottom:22px;right:24px;z-index:99999;background:linear-gradient(135deg,#0a2e46,#1565c0);color:#fff;padding:10px 18px;border-radius:999px;font-family:system-ui,-apple-system,sans-serif;font-size:13px;text-decoration:none;box-shadow:0 6px 20px rgba(10,46,70,0.35);border:1px solid rgba(255,255,255,0.2);display:inline-flex;align-items:center;gap:8px;transition:transform 0.15s ease;';
-        btn.onmouseenter = function() { btn.style.transform = 'translateY(-2px)'; };
+        btn.addEventListener('click', function() {
+            btn.href = resolveTypesetterUrl(baseUrl);
+        });
+        btn.onmouseenter = function() {
+            btn.href = resolveTypesetterUrl(baseUrl);
+            btn.style.transform = 'translateY(-2px)';
+        };
         btn.onmouseleave = function() { btn.style.transform = 'none'; };
         document.body.appendChild(btn);
     });
@@ -267,6 +283,84 @@ HTML;
         $templateMgr->assign('additionalHeadData', $existingHeader . "\n" . $script);
 
         return false;
+    }
+
+    /**
+     * Insert Kisi Typesetter directly below "Issues" in OJS 3.5 backend navigation (<pkp-side-nav>).
+     * Called inside TemplateManager::display() after APP\template\TemplateManager::setupBackendPage()
+     * has already populated 'issues' and right before Smarty assigns 'state'.
+     */
+    protected function injectBackendSidebarMenu($templateMgr, $request, $context, string $studioUrl, string $currentPage): void
+    {
+        if (!method_exists($templateMgr, 'getState') || !method_exists($templateMgr, 'setState')) {
+            return;
+        }
+
+        $menu = $templateMgr->getState('menu');
+        if (!is_array($menu) || empty($menu) || isset($menu['kisiTypesetter'])) {
+            return;
+        }
+
+        $user = $request->getUser();
+        if (!$user) {
+            return;
+        }
+
+        $canUse = method_exists($user, 'hasRole')
+            ? ($user->hasRole(
+                [Role::ROLE_ID_SITE_ADMIN, Role::ROLE_ID_MANAGER, Role::ROLE_ID_SUB_EDITOR],
+                $context->getId()
+            ) || $user->hasRole([Role::ROLE_ID_SITE_ADMIN], PKPApplication::CONTEXT_ID_NONE))
+            : true;
+
+        if (!$canUse) {
+            return;
+        }
+
+        $navLabel = __('plugins.generic.kisiTypesetter.navTitle');
+        if ($navLabel === 'plugins.generic.kisiTypesetter.navTitle') {
+            $navLabel = 'Kisi Typesetter';
+        }
+
+        $kisiLink = [
+            'name' => $navLabel,
+            'url' => $studioUrl,
+            'isCurrent' => ($currentPage === 'kisiTypesetter'),
+            'icon' => 'FileText',
+        ];
+
+        $updatedMenu = self::insertMenuItemAfterIssues($menu, $kisiLink, 'kisiTypesetter');
+        $templateMgr->setState(['menu' => $updatedMenu]);
+    }
+
+    /**
+     * Insert a navigation item directly after 'issues' (or after submission/dashboard items if 'issues' is hidden).
+     */
+    public static function insertMenuItemAfterIssues(array $menu, array $newItem, string $key = 'kisiTypesetter'): array
+    {
+        if (isset($menu[$key])) {
+            return $menu;
+        }
+
+        $keys = array_keys($menu);
+        $anchorIndex = array_search('issues', $keys, true);
+        if ($anchorIndex === false) {
+            foreach (['mySubmissions', 'reviewAssignments', 'dashboards'] as $fallbackKey) {
+                $anchorIndex = array_search($fallbackKey, $keys, true);
+                if ($anchorIndex !== false) {
+                    break;
+                }
+            }
+        }
+
+        if ($anchorIndex === false || count($menu) <= $anchorIndex + 1) {
+            $menu[$key] = $newItem;
+            return $menu;
+        }
+
+        return array_slice($menu, 0, $anchorIndex + 1, true)
+            + [$key => $newItem]
+            + array_slice($menu, $anchorIndex + 1, null, true);
     }
 
     /**

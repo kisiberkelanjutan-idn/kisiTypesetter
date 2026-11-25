@@ -39,8 +39,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\sync-git.ps1 -Message "feat: 
 
 ---
 
-## Cara Instalasi di OJS 3.5
+## Cara Instalasi & Akses di OJS 3.5
 1. **Via cPanel Git™ Version Control:** Clone repository ke server cPanel lalu klik **Update from Remote** → **Deploy HEAD Commit** (`.cpanel.yml` akan menyalin file runtime ke `public_html/plugins/generic/kisiTypesetter/`).
 2. **Via Upload Dashboard OJS:** Unggah `kisiTypesetter.tar.gz` melalui **Settings > Website > Plugins > Upload A New Plugin**.
 3. **Via Core FTP:** Unggah isi folder `dist/kisiTypesetter/` ke `public_html/plugins/generic/kisiTypesetter/`.
 4. Aktifkan plugin **Kisi Berkelanjutan Automated Typesetter & AmeliCA JATS XML** di **Settings > Website > Plugins > Installed Plugins**.
+5. Setelah aktif, menu **Kisi Typesetter** langsung muncul pada navigasi editorial OJS 3.5 **tepat di bawah menu Issues / Terbitan** (selain tombol pintasan cepat **⚡ Kisi Re-Layout & JATS XML** pada halaman Dashboard/Workflow), sehingga Editor tidak perlu membuka *Website > Plugins* lagi.

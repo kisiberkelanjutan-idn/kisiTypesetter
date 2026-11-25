@@ -19,3 +19,6 @@ msgstr "Automated re-layout (DOCX template 2026) and JATS 1.2 XML (AmeliCA stand
 
 msgid "plugins.generic.kisiTypesetter.openStudio"
 msgstr "Open Re-Layout & JATS XML Studio (Issues 1-3)"
+
+msgid "plugins.generic.kisiTypesetter.navTitle"
+msgstr "Kisi Typesetter"
