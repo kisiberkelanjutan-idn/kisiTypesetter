@@ -612,6 +612,7 @@ class KisiTypesetterHandler extends Handler
         $xmlString = JatsXmlGenerator::generate($articleData);
         $htmlDigest = JatsHtmlRenderer::renderFullTextHtml($xmlString, [
             'include_abstract' => true,
+            'form_language_mode' => (string) ($articleData['form_mode'] ?? 'en'),
         ]);
 
         echo json_encode([
@@ -1553,7 +1554,10 @@ class KisiTypesetterHandler extends Handler
             }
 
             if ($enHtml !== '') {
+                $titleKeys = array_keys(array_filter((array) $publication->getData('title'), static fn ($v) => trim((string) $v) !== ''));
+                $enTitleKeys = array_values(array_filter($titleKeys, static fn ($tk) => stripos((string) $tk, 'en') === 0));
                 $enCandidates = array_values(array_unique(array_filter(array_merge(
+                    $enTitleKeys,
                     stripos($pubLocale, 'en') === 0 ? [$pubLocale] : [],
                     ['en', 'en_US']
                 ))));
@@ -1562,7 +1566,10 @@ class KisiTypesetterHandler extends Handler
                 foreach ($enCandidates as $cand) {
                     if (array_key_exists($cand, $existing)) {
                         $targetEnKey = $cand;
+                        break;
                     }
+                }
+                foreach ($enCandidates as $cand) {
                     if (trim(strip_tags((string) ($updated[$cand] ?? ''))) !== '') {
                         $enAlreadyPresent = true;
                         break;

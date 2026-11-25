@@ -722,6 +722,80 @@ assertTrue(
     'JatsHtmlRenderer displays English-only primary JATS abstract prominently on full-text page'
 );
 
+// 13. Verify JatsHtmlRenderer handles complex external JATS XML (BOM, entities, prefixed tags, nested sec/list, untagged English, graphical abstract & standalone galley reader)
+$complexExternalXml = "\xEF\xBB\xBF" . <<<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<jats:article xmlns:jats="http://jats.nlm.nih.gov/ns/archiving/1.2/" xmlns:xlink="http://www.w3.org/1999/xlink" article-type="research-article" xml:lang="en">
+  <jats:front>
+    <jats:article-meta>
+      <jats:title-group><jats:article-title>Telemedicine &amp; Maternal Care&nbsp;&ndash; Observational Cohort</jats:article-title></jats:title-group>
+      <jats:contrib-group>
+        <jats:contrib contrib-type="author"><jats:name><jats:surname>Sari</jats:surname><jats:given-names>Rina</jats:given-names></jats:name></jats:contrib>
+      </jats:contrib-group>
+      <jats:abstract abstract-type="graphical"><jats:p>Visual diagram summary.</jats:p></jats:abstract>
+      <jats:abstract>
+        <jats:sec>
+          <jats:title>Background</jats:title>
+          <jats:sec><jats:title>Clinical Context</jats:title><jats:p>Maternal follow-up in&nbsp;rural settings remains challenging.</jats:p></jats:sec>
+          <jats:list list-type="bullet"><jats:list-item><jats:p>Key finding: adherence rose&nbsp;by 34%.</jats:p></jats:list-item></jats:list>
+        </jats:sec>
+      </jats:abstract>
+      <jats:kwd-group><jats:kwd>Telemedicine</jats:kwd><jats:kwd>Maternal Health</jats:kwd></jats:kwd-group>
+    </jats:article-meta>
+  </jats:front>
+  <jats:body>
+    <jats:sec id="intro"><jats:title>INTRODUCTION</jats:title><jats:p>Body content &amp; data analysis&rsquo;s summary.</jats:p></jats:sec>
+  </jats:body>
+  <jats:back>
+    <jats:ref-list><jats:title>REFERENCES</jats:title><jats:ref id="B1"><jats:mixed-citation>WHO. Antenatal care. Geneva: WHO; 2022.</jats:mixed-citation></jats:ref></jats:ref-list>
+  </jats:back>
+</jats:article>
+XML;
+
+$complexHtml = JatsHtmlRenderer::renderFullTextHtml($complexExternalXml, [
+    'include_abstract' => true,
+    'form_language_mode' => 'en',
+]);
+assertTrue(
+    strpos($complexHtml, 'id="kisi-sec-abstract"') !== false
+        && strpos($complexHtml, 'id="kisi-abs-pane-en"') !== false
+        && strpos($complexHtml, 'id="kisi-abs-pane-id"') === false
+        && strpos($complexHtml, 'Maternal follow-up in') !== false
+        && strpos($complexHtml, 'adherence rose') !== false
+        && strpos($complexHtml, 'Telemedicine; Maternal Health') !== false,
+    'JatsHtmlRenderer renders BOM/prefixed/entity-rich/nested-sec JATS XML and classifies untagged English abstract cleanly without ID tab'
+);
+
+$extractedMap = JatsHtmlRenderer::extractAbstractTextsByLocale($complexExternalXml);
+assertTrue(
+    strpos($extractedMap['en']['html'] ?? '', 'Maternal follow-up') !== false
+        && trim((string) ($extractedMap['id']['html'] ?? '')) === '',
+    'JatsHtmlRenderer::extractAbstractTextsByLocale extracts English HTML cleanly for empty OJS publication abstract sync'
+);
+
+$enFilteredHtml = JatsHtmlRenderer::renderFullTextHtml($namespacedXml, [
+    'include_abstract' => true,
+    'form_language_mode' => 'en',
+]);
+assertTrue(
+    strpos($enFilteredHtml, 'id="kisi-abs-pane-en"') !== false
+        && strpos($enFilteredHtml, 'id="kisi-abs-pane-id"') === false
+        && strpos($enFilteredHtml, 'English standalone paragraph abstract.') !== false,
+    'JatsHtmlRenderer honors form_language_mode=en by showing English abstract directly without bilingual tabs'
+);
+
+$readerPage = JatsHtmlRenderer::renderStandaloneReaderPage($complexExternalXml, [
+    'form_language_mode' => 'en',
+    'article_url' => 'https://kisiberkelanjutan.com/index.php/smk/article/view/105',
+]);
+assertTrue(
+    strpos($readerPage, '<!DOCTYPE html>') !== false
+        && strpos($readerPage, 'Rina Sari') !== false
+        && strpos($readerPage, 'id="kisi-sec-abstract"') !== false
+        && strpos($readerPage, 'WHO. Antenatal care.') !== false,
+    'JatsHtmlRenderer::renderStandaloneReaderPage produces complete XML Galley reader page including Abstract and References'
+);
+
 if ($failures > 0) {
     fwrite(STDERR, "\nTotal test failures: {$failures}\n");
     exit(1);

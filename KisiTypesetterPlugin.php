@@ -44,6 +44,9 @@ class KisiTypesetterPlugin extends GenericPlugin
 
             // 3. Backend quick-launch button & custom-theme fallback for Full-Text Digest
             Hook::add('TemplateManager::display', [$this, 'onTemplateDisplay']);
+
+            // 4. Standalone Full-Text Reader for direct XML Galley URL (/article/view/{id}/{galleyId})
+            Hook::add('ArticleHandler::view::galley', [$this, 'renderXmlGalleyFullText'], Hook::SEQUENCE_LAST);
         }
 
         return $success;
@@ -106,12 +109,6 @@ class KisiTypesetterPlugin extends GenericPlugin
             return false;
         }
 
-        // Check if built-in full-text digest is enabled (default: enabled)
-        $digestEnabled = $this->getSetting($context->getId(), 'enableFullTextDigest');
-        if ($digestEnabled === '0' || $digestEnabled === false) {
-            return false;
-        }
-
         $article = $smarty->getTemplateVars('article') ?: $smarty->getTemplateVars('submission');
         $publication = $smarty->getTemplateVars('publication');
         if (!$publication && $article && method_exists($article, 'getCurrentPublication')) {
@@ -127,11 +124,21 @@ class KisiTypesetterPlugin extends GenericPlugin
         }
 
         require_once($this->getPluginPath() . '/classes/JatsHtmlRenderer.php');
+        $formLangMode = (string) ($this->getSetting($context->getId(), 'formLanguageMode') ?: 'en');
+        $this->populateMissingPublicationAbstractFromXml($publication, $xmlContent, $formLangMode);
+
+        // Check if built-in full-text digest is enabled (default: enabled)
+        $digestEnabled = $this->getSetting($context->getId(), 'enableFullTextDigest');
+        if ($digestEnabled === '0' || $digestEnabled === false) {
+            return false;
+        }
+
         $hideThemeAbstract = ($this->getSetting($context->getId(), 'replaceDefaultAbstract') !== '0');
 
         // Always render structured <abstract>/<trans-abstract> inside Full-Text HTML when present in JATS XML
         $html = \APP\plugins\generic\kisiTypesetter\classes\JatsHtmlRenderer::renderFullTextHtml($xmlContent, [
             'include_abstract' => true,
+            'form_language_mode' => $formLangMode,
         ]);
 
         if ($html !== '') {
@@ -140,11 +147,22 @@ class KisiTypesetterPlugin extends GenericPlugin
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     var absSec = document.getElementById('kisi-sec-abstract');
+    var container = document.getElementById('kisi-jats-fulltext-container');
     if (!absSec || !absSec.textContent || absSec.textContent.replace(/\s+/g, '').length < 20) return;
-    var defaultAbs = document.querySelectorAll('.obj_article_details .item.abstract, .article-details .article-abstract, section.item.abstract');
+    var defaultAbs = document.querySelectorAll('.obj_article_details .item.abstract, .article-details .article-abstract, section.item.abstract, .article-abstract');
+    var placedTop = false;
     defaultAbs.forEach(function(el) {
-        if (!el.contains(absSec) && !el.contains(document.getElementById('kisi-jats-fulltext-container'))) {
-            el.style.display = 'none';
+        if (!el.contains(absSec) && (!container || !el.contains(container))) {
+            if (!placedTop && el.parentNode && container && (el.compareDocumentPosition(container) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+                absSec.style.marginTop = '8px';
+                absSec.style.marginBottom = '18px';
+                el.parentNode.insertBefore(absSec, el);
+                placedTop = true;
+            }
+            var rect = absSec.getBoundingClientRect();
+            if (rect && rect.height > 10 && window.getComputedStyle(absSec).display !== 'none') {
+                el.style.display = 'none';
+            }
         }
     });
 });
@@ -160,8 +178,9 @@ HTML;
 
     /**
      * Hook: TemplateManager::display
-     * 1. Injects floating quick-launch button in OJS editorial backend
-     * 2. Provides automatic fallback injection on frontend/pages/article.tpl for custom OJS themes
+     * 1. Populates missing OJS abstract in memory from attached JATS XML (even when external JATS Parser / theme renders full-text)
+     * 2. Provides automatic fallback Full-Text injection on frontend/pages/article.tpl for custom OJS themes
+     * 3. Injects backend sidebar shortcut & floating quick-launch button in OJS editorial backend
      */
     public function onTemplateDisplay(string $hookName, array $args): bool
     {
@@ -175,27 +194,35 @@ HTML;
             return false;
         }
 
-        // A. Public Article Landing Page fallback (if theme doesn't fire Templates::Article::Main)
-        if (strpos($template, 'frontend/pages/article.tpl') !== false && !$this->fullTextRenderedInHook) {
-            $digestEnabled = $this->getSetting($context->getId(), 'enableFullTextDigest');
-            if ($digestEnabled !== '0' && $digestEnabled !== false) {
-                $article = $templateMgr->getTemplateVars('article') ?: $templateMgr->getTemplateVars('submission');
-                $publication = $templateMgr->getTemplateVars('publication');
-                if (!$publication && $article && method_exists($article, 'getCurrentPublication')) {
-                    $publication = $article->getCurrentPublication();
+        // A. Public Article Landing Page: sync missing abstract in-memory & fallback render if Templates::Article::Main didn't run
+        if (strpos($template, 'frontend/pages/article.tpl') !== false) {
+            $article = $templateMgr->getTemplateVars('article') ?: $templateMgr->getTemplateVars('submission');
+            $publication = $templateMgr->getTemplateVars('publication');
+            if (!$publication && $article && method_exists($article, 'getCurrentPublication')) {
+                $publication = $article->getCurrentPublication();
+            }
+            $xmlContent = $article ? $this->findArticleJatsXmlContent((int) $article->getId(), $publication) : '';
+            $formLangMode = (string) ($this->getSetting($context->getId(), 'formLanguageMode') ?: 'en');
+
+            if ($xmlContent !== '') {
+                require_once($this->getPluginPath() . '/classes/JatsHtmlRenderer.php');
+                $this->populateMissingPublicationAbstractFromXml($publication, $xmlContent, $formLangMode);
+                if ($publication) {
+                    $templateMgr->assign('publication', $publication);
                 }
-                if ($article) {
-                    $xmlContent = $this->findArticleJatsXmlContent((int) $article->getId(), $publication);
-                    if ($xmlContent !== '') {
-                        require_once($this->getPluginPath() . '/classes/JatsHtmlRenderer.php');
-                        $hideThemeAbstract = ($this->getSetting($context->getId(), 'replaceDefaultAbstract') !== '0');
-                        $hideFlagJs = $hideThemeAbstract ? 'true' : 'false';
-                        $html = \APP\plugins\generic\kisiTypesetter\classes\JatsHtmlRenderer::renderFullTextHtml($xmlContent, [
-                            'include_abstract' => true,
-                        ]);
-                        if ($html !== '') {
-                            $jsonHtml = json_encode($html, JSON_UNESCAPED_UNICODE);
-                            $fallbackScript = <<<HTML
+            }
+
+            $digestEnabled = $this->getSetting($context->getId(), 'enableFullTextDigest');
+            if ($xmlContent !== '' && !$this->fullTextRenderedInHook && $digestEnabled !== '0' && $digestEnabled !== false) {
+                $hideThemeAbstract = ($this->getSetting($context->getId(), 'replaceDefaultAbstract') !== '0');
+                $hideFlagJs = $hideThemeAbstract ? 'true' : 'false';
+                $html = \APP\plugins\generic\kisiTypesetter\classes\JatsHtmlRenderer::renderFullTextHtml($xmlContent, [
+                    'include_abstract' => true,
+                    'form_language_mode' => $formLangMode,
+                ]);
+                if ($html !== '') {
+                    $jsonHtml = json_encode($html, JSON_UNESCAPED_UNICODE);
+                    $fallbackScript = <<<HTML
 <script>
 window.kisiSwitchAbsLang = window.kisiSwitchAbsLang || function(mode, btn) {
     var container = btn.closest('.kisi-jats-abstract-box');
@@ -220,8 +247,11 @@ document.addEventListener('DOMContentLoaded', function() {
     if (document.getElementById('kisi-jats-fulltext-container')) return;
     var target = document.querySelector('.obj_article_details .main_entry')
         || document.querySelector('.article-details .article-main')
+        || document.querySelector('.article-fulltext')
         || document.querySelector('.item.abstract')
-        || document.querySelector('.obj_article_details');
+        || document.querySelector('.obj_article_details')
+        || document.querySelector('.pkp_structure_main article')
+        || document.querySelector('main');
     if (target) {
         var wrapper = document.createElement('div');
         wrapper.innerHTML = {$jsonHtml};
@@ -229,12 +259,25 @@ document.addEventListener('DOMContentLoaded', function() {
         var hasValidAbs = !!(absSec && absSec.textContent && absSec.textContent.replace(/\s+/g, '').length >= 20);
         if (target.classList.contains('abstract')) {
             target.parentNode.insertBefore(wrapper, target.nextSibling);
-            if ({$hideFlagJs} && hasValidAbs) target.style.display = 'none';
+            if ({$hideFlagJs} && hasValidAbs && absSec.getBoundingClientRect().height > 10) {
+                target.style.display = 'none';
+            }
         } else {
             target.appendChild(wrapper);
             if ({$hideFlagJs} && hasValidAbs) {
-                document.querySelectorAll('.obj_article_details .item.abstract, .article-details .article-abstract, section.item.abstract').forEach(function(el) {
-                    if (!el.contains(wrapper)) el.style.display = 'none';
+                var placedTop = false;
+                document.querySelectorAll('.obj_article_details .item.abstract, .article-details .article-abstract, section.item.abstract, .article-abstract').forEach(function(el) {
+                    if (!el.contains(wrapper)) {
+                        if (!placedTop && el.parentNode && (el.compareDocumentPosition(wrapper) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+                            absSec.style.marginTop = '8px';
+                            absSec.style.marginBottom = '18px';
+                            el.parentNode.insertBefore(absSec, el);
+                            placedTop = true;
+                        }
+                        if (absSec.getBoundingClientRect().height > 10 && window.getComputedStyle(absSec).display !== 'none') {
+                            el.style.display = 'none';
+                        }
+                    }
                 });
             }
         }
@@ -242,10 +285,8 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 HTML;
-                            $existingHead = (string) $templateMgr->getTemplateVars('additionalHeadData');
-                            $templateMgr->assign('additionalHeadData', $existingHead . "\n" . $fallbackScript);
-                        }
-                    }
+                    $existingHead = (string) $templateMgr->getTemplateVars('additionalHeadData');
+                    $templateMgr->assign('additionalHeadData', $existingHead . "\n" . $fallbackScript);
                 }
             }
         }
@@ -394,6 +435,152 @@ HTML;
     }
 
     /**
+     * Hook: ArticleHandler::view::galley
+     * Renders a full standalone HTML5 reader (including Abstract, Metadata, Body, Tables & References)
+     * when a reader opens an XML JATS galley directly (/article/view/{id}/{galleyId}).
+     */
+    public function renderXmlGalleyFullText(string $hookName, array $args): bool
+    {
+        $request = $args[0] ?? null;
+        $galley = $args[2] ?? null;
+        $article = $args[3] ?? null;
+        $publication = $args[4] ?? null;
+
+        if (!$request || !$galley) {
+            return false;
+        }
+        $context = method_exists($request, 'getContext') ? $request->getContext() : null;
+        if (!$context) {
+            return false;
+        }
+
+        $digestEnabled = $this->getSetting($context->getId(), 'enableFullTextDigest');
+        if ($digestEnabled === '0' || $digestEnabled === false) {
+            return false;
+        }
+
+        $sfId = (int) $galley->getData('submissionFileId');
+        if ($sfId <= 0) {
+            return false;
+        }
+
+        $sf = Repo::submissionFile()->get($sfId);
+        if (!$sf) {
+            return false;
+        }
+
+        $xmlContent = $this->readXmlFromSubmissionFile($sf);
+        if ($xmlContent === '' || (stripos($xmlContent, '<article') === false && stripos($xmlContent, '<abstract') === false && stripos($xmlContent, '<body') === false)) {
+            return false;
+        }
+
+        require_once($this->getPluginPath() . '/classes/JatsHtmlRenderer.php');
+        $formLangMode = (string) ($this->getSetting($context->getId(), 'formLanguageMode') ?: 'en');
+        $this->populateMissingPublicationAbstractFromXml($publication, $xmlContent, $formLangMode);
+
+        $articleUrl = '';
+        if ($article && method_exists($request, 'getDispatcher')) {
+            $articleUrl = $request->getDispatcher()->url(
+                $request,
+                PKPApplication::ROUTE_PAGE,
+                $context->getPath(),
+                'article',
+                'view',
+                [$article->getBestId()]
+            );
+        }
+
+        $htmlPage = \APP\plugins\generic\kisiTypesetter\classes\JatsHtmlRenderer::renderStandaloneReaderPage($xmlContent, [
+            'form_language_mode' => $formLangMode,
+            'journal_title' => method_exists($context, 'getLocalizedName') ? $context->getLocalizedName() : '',
+            'article_url' => $articleUrl,
+            'title' => $publication && method_exists($publication, 'getLocalizedFullTitle') ? $publication->getLocalizedFullTitle() : '',
+        ]);
+
+        if ($htmlPage === '') {
+            return false;
+        }
+
+        header('Content-Type: text/html; charset=UTF-8');
+        echo $htmlPage;
+        return true;
+    }
+
+    /**
+     * Populate empty runtime Publication abstract fields from attached JATS XML without creating unwanted extra locale keys.
+     */
+    protected function populateMissingPublicationAbstractFromXml($publication, string $xmlContent, string $formLangMode = 'en'): void
+    {
+        if (!$publication || !method_exists($publication, 'getData') || !method_exists($publication, 'setData')) {
+            return;
+        }
+        $extracted = \APP\plugins\generic\kisiTypesetter\classes\JatsHtmlRenderer::extractAbstractTextsByLocale($xmlContent);
+        $enHtml = trim((string) ($extracted['en']['html'] ?? ''));
+        $idHtml = trim((string) ($extracted['id']['html'] ?? ''));
+        $chosenHtml = ($formLangMode === 'en')
+            ? ($enHtml !== '' ? $enHtml : $idHtml)
+            : ($idHtml !== '' ? $idHtml : $enHtml);
+
+        if ($chosenHtml === '') {
+            return;
+        }
+
+        $existingAbs = (array) $publication->getData('abstract');
+        $pubLocale = trim((string) ($publication->getData('locale') ?: 'en'));
+        $titleKeys = array_keys(array_filter((array) $publication->getData('title'), static fn ($v) => trim((string) $v) !== ''));
+
+        $targets = [];
+        if ($formLangMode === 'en') {
+            foreach ($titleKeys as $tk) {
+                if (stripos((string) $tk, 'en') === 0) {
+                    $targets[] = (string) $tk;
+                }
+            }
+            if (empty($targets)) {
+                $targets[] = (stripos($pubLocale, 'en') === 0) ? $pubLocale : 'en';
+            }
+        } else {
+            if ($idHtml !== '') {
+                $targets['id'] = $idHtml;
+            }
+            if ($enHtml !== '') {
+                $targets['en'] = $enHtml;
+            }
+        }
+
+        $changed = false;
+        if ($formLangMode === 'en') {
+            foreach (array_unique($targets) as $locKey) {
+                if (trim(strip_tags((string) ($existingAbs[$locKey] ?? ''))) === '') {
+                    $existingAbs[$locKey] = $chosenHtml;
+                    $changed = true;
+                }
+            }
+        } else {
+            foreach ($targets as $langPrefix => $htmlVal) {
+                $matched = false;
+                foreach ($titleKeys as $tk) {
+                    if (stripos((string) $tk, $langPrefix) === 0) {
+                        $matched = true;
+                        if (trim(strip_tags((string) ($existingAbs[$tk] ?? ''))) === '') {
+                            $existingAbs[$tk] = $htmlVal;
+                            $changed = true;
+                        }
+                    }
+                }
+                if (!$matched && trim(strip_tags((string) ($existingAbs[$langPrefix] ?? ''))) === '') {
+                    $existingAbs[$langPrefix] = $htmlVal;
+                    $changed = true;
+                }
+            }
+        }
+
+        if ($changed) {
+            $publication->setData('abstract', $existingAbs);
+        }
+    }
+
+    /**
      * Find the best JATS XML file content attached to an article's Galleys or Production Ready Files
      * (prefers Galleys, newer uploads, and complete XML containing <abstract>/<body>/<ref-list>).
      */
@@ -424,32 +611,35 @@ HTML;
 
         // 1. Check Publication Galleys first (highest priority, latest galley wins ties)
         if ($publication) {
+            $galleyList = [];
             $galleys = $publication->getData('galleys');
-            if (!$galleys) {
+            if ($galleys) {
+                foreach ($galleys as $galley) {
+                    $galleyList[] = $galley;
+                }
+            }
+            if (empty($galleyList)) {
                 try {
                     $galleys = Repo::galley()->getCollector()
                         ->filterByPublicationIds([(int) $publication->getId()])
                         ->getMany();
+                    foreach ($galleys as $galley) {
+                        $galleyList[] = $galley;
+                    }
                 } catch (\Throwable $e) {
-                    $galleys = [];
+                    // ignore
                 }
             }
-            if ($galleys) {
-                $galleyList = [];
-                foreach ($galleys as $galley) {
-                    $galleyList[] = $galley;
-                }
-                foreach (array_reverse($galleyList) as $galley) {
-                    $sfId = (int) $galley->getData('submissionFileId');
-                    if ($sfId > 0) {
-                        $sf = Repo::submissionFile()->get($sfId);
-                        if ($sf) {
-                            $xml = $this->readXmlFromSubmissionFile($sf);
-                            $sc = $scoreXml($xml, 100);
-                            if ($sc > $bestScore) {
-                                $bestScore = $sc;
-                                $bestXml = $xml;
-                            }
+            foreach (array_reverse($galleyList) as $galley) {
+                $sfId = (int) $galley->getData('submissionFileId');
+                if ($sfId > 0) {
+                    $sf = Repo::submissionFile()->get($sfId);
+                    if ($sf) {
+                        $xml = $this->readXmlFromSubmissionFile($sf);
+                        $sc = $scoreXml($xml, 100);
+                        if ($sc > $bestScore) {
+                            $bestScore = $sc;
+                            $bestXml = $xml;
                         }
                     }
                 }
@@ -489,7 +679,8 @@ HTML;
         $filesDir = rtrim((string) Config::getVar('files', 'files_dir'), '/\\');
         $relPath = (string) ($sf->getData('path') ?? '');
         $mime = (string) ($sf->getData('mimetype') ?? '');
-        $name = (string) ($sf->getLocalizedData('name') ?: '');
+        $rawNames = $sf->getData('name');
+        $allNames = is_array($rawNames) ? implode(' ', array_map('strval', $rawNames)) : (string) ($sf->getLocalizedData('name') ?: '');
         $fileSvc = null;
 
         if (($relPath === '' || $mime === '') && ($fileId = (int) $sf->getData('fileId')) > 0) {
@@ -515,31 +706,60 @@ HTML;
             }
         }
 
-        $isXml = preg_match('/\.xml$/i', $relPath)
-            || preg_match('/\.xml$/i', $name)
-            || stripos($mime, 'xml') !== false;
-
-        if (!$isXml || $relPath === '') {
+        if ($relPath === '') {
             return '';
         }
 
-        $absPath = $filesDir . DIRECTORY_SEPARATOR . ltrim($relPath, '/\\');
-        if ($filesDir !== '' && file_exists($absPath)) {
-            return (string) file_get_contents($absPath);
+        $isLikelyBinary = preg_match('/\.(pdf|docx?|xlsx?|pptx?|zip|png|jpe?g|gif|webp|mp4|mp3)$/i', $relPath . ' ' . $allNames)
+            || stripos($mime, 'pdf') !== false
+            || stripos($mime, 'wordprocessingml') !== false
+            || stripos($mime, 'image/') !== false;
+        if ($isLikelyBinary) {
+            return '';
         }
 
-        try {
-            if (!$fileSvc && function_exists('app')) {
-                $fileSvc = app()->get('file');
+        $isXml = preg_match('/\.xml$/i', $relPath)
+            || preg_match('/\.xml\b/i', $allNames)
+            || stripos($mime, 'xml') !== false;
+
+        $content = '';
+        $absPath = $filesDir !== '' ? ($filesDir . DIRECTORY_SEPARATOR . ltrim($relPath, '/\\')) : '';
+        if ($absPath === '' || !file_exists($absPath)) {
+            if ($filesDir !== '' && defined('BASE_SYS_DIR')) {
+                $altAbs = rtrim((string) BASE_SYS_DIR, '/\\') . DIRECTORY_SEPARATOR . $filesDir . DIRECTORY_SEPARATOR . ltrim($relPath, '/\\');
+                if (file_exists($altAbs)) {
+                    $absPath = $altAbs;
+                }
             }
-            if ($fileSvc && isset($fileSvc->fs) && method_exists($fileSvc->fs, 'read')) {
-                return (string) $fileSvc->fs->read($relPath);
-            }
-        } catch (\Throwable $e) {
-            // ignore
         }
 
-        return '';
+        if ($absPath !== '' && file_exists($absPath)) {
+            $content = (string) file_get_contents($absPath);
+        } else {
+            try {
+                if (!$fileSvc && function_exists('app')) {
+                    $fileSvc = app()->get('file');
+                }
+                if ($fileSvc && isset($fileSvc->fs) && method_exists($fileSvc->fs, 'read')) {
+                    $content = (string) $fileSvc->fs->read($relPath);
+                }
+            } catch (\Throwable $e) {
+                // ignore
+            }
+        }
+
+        if ($content === '') {
+            return '';
+        }
+
+        if (!$isXml) {
+            $head = substr(ltrim($content, "\xEF\xBB\xBF \t\r\n"), 0, 512);
+            if (stripos($head, '<?xml') === false && stripos($head, '<article') === false) {
+                return '';
+            }
+        }
+
+        return $content;
     }
 
     /**

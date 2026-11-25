@@ -20,24 +20,13 @@ class JatsHtmlRenderer
      * Digest a JATS XML string into semantic Full-Text HTML ready for the OJS article landing page
      *
      * @param string $xmlContent Raw JATS XML string
-     * @param array $options Optional rendering flags ('include_abstract' => bool, 'standalone_reader' => bool)
+     * @param array $options Optional rendering flags ('include_abstract' => bool, 'form_language_mode' => 'auto'|'en'|'bilingual')
      * @return string Rendered HTML block
      */
     public static function renderFullTextHtml(string $xmlContent, array $options = []): string
     {
-        if (trim($xmlContent) === '') {
-            return '';
-        }
-
-        // Strip unprefixed default JATS/NLM XML namespace so standard XPath queries match external JATS/AmeliCA/SciELO files
-        $cleanXml = (string) preg_replace(
-            '/(<article\b[^>]*?)\s+xmlns=(["\'])https?:\/\/(?:jats\.nlm\.nih\.gov|www\.ncbi\.nlm\.nih\.gov\/JATS1)[^"\']*\2/iu',
-            '$1',
-            $xmlContent
-        );
-
-        $dom = new DOMDocument('1.0', 'UTF-8');
-        if (!@$dom->loadXML($cleanXml, LIBXML_NOENT | LIBXML_NONET)) {
+        $dom = self::loadJatsDom($xmlContent);
+        if (!$dom) {
             return '';
         }
 
@@ -86,12 +75,15 @@ class JatsHtmlRenderer
         $tocItems = [];
         $bodyHtmlParts = [];
 
-        // Optional Structured Bilingual Abstract Digest (so visitors see both ID and EN structured abstracts cleanly)
+        // Optional Structured Abstract Digest (always rendered cleanly for English-Only or Bilingual JATS)
         $includeAbstract = $options['include_abstract'] ?? true;
         if ($includeAbstract) {
-            $absHtml = self::renderBilingualAbstracts($xpath);
+            $absHtml = self::renderBilingualAbstracts($xpath, $options);
             if ($absHtml !== '') {
-                $tocItems[] = ['id' => 'kisi-sec-abstract', 'title' => 'Abstrak / Abstract'];
+                $absTocLabel = (strtolower((string) ($options['form_language_mode'] ?? 'auto')) === 'en')
+                    ? 'Abstract'
+                    : 'Abstrak / Abstract';
+                $tocItems[] = ['id' => 'kisi-sec-abstract', 'title' => $absTocLabel];
                 $bodyHtmlParts[] = $absHtml;
             }
         }
@@ -217,76 +209,259 @@ class JatsHtmlRenderer
     }
 
     /**
-     * Render Bilingual / Multilingual Structured & Unstructured Abstracts (<abstract> & <trans-abstract>)
+     * Robustly load external or generated JATS XML across namespaces, prefixes, BOM, and named HTML entities.
      */
-    private static function renderBilingualAbstracts(DOMXPath $xpath): string
+    private static function loadJatsDom(string $xmlContent): ?DOMDocument
+    {
+        $clean = (string) preg_replace('/^\x{FEFF}+|\A(?:\xEF\xBB\xBF)+/u', '', $xmlContent);
+        $clean = ltrim($clean, " \t\n\r\0\x0B");
+        if ($clean === '') {
+            return null;
+        }
+
+        // Strip unprefixed default xmlns declarations anywhere in the JATS tree (preserving xlink/mml prefixes)
+        $clean = (string) preg_replace(
+            '/(<(?:article|front|journal-meta|article-meta|abstract|trans-abstract|body|back|kwd-group|sec|table-wrap|ref-list|fn-group|sub-article)\b[^>]*?)\s+xmlns=(["\'])[^"\']*\2/iu',
+            '$1',
+            $clean
+        );
+        // Strip jats: namespace prefix if external converter produced <jats:article>, <jats:abstract>, etc.
+        if (stripos($clean, '<jats:') !== false) {
+            $clean = (string) preg_replace('/\s+xmlns:jats=(["\'])[^"\']*\1/iu', '', $clean);
+            $clean = (string) preg_replace('/<(\/?)jats:([a-zA-Z0-9_-]+)/u', '<$1$2', $clean);
+        }
+
+        // Normalize common typography / HTML entities when LIBXML_NONET disables remote DTD fetch
+        $entityMap = [
+            '&nbsp;' => '&#160;', '&ensp;' => '&#8194;', '&emsp;' => '&#8195;', '&thinsp;' => '&#8201;',
+            '&ndash;' => '&#8211;', '&mdash;' => '&#8212;', '&minus;' => '&#8722;',
+            '&lsquo;' => '&#8216;', '&rsquo;' => '&#8217;', '&ldquo;' => '&#8220;', '&rdquo;' => '&#8221;',
+            '&bull;' => '&#8226;', '&hellip;' => '&#8230;', '&prime;' => '&#8242;', '&Prime;' => '&#8243;',
+            '&copy;' => '&#169;', '&reg;' => '&#174;', '&trade;' => '&#8482;',
+            '&deg;' => '&#176;', '&plusmn;' => '&#177;', '&times;' => '&#215;', '&divide;' => '&#247;',
+            '&micro;' => '&#181;', '&le;' => '&#8804;', '&ge;' => '&#8805;', '&ne;' => '&#8800;', '&asymp;' => '&#8776;',
+            '&alpha;' => '&#945;', '&beta;' => '&#946;', '&gamma;' => '&#947;', '&delta;' => '&#948;',
+            '&epsilon;' => '&#949;', '&mu;' => '&#956;', '&sigma;' => '&#963;', '&omega;' => '&#969;',
+        ];
+        $clean = strtr($clean, $entityMap);
+
+        $dom = new DOMDocument('1.0', 'UTF-8');
+        if (@$dom->loadXML($clean, LIBXML_NOENT | LIBXML_NONET | LIBXML_PARSEHUGE)) {
+            return $dom;
+        }
+
+        // Recovery pass: escape unescaped bare ampersands and retry with LIBXML_RECOVER
+        $repaired = (string) preg_replace('/&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9a-fA-F]+;)/u', '&amp;', $clean);
+        $dom = new DOMDocument('1.0', 'UTF-8');
+        if (@$dom->loadXML($repaired, LIBXML_NOENT | LIBXML_NONET | LIBXML_PARSEHUGE | LIBXML_RECOVER | LIBXML_NOERROR | LIBXML_NOWARNING)) {
+            return $dom;
+        }
+
+        return null;
+    }
+
+    /**
+     * Heuristic check to distinguish Indonesian vs English prose for untagged <abstract> nodes.
+     */
+    private static function looksIndonesianText(string $text): bool
+    {
+        $idHits = preg_match_all('/\b(dan|yang|dengan|pada|untuk|dari|dalam|penelitian|metode|hasil|kesimpulan|saran|responden|ibu|bayi|kesehatan)\b/iu', $text);
+        $enHits = preg_match_all('/\b(the|and|with|for|from|in|this|study|methods?|results?|conclusions?|recommendations?|patients?|were|was|among)\b/iu', $text);
+        return (int) $idHits > (int) $enHits;
+    }
+
+    /**
+     * Collect the best Indonesian and English <abstract>/<trans-abstract> DOM nodes and keywords.
+     */
+    private static function collectAbstractNodesAndKeywords(DOMXPath $xpath): array
     {
         $candidates = $xpath->query('//article-meta/abstract | //article-meta/trans-abstract');
         if (!$candidates || $candidates->length === 0) {
             $candidates = $xpath->query('//abstract | //trans-abstract');
         }
-        if (!$candidates || $candidates->length === 0) {
-            return '';
-        }
 
-        $absIdNode = null;
-        $absEnNode = null;
-        $unclassified = [];
+        $rootArticle = $xpath->query('/article')->item(0);
+        $rootLang = ($rootArticle instanceof DOMElement)
+            ? strtolower(trim($rootArticle->getAttributeNS('http://www.w3.org/XML/1998/namespace', 'lang') ?: $rootArticle->getAttribute('xml:lang')))
+            : '';
 
-        foreach ($candidates as $node) {
-            if (!($node instanceof DOMElement)) {
-                continue;
-            }
-            if (trim($node->textContent) === '') {
-                continue;
-            }
-            $lang = strtolower(trim($node->getAttributeNS('http://www.w3.org/XML/1998/namespace', 'lang') ?: $node->getAttribute('xml:lang')));
-            if ($lang !== '' && (strpos($lang, 'en') === 0)) {
-                if (!$absEnNode) {
-                    $absEnNode = $node;
+        $bestIdNode = null;
+        $bestIdScore = -1;
+        $bestEnNode = null;
+        $bestEnScore = -1;
+
+        if ($candidates && $candidates->length > 0) {
+            foreach ($candidates as $node) {
+                if (!($node instanceof DOMElement)) {
+                    continue;
                 }
-            } elseif ($lang !== '' && (strpos($lang, 'id') === 0 || strpos($lang, 'in') === 0)) {
-                if (!$absIdNode) {
-                    $absIdNode = $node;
+                $txt = trim((string) $node->textContent);
+                if ($txt === '') {
+                    continue;
                 }
-            } elseif ($node->localName === 'trans-abstract') {
-                if (!$absEnNode) {
-                    $absEnNode = $node;
+
+                $absType = strtolower(trim($node->getAttribute('abstract-type')));
+                $lang = strtolower(trim($node->getAttributeNS('http://www.w3.org/XML/1998/namespace', 'lang') ?: $node->getAttribute('xml:lang')));
+
+                // Score favors main/structured abstracts over minor graphical/teaser snippets
+                $score = strlen($txt);
+                if ($absType === '' || in_array($absType, ['abstract', 'summary', 'author', 'short'], true)) {
+                    $score += 10000;
+                } elseif (in_array($absType, ['graphical', 'toc', 'teaser'], true)) {
+                    $score -= 5000;
+                }
+                if ($xpath->query('.//sec | .//p', $node)->length > 0) {
+                    $score += 1000;
+                }
+
+                $bucket = '';
+                if ($lang !== '' && strpos($lang, 'en') === 0) {
+                    $bucket = 'en';
+                } elseif ($lang !== '' && (strpos($lang, 'id') === 0 || strpos($lang, 'in') === 0)) {
+                    $bucket = 'id';
+                } elseif ($node->localName === 'trans-abstract') {
+                    $bucket = self::looksIndonesianText($txt) ? 'id' : 'en';
+                } elseif (self::looksIndonesianText($txt)) {
+                    $bucket = 'id';
+                } elseif (strpos($rootLang, 'en') === 0) {
+                    $bucket = 'en';
+                } elseif (strpos($rootLang, 'id') === 0 || strpos($rootLang, 'in') === 0) {
+                    $bucket = 'id';
                 } else {
-                    $unclassified[] = $node;
+                    $bucket = 'en';
                 }
-            } else {
-                $unclassified[] = $node;
-            }
-        }
 
-        foreach ($unclassified as $uNode) {
-            if (!$absIdNode) {
-                $absIdNode = $uNode;
-            } elseif (!$absEnNode) {
-                $absEnNode = $uNode;
+                if ($bucket === 'en') {
+                    if ($score > $bestEnScore) {
+                        $bestEnScore = $score;
+                        $bestEnNode = $node;
+                    }
+                } else {
+                    if ($score > $bestIdScore) {
+                        $bestIdScore = $score;
+                        $bestIdNode = $node;
+                    }
+                }
             }
         }
 
         $kwId = [];
-        foreach ($xpath->query('//article-meta/kwd-group[@xml:lang="id"]/kwd') as $k) {
+        foreach ($xpath->query('//article-meta/kwd-group[starts-with(@xml:lang,"id") or starts-with(@xml:lang,"in")]/kwd') as $k) {
             if (trim($k->textContent) !== '') {
                 $kwId[] = trim($k->textContent);
             }
         }
         $kwEn = [];
-        foreach ($xpath->query('//article-meta/kwd-group[@xml:lang="en"]/kwd') as $k) {
+        foreach ($xpath->query('//article-meta/kwd-group[starts-with(@xml:lang,"en")]/kwd') as $k) {
             if (trim($k->textContent) !== '') {
                 $kwEn[] = trim($k->textContent);
             }
         }
         if (empty($kwId) && empty($kwEn)) {
-            foreach ($xpath->query('//article-meta/kwd-group[not(@xml:lang)]/kwd') as $k) {
+            $untaggedKws = [];
+            foreach ($xpath->query('//article-meta/kwd-group[not(@xml:lang)]/kwd | //kwd-group[not(@xml:lang)]/kwd') as $k) {
                 if (trim($k->textContent) !== '') {
-                    $kwId[] = trim($k->textContent);
+                    $untaggedKws[] = trim($k->textContent);
+                }
+            }
+            if (!empty($untaggedKws)) {
+                if ($bestEnNode && !$bestIdNode) {
+                    $kwEn = $untaggedKws;
+                } elseif (strpos($rootLang, 'en') === 0) {
+                    $kwEn = $untaggedKws;
+                } else {
+                    $kwId = $untaggedKws;
                 }
             }
         }
+
+        return [
+            'id_node' => $bestIdNode,
+            'en_node' => $bestEnNode,
+            'kw_id' => $kwId,
+            'kw_en' => $kwEn,
+            'root_lang' => $rootLang,
+        ];
+    }
+
+    /**
+     * Extract clean HTML & plain abstract strings keyed by locale ('en', 'id') from any JATS XML.
+     */
+    public static function extractAbstractTextsByLocale(string $xmlContent): array
+    {
+        $dom = self::loadJatsDom($xmlContent);
+        if (!$dom) {
+            return ['en' => ['html' => '', 'plain' => ''], 'id' => ['html' => '', 'plain' => '']];
+        }
+        $xpath = new DOMXPath($dom);
+        $xpath->registerNamespace('xlink', 'http://www.w3.org/1999/xlink');
+        $info = self::collectAbstractNodesAndKeywords($xpath);
+
+        $extract = static function (?DOMElement $node, array $keywords, bool $isEn) use ($xpath): array {
+            if (!$node) {
+                return ['html' => '', 'plain' => ''];
+            }
+            $htmlBody = self::renderSingleAbstractBody($node, $xpath, [], $isEn);
+            // Strip outer <em> wrapper if building clean OJS DB <p> abstract HTML while preserving structured labels
+            $cleanBody = trim(preg_replace('/\s+/u', ' ', strip_tags($htmlBody)) ?? '');
+            $paragraphs = [];
+            $secs = $xpath->query('.//sec[not(@content-type="sdgs")]', $node);
+            if ($secs && $secs->length > 0) {
+                foreach ($secs as $s) {
+                    $title = self::getNodeText($xpath, './title', $s);
+                    $pTxt = [];
+                    foreach ($xpath->query('./p | ./list/list-item/p | ./boxed-text//p | ./disp-quote//p', $s) as $p) {
+                        $t = trim($p->textContent);
+                        if ($t !== '') {
+                            $pTxt[] = $t;
+                        }
+                    }
+                    if (!empty($pTxt)) {
+                        $prefix = $title !== '' ? ('<strong>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . ':</strong> ') : '';
+                        $paragraphs[] = '<p>' . $prefix . htmlspecialchars(implode(' ', $pTxt), ENT_QUOTES, 'UTF-8') . '</p>';
+                    }
+                }
+            }
+            if (empty($paragraphs)) {
+                foreach ($xpath->query('.//p', $node) as $p) {
+                    if ($p->parentNode instanceof DOMElement && $p->parentNode->getAttribute('content-type') === 'sdgs') {
+                        continue;
+                    }
+                    $t = trim($p->textContent);
+                    if ($t !== '') {
+                        $paragraphs[] = '<p>' . htmlspecialchars($t, ENT_QUOTES, 'UTF-8') . '</p>';
+                    }
+                }
+            }
+            if (empty($paragraphs) && trim($node->textContent) !== '') {
+                $paragraphs[] = '<p>' . htmlspecialchars(trim(preg_replace('/\s+/u', ' ', $node->textContent)), ENT_QUOTES, 'UTF-8') . '</p>';
+            }
+            $html = implode('', $paragraphs);
+            return [
+                'html' => $html,
+                'plain' => $cleanBody !== '' ? $cleanBody : trim(strip_tags($html)),
+                'keywords' => $keywords,
+            ];
+        };
+
+        return [
+            'en' => $extract($info['en_node'], $info['kw_en'], true),
+            'id' => $extract($info['id_node'], $info['kw_id'], false),
+        ];
+    }
+
+    /**
+     * Render Bilingual / English-Only Structured & Unstructured Abstracts (<abstract> & <trans-abstract>)
+     */
+    private static function renderBilingualAbstracts(DOMXPath $xpath, array $options = []): string
+    {
+        $collected = self::collectAbstractNodesAndKeywords($xpath);
+        $absIdNode = $collected['id_node'];
+        $absEnNode = $collected['en_node'];
+        $kwId = $collected['kw_id'];
+        $kwEn = $collected['kw_en'];
+
+        $formLangMode = strtolower(trim((string) ($options['form_language_mode'] ?? 'auto')));
 
         $idInner = $absIdNode ? self::renderSingleAbstractBody($absIdNode, $xpath, $kwId, false) : '';
         $enInner = $absEnNode ? self::renderSingleAbstractBody($absEnNode, $xpath, $kwEn, true) : '';
@@ -295,29 +470,24 @@ class JatsHtmlRenderer
             return '';
         }
 
-        $showIdFirst = ($idInner !== '');
+        // Strict English-only mode: render only English abstract when English exists (keep ID only if EN is missing)
+        if (($formLangMode === 'en' || !empty($options['english_only'])) && $enInner !== '') {
+            $idInner = '';
+        }
+
         $html = '<section id="kisi-sec-abstract" class="kisi-jats-section kisi-jats-abstract-box">';
-        $html .= '<div class="kisi-jats-abstract-tabs">';
-        if ($idInner !== '') {
-            $html .= '<button type="button" class="kisi-abs-tab ' . ($showIdFirst ? 'active' : '') . '" onclick="kisiSwitchAbsLang(\'id\', this)">🇮🇩 ABSTRAK' . ($enInner !== '' ? ' (Indonesia)' : '') . '</button>';
-        }
-        if ($enInner !== '') {
-            $html .= '<button type="button" class="kisi-abs-tab ' . (!$showIdFirst ? 'active' : '') . '" onclick="kisiSwitchAbsLang(\'en\', this)">🇬🇧 ABSTRACT (English)</button>';
-        }
+
         if ($idInner !== '' && $enInner !== '') {
+            $preferEnFirst = ($formLangMode === 'en');
+            $showIdFirst = !$preferEnFirst;
+            $html .= '<div class="kisi-jats-abstract-tabs">';
+            $html .= '<button type="button" class="kisi-abs-tab ' . ($showIdFirst ? 'active' : '') . '" onclick="kisiSwitchAbsLang(\'id\', this)">🇮🇩 ABSTRAK (Indonesia)</button>';
+            $html .= '<button type="button" class="kisi-abs-tab ' . (!$showIdFirst ? 'active' : '') . '" onclick="kisiSwitchAbsLang(\'en\', this)">🇬🇧 ABSTRACT (English)</button>';
             $html .= '<button type="button" class="kisi-abs-tab" onclick="kisiSwitchAbsLang(\'both\', this)">🔀 Tampilkan Keduanya</button>';
-        }
-        $html .= '</div>';
-
-        if ($idInner !== '') {
-            $html .= '<div id="kisi-abs-pane-id" class="kisi-abs-pane" style="display:block;">' . $idInner . '</div>';
-        }
-        if ($enInner !== '') {
-            $enDisplay = $showIdFirst ? 'none' : 'block';
-            $html .= '<div id="kisi-abs-pane-en" class="kisi-abs-pane kisi-abs-en" style="display:' . $enDisplay . ';">' . $enInner . '</div>';
-        }
-
-        $html .= <<<JS
+            $html .= '</div>';
+            $html .= '<div id="kisi-abs-pane-id" class="kisi-abs-pane" style="display:' . ($showIdFirst ? 'block' : 'none') . ';">' . $idInner . '</div>';
+            $html .= '<div id="kisi-abs-pane-en" class="kisi-abs-pane kisi-abs-en" style="display:' . ($showIdFirst ? 'none' : 'block') . ';">' . $enInner . '</div>';
+            $html .= <<<JS
 <script>
 window.kisiSwitchAbsLang = function(mode, btn) {
     var container = btn.closest('.kisi-jats-abstract-box');
@@ -340,8 +510,63 @@ window.kisiSwitchAbsLang = function(mode, btn) {
 };
 </script>
 JS;
+        } elseif ($enInner !== '') {
+            $html .= '<div class="kisi-jats-abstract-single-head">ABSTRACT</div>';
+            $html .= '<div id="kisi-abs-pane-en" class="kisi-abs-pane kisi-abs-en" style="display:block;">' . $enInner . '</div>';
+        } else {
+            $html .= '<div class="kisi-jats-abstract-single-head">ABSTRAK</div>';
+            $html .= '<div id="kisi-abs-pane-id" class="kisi-abs-pane" style="display:block;">' . $idInner . '</div>';
+        }
+
         $html .= '</section>';
         return $html;
+    }
+
+    /**
+     * Recursively render child structures inside an abstract/sec node (<sec>, <p>, <list>, <disp-quote>, <boxed-text>).
+     */
+    private static function renderAbstractChildNodes(DOMElement $container, DOMXPath $xpath, bool $isEnglish): string
+    {
+        $out = '';
+        $wrap = static fn (string $txt): string => $isEnglish ? ('<em>' . $txt . '</em>') : $txt;
+
+        foreach ($container->childNodes as $child) {
+            if (!($child instanceof DOMElement)) {
+                continue;
+            }
+            $ln = $child->localName;
+            if ($ln === 'sec') {
+                if ($child->getAttribute('content-type') === 'sdgs') {
+                    continue;
+                }
+                $st = self::getNodeText($xpath, './title', $child);
+                if ($st !== '') {
+                    $out .= '<h4 class="kisi-abs-subhead">' . $wrap(htmlspecialchars($st, ENT_QUOTES, 'UTF-8')) . '</h4>';
+                }
+                $out .= self::renderAbstractChildNodes($child, $xpath, $isEnglish);
+            } elseif ($ln === 'p') {
+                $pHtml = self::renderInlineContent($child);
+                if (trim(strip_tags($pHtml)) !== '') {
+                    $out .= '<p class="kisi-abs-p">' . $wrap($pHtml) . '</p>';
+                }
+            } elseif ($ln === 'list') {
+                $listTag = (strtolower($child->getAttribute('list-type')) === 'order') ? 'ol' : 'ul';
+                $itemsHtml = '';
+                foreach ($xpath->query('./list-item', $child) as $li) {
+                    $liTxt = self::renderInlineContent($li);
+                    if (trim(strip_tags($liTxt)) !== '') {
+                        $itemsHtml .= '<li>' . $wrap($liTxt) . '</li>';
+                    }
+                }
+                if ($itemsHtml !== '') {
+                    $out .= '<' . $listTag . ' class="kisi-abs-list">' . $itemsHtml . '</' . $listTag . '>';
+                }
+            } elseif ($ln === 'boxed-text' || $ln === 'disp-quote') {
+                $out .= self::renderAbstractChildNodes($child, $xpath, $isEnglish);
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -349,35 +574,12 @@ JS;
      */
     private static function renderSingleAbstractBody(DOMElement $absNode, DOMXPath $xpath, array $keywords, bool $isEnglish): string
     {
-        $out = '';
         $wrap = static fn (string $txt): string => $isEnglish ? ('<em>' . $txt . '</em>') : $txt;
+        $out = self::renderAbstractChildNodes($absNode, $xpath, $isEnglish);
 
-        $secs = $xpath->query('./sec[not(@content-type="sdgs")]', $absNode);
-        if ($secs && $secs->length > 0) {
-            foreach ($secs as $s) {
-                $st = self::getNodeText($xpath, './title', $s);
-                if ($st !== '') {
-                    $out .= '<h4 class="kisi-abs-subhead">' . $wrap(htmlspecialchars($st, ENT_QUOTES, 'UTF-8')) . '</h4>';
-                }
-                foreach ($xpath->query('./p', $s) as $p) {
-                    $pHtml = self::renderInlineContent($p);
-                    if (trim(strip_tags($pHtml)) !== '') {
-                        $out .= '<p class="kisi-abs-p">' . $wrap($pHtml) . '</p>';
-                    }
-                }
-            }
-        }
-
-        // Also handle direct <p> elements directly inside <abstract> (even when alongside or without <sec>)
-        foreach ($xpath->query('./p', $absNode) as $p) {
-            $pHtml = self::renderInlineContent($p);
-            if (trim(strip_tags($pHtml)) !== '') {
-                $out .= '<p class="kisi-abs-p">' . $wrap($pHtml) . '</p>';
-            }
-        }
-
-        // Handle <list>/<list-item> or deeply nested paragraphs if no direct <sec>/<p> rendered yet
-        if ($out === '') {
+        // Fallback if <abstract> wrapped text inside deeply non-standard elements
+        if (trim(strip_tags($out)) === '') {
+            $out = '';
             foreach ($xpath->query('.//p', $absNode) as $p) {
                 if ($p->parentNode instanceof DOMElement && $p->parentNode->getAttribute('content-type') === 'sdgs') {
                     continue;
@@ -389,7 +591,7 @@ JS;
             }
         }
 
-        if ($out === '') {
+        if (trim(strip_tags($out)) === '') {
             $plain = trim($absNode->textContent);
             if ($plain !== '') {
                 $out .= '<p class="kisi-abs-p">' . $wrap(htmlspecialchars($plain, ENT_QUOTES, 'UTF-8')) . '</p>';
@@ -402,11 +604,11 @@ JS;
             $out .= '<p class="kisi-abs-keywords">' . $wrap($kwLine) . '</p>';
         }
 
-        $sdgSec = $xpath->query('./sec[@content-type="sdgs"]', $absNode)->item(0);
+        $sdgSec = $xpath->query('.//sec[@content-type="sdgs"]', $absNode)->item(0);
         if ($sdgSec instanceof DOMElement) {
             $st = self::getNodeText($xpath, './title', $sdgSec);
             $sp = '';
-            foreach ($xpath->query('./p', $sdgSec) as $spNode) {
+            foreach ($xpath->query('.//p', $sdgSec) as $spNode) {
                 $sp .= self::renderInlineContent($spNode) . ' ';
             }
             $sp = trim($sp);
@@ -681,6 +883,90 @@ JS;
     }
 
     /**
+     * Render a standalone responsive HTML5 Full-Text Reader document when viewing an XML Galley directly (/article/view/{id}/{galleyId}).
+     */
+    public static function renderStandaloneReaderPage(string $xmlContent, array $meta = []): string
+    {
+        $dom = self::loadJatsDom($xmlContent);
+        if (!$dom) {
+            return '';
+        }
+        $xpath = new DOMXPath($dom);
+        $xpath->registerNamespace('xlink', 'http://www.w3.org/1999/xlink');
+
+        $titleEn = self::getNodeText($xpath, '//article-meta/title-group/trans-title-group[@xml:lang="en"]/trans-title')
+            ?: self::getNodeText($xpath, '//article-meta/title-group/article-title');
+        $titleId = self::getNodeText($xpath, '//article-meta/title-group/article-title');
+        $formLangMode = strtolower((string) ($meta['form_language_mode'] ?? 'en'));
+        $displayTitle = ($formLangMode === 'en' && $titleEn !== '') ? $titleEn : ($titleEn !== '' ? $titleEn : $titleId);
+        if ($displayTitle === '' && !empty($meta['title'])) {
+            $displayTitle = (string) $meta['title'];
+        }
+
+        $journalTitle = self::getNodeText($xpath, '//journal-meta/journal-title-group/journal-title')
+            ?: (string) ($meta['journal_title'] ?? 'Kisi Berkelanjutan: Sains Medis Dan Kesehatan');
+        $doi = self::getNodeText($xpath, '//article-meta/article-id[@pub-id-type="doi"]');
+
+        $authors = [];
+        foreach ($xpath->query('//article-meta/contrib-group[not(@content-type="editor")]/contrib[@contrib-type="author"]') as $c) {
+            $surname = self::getNodeText($xpath, './name/surname', $c);
+            $given = self::getNodeText($xpath, './name/given-names', $c);
+            $nameStr = self::getNodeText($xpath, './string-name', $c) ?: trim($given . ' ' . $surname);
+            if ($nameStr !== '') {
+                $authors[] = $nameStr;
+            }
+        }
+        $authorLine = !empty($authors) ? implode(', ', $authors) : (string) ($meta['authors'] ?? '');
+
+        $digestHtml = self::renderFullTextHtml($xmlContent, [
+            'include_abstract' => true,
+            'form_language_mode' => $meta['form_language_mode'] ?? 'en',
+        ]);
+        if ($digestHtml === '') {
+            return '';
+        }
+
+        $articleUrl = htmlspecialchars((string) ($meta['article_url'] ?? 'javascript:history.back()'), ENT_QUOTES, 'UTF-8');
+        $escapedDocTitle = htmlspecialchars($displayTitle ?: 'Full-Text Article', ENT_QUOTES, 'UTF-8');
+        $escapedJournal = htmlspecialchars($journalTitle, ENT_QUOTES, 'UTF-8');
+        $escapedAuthors = htmlspecialchars($authorLine, ENT_QUOTES, 'UTF-8');
+        $doiBadge = $doi !== '' ? ('<div style="margin-top:8px;font-size:13px;color:#0369a1;">DOI: <a href="https://doi.org/' . htmlspecialchars($doi, ENT_QUOTES, 'UTF-8') . '" target="_blank" rel="noopener">https://doi.org/' . htmlspecialchars($doi, ENT_QUOTES, 'UTF-8') . '</a></div>') : '';
+
+        return <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{$escapedDocTitle} — {$escapedJournal}</title>
+    <style>
+        body { margin: 0; background: #f1f5f9; color: #0f172a; font-family: system-ui, -apple-system, "Segoe UI", Roboto, Georgia, sans-serif; }
+        .kisi-reader-topbar { background: #0a1d30; color: #ffffff; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .kisi-reader-back { background: rgba(255,255,255,0.14); color: #ffffff; text-decoration: none; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: 600; }
+        .kisi-reader-back:hover { background: rgba(255,255,255,0.24); }
+        .kisi-reader-main { max-width: 960px; margin: 24px auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 32px 36px; box-shadow: 0 6px 24px rgba(15,23,42,0.06); }
+        .kisi-reader-title { margin: 0 0 12px 0; font-size: 25px; line-height: 1.3; color: #0a1d30; }
+        .kisi-reader-authors { font-size: 15px; color: #334155; font-weight: 500; }
+        @media (max-width: 640px) { .kisi-reader-main { margin: 0; border-radius: 0; padding: 18px 16px; } }
+    </style>
+</head>
+<body>
+    <header class="kisi-reader-topbar">
+        <div style="font-weight:700;font-size:14px;">{$escapedJournal} · Full-Text XML Reader</div>
+        <a href="{$articleUrl}" class="kisi-reader-back">← Back to Article</a>
+    </header>
+    <main class="kisi-reader-main">
+        <h1 class="kisi-reader-title">{$escapedDocTitle}</h1>
+        <div class="kisi-reader-authors">{$escapedAuthors}</div>
+        {$doiBadge}
+        {$digestHtml}
+    </main>
+</body>
+</html>
+HTML;
+    }
+
+    /**
      * Embedded responsive CSS for the Full-Text Article Digest on the OJS landing page
      */
     private static function getFullTextCss(): string
@@ -796,6 +1082,20 @@ JS;
     background: #0a1d30;
     color: #ffffff;
     border-color: #0a1d30;
+}
+.kisi-jats-abstract-single-head {
+    font-size: 14px;
+    font-weight: 800;
+    color: #0a1d30;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid #cbd5e1;
+    padding-bottom: 6px;
+    margin-bottom: 12px;
+}
+.kisi-abs-list {
+    margin: 4px 0 10px 20px;
+    padding-left: 14px;
+    font-size: 14.5px;
 }
 .kisi-abs-subhead {
     margin: 10px 0 4px 0;

@@ -34,20 +34,47 @@ class GeminiRestructurer
         }
 
         $model = trim($model) !== '' ? trim($model) : 'gemini-2.5-flash';
+        $isEnglishOnly = LanguageAuditor::isEnglishOnlyArticle($articleData);
 
-        $payloadForPrompt = [
-            'title_id' => $articleData['title_id'] ?? '',
-            'title_en' => $articleData['title_en'] ?? '',
-            'keywords_id' => $articleData['keywords_id'] ?? '',
-            'keywords_en' => $articleData['keywords_en'] ?? '',
-            'abstract_id_raw' => $articleData['abstract_id']['raw'] ?? ($articleData['abstract_id']['pendahuluan_metode'] ?? ''),
-            'abstract_en_raw' => $articleData['abstract_en']['raw'] ?? ($articleData['abstract_en']['intro_methods'] ?? ''),
-            'abstract_id_current' => $articleData['abstract_id'] ?? [],
-            'abstract_en_current' => $articleData['abstract_en'] ?? [],
-            'referensi' => $articleData['referensi'] ?? [],
-        ];
+        if ($isEnglishOnly) {
+            $payloadForPrompt = [
+                'title_en' => $articleData['title_en'] ?? '',
+                'keywords_en' => $articleData['keywords_en'] ?? '',
+                'abstract_en_raw' => $articleData['abstract_en']['raw'] ?? ($articleData['abstract_en']['intro_methods'] ?? ''),
+                'abstract_en_current' => $articleData['abstract_en'] ?? [],
+                'referensi' => $articleData['referensi'] ?? [],
+            ];
 
-        $prompt = <<<PROMPT
+            $prompt = <<<PROMPT
+Anda adalah editor tata letak ilmiah untuk jurnal "Kisi Berkelanjutan: Sains Medis dan Kesehatan" (mode English-Only Form).
+Tugas Anda adalah merapikan metadata Bahasa Inggris, daftar pustaka Vancouver, & memecah abstrak Bahasa Inggris menjadi struktur 3 bagian TANPA mengubah substansi ilmiah dan TANPA menambahkan field Bahasa Indonesia (title_id / abstract_id / keywords_id tidak digunakan).
+
+Aturan ketat:
+1. Pecah abstrak Bahasa Inggris menjadi objek "abstract_en" berisi 3 bagian:
+   - "intro_methods": Brief background, objective, study design/methods, population/sample, instruments, and statistical analysis.
+   - "results": Key findings and statistical test outcomes (e.g., frequency, percentage, p-value).
+   - "conclusions_recommendations": Conclusions and practical/research recommendations.
+2. Perbaiki ejaan akademik Bahasa Inggris pada "title_en" bila perlu tanpa mengubah makna, serta pastikan "keywords_en" dipisahkan dengan titik koma (; ) tanpa titik di akhir.
+3. Terapkan aturan baku spasi tunggal: dilarang ada spasi ganda (>= 2 spasi berturut-turut) di dalam paragraf maupun abstrak.
+4. Format seluruh entri array "referensi" ke gaya Vancouver (ICMJE) secara konsisten (tanpa nomor awalan `1.`, misalnya: "NamaBelakang Inisial, ... Judul. NamaJurnal. Tahun;Vol(No):Hal. doi:...").
+5. JANGAN membuat terjemahan Bahasa Indonesia (biarkan title_id, keywords_id, dan abstract_id kosong).
+
+Data input artikel (JSON):
+PROMPT;
+        } else {
+            $payloadForPrompt = [
+                'title_id' => $articleData['title_id'] ?? '',
+                'title_en' => $articleData['title_en'] ?? '',
+                'keywords_id' => $articleData['keywords_id'] ?? '',
+                'keywords_en' => $articleData['keywords_en'] ?? '',
+                'abstract_id_raw' => $articleData['abstract_id']['raw'] ?? ($articleData['abstract_id']['pendahuluan_metode'] ?? ''),
+                'abstract_en_raw' => $articleData['abstract_en']['raw'] ?? ($articleData['abstract_en']['intro_methods'] ?? ''),
+                'abstract_id_current' => $articleData['abstract_id'] ?? [],
+                'abstract_en_current' => $articleData['abstract_en'] ?? [],
+                'referensi' => $articleData['referensi'] ?? [],
+            ];
+
+            $prompt = <<<PROMPT
 Anda adalah editor tata letak ilmiah untuk jurnal "Kisi Berkelanjutan: Sains Medis dan Kesehatan".
 Tugas Anda adalah merapikan metadata, daftar pustaka Vancouver, & memecah abstrak menjadi struktur template Kisi Berkelanjutan (3 bagian terstruktur) TANPA mengubah substansi ilmiah, angka statistik, atau data penelitian.
 
@@ -67,6 +94,7 @@ Aturan ketat:
 
 Data input artikel (JSON):
 PROMPT;
+        }
         $prompt .= "\n" . json_encode($payloadForPrompt, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 
         $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent?key=' . rawurlencode($apiKey);
@@ -117,28 +145,35 @@ PROMPT;
             return self::restructureLocally($articleData, 'Fallback Lokal digunakan karena format JSON Gemini tidak valid.');
         }
 
-        if (!empty($aiJson['title_id'])) {
-            $articleData['title_id'] = trim((string) $aiJson['title_id']);
+        if ($isEnglishOnly) {
+            $articleData['title_id'] = '';
+            $articleData['keywords_id'] = '';
+            $articleData['sdgs_id'] = '';
+            $articleData['abstract_id'] = ['pendahuluan_metode' => '', 'hasil' => '', 'kesimpulan_saran' => '', 'raw' => ''];
+        } else {
+            if (!empty($aiJson['title_id'])) {
+                $articleData['title_id'] = trim((string) $aiJson['title_id']);
+            }
+            if (!empty($aiJson['keywords_id'])) {
+                $articleData['keywords_id'] = rtrim(trim((string) $aiJson['keywords_id']), '.');
+            }
+            $abId = $aiJson['abstract_id'] ?? $aiJson;
+            if (!empty($abId['pendahuluan_metode'])) {
+                $articleData['abstract_id']['pendahuluan_metode'] = trim((string) $abId['pendahuluan_metode']);
+            }
+            if (!empty($abId['hasil'])) {
+                $articleData['abstract_id']['hasil'] = trim((string) $abId['hasil']);
+            }
+            if (!empty($abId['kesimpulan_saran'])) {
+                $articleData['abstract_id']['kesimpulan_saran'] = trim((string) $abId['kesimpulan_saran']);
+            }
         }
+
         if (!empty($aiJson['title_en'])) {
             $articleData['title_en'] = trim((string) $aiJson['title_en']);
         }
-        if (!empty($aiJson['keywords_id'])) {
-            $articleData['keywords_id'] = rtrim(trim((string) $aiJson['keywords_id']), '.');
-        }
         if (!empty($aiJson['keywords_en'])) {
             $articleData['keywords_en'] = rtrim(trim((string) $aiJson['keywords_en']), '.');
-        }
-
-        $abId = $aiJson['abstract_id'] ?? $aiJson;
-        if (!empty($abId['pendahuluan_metode'])) {
-            $articleData['abstract_id']['pendahuluan_metode'] = trim((string) $abId['pendahuluan_metode']);
-        }
-        if (!empty($abId['hasil'])) {
-            $articleData['abstract_id']['hasil'] = trim((string) $abId['hasil']);
-        }
-        if (!empty($abId['kesimpulan_saran'])) {
-            $articleData['abstract_id']['kesimpulan_saran'] = trim((string) $abId['kesimpulan_saran']);
         }
 
         $abEn = $aiJson['abstract_en'] ?? $aiJson;

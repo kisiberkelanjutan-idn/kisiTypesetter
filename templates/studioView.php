@@ -63,6 +63,7 @@ $defaultArticle = $activeArticleData ?: [
     ],
     'referensi' => [],
 ];
+$initialEnOnly = (($defaultArticle['form_mode'] ?? ($settings['formLanguageMode'] ?? 'en')) === 'en');
 $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (!empty($pluginFaviconUrl) ? (string) $pluginFaviconUrl : '');
 ?>
 <!DOCTYPE html>
@@ -628,17 +629,17 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
         </div>
         <div class="row-2">
             <div class="field-group">
-                <label>Digest Otomatis JATS XML ke Halaman Full-Text Artikel (`/article/view/{id}`)</label>
+                <label>Digest Otomatis JATS XML ke Halaman Full-Text Website Jurnal</label>
                 <select id="cfg_enableFullTextDigest">
-                    <option value="1" <?php echo (($settings['enableFullTextDigest'] ?? '1') !== '0') ? 'selected' : ''; ?>>✅ Aktif (Langsung tampilkan Full-Text HTML dari JATS XML di halaman artikel)</option>
-                    <option value="0" <?php echo (($settings['enableFullTextDigest'] ?? '1') === '0') ? 'selected' : ''; ?>>Nonaktif (Hanya gunakan plugin eksternal seperti JATS Parser / Lens)</option>
+                    <option value="1" <?php echo (($settings['enableFullTextDigest'] ?? '1') !== '0') ? 'selected' : ''; ?>>✅ Aktif (Tampilkan Full-Text + Abstrak di `/article/view/{id}` &amp; Galley XML)</option>
+                    <option value="0" <?php echo (($settings['enableFullTextDigest'] ?? '1') === '0') ? 'selected' : ''; ?>>Plugin Eksternal (JATS Parser / Lens — KisiTypesetter tetap isi Abstrak OJS yang kosong)</option>
                 </select>
             </div>
             <div class="field-group">
-                <label>Tampilan Abstrak di Halaman Full-Text Artikel</label>
+                <label>Posisi &amp; Tampilan Abstrak di Halaman Full-Text Artikel</label>
                 <select id="cfg_replaceDefaultAbstract">
-                    <option value="1" <?php echo (($settings['replaceDefaultAbstract'] ?? '1') !== '0') ? 'selected' : ''; ?>>✅ Tampilkan Abstrak Terstruktur dari JATS XML</option>
-                    <option value="0" <?php echo (($settings['replaceDefaultAbstract'] ?? '1') === '0') ? 'selected' : ''; ?>>Gunakan tampilan Abstrak bawaan tema OJS</option>
+                    <option value="1" <?php echo (($settings['replaceDefaultAbstract'] ?? '1') !== '0') ? 'selected' : ''; ?>>✅ Tampilkan Abstrak Terstruktur dari JATS XML (Upgrade blok abstrak halaman)</option>
+                    <option value="0" <?php echo (($settings['replaceDefaultAbstract'] ?? '1') === '0') ? 'selected' : ''; ?>>Pertahankan blok Abstrak bawaan OJS + tetap tampilkan Abstrak di Full-Text XML</option>
                 </select>
             </div>
         </div>
@@ -865,13 +866,13 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
             </div>
 
             <!-- Article Titles (English-Only or Bilingual depending on Form Mode) -->
-            <div id="titleFieldsRow" class="row-2">
-                <div class="field-group" id="titleIdGroup">
+            <div id="titleFieldsRow" class="row-2"<?php echo $initialEnOnly ? ' style="grid-template-columns:1fr;"' : ''; ?>>
+                <div class="field-group" id="titleIdGroup"<?php echo $initialEnOnly ? ' style="display:none;"' : ''; ?>>
                     <label>Judul Artikel (Indonesia — Bold 14pt)</label>
                     <textarea id="f_title_id" rows="2" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                 </div>
                 <div class="field-group" id="titleEnGroup">
-                    <label id="titleEnLabel">Judul Artikel (Inggris — Bold 14pt)</label>
+                    <label id="titleEnLabel"><?php echo $initialEnOnly ? 'Article Title / Judul Artikel (English — Bold 14pt)' : 'Judul Artikel (Inggris — Italic 14pt)'; ?></label>
                     <textarea id="f_title_en" rows="2" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                 </div>
             </div>
@@ -900,7 +901,7 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
             <!-- Content Tabs -->
             <div class="tabs" style="margin-top:12px;flex-wrap:wrap;">
                 <button type="button" class="tab-btn active" data-tab="tab-abstracts" onclick="switchTab('tab-abstracts', this)">
-                    1. Abstrak <span id="absTabStatusBadge" style="font-weight:500;">(ID &amp; EN)</span>
+                    1. Abstrak <span id="absTabStatusBadge" style="font-weight:500;"><?php echo $initialEnOnly ? '(English Only)' : '(ID &amp; EN)'; ?></span>
                 </button>
                 <button type="button" class="tab-btn" data-tab="tab-body" onclick="switchTab('tab-body', this)">
                     2. Isi &amp; Tabel Kesehatan
@@ -922,9 +923,9 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
                     📄 <strong>Mode Tanpa Abstrak Aktif (<span id="noAbstractCatLabel">DATA REPORT / LETTER</span>):</strong>
                     Sesuai template resmi, kategori ini tidak menampilkan kolom <em>ABSTRAK</em>, <em>ABSTRACT</em>, maupun <em>Kata Kunci / Keywords</em> pada DOCX maupun JATS XML. Silakan langsung sunting isi naskah di <strong>Tab 2 (Isi &amp; Tabel)</strong>.
                 </div>
-                <div id="abstractInputsGrid" class="row-2">
+                <div id="abstractInputsGrid" class="row-2"<?php echo $initialEnOnly ? ' style="grid-template-columns:1fr;"' : ''; ?>>
                     <!-- Indonesian Abstract -->
-                    <div id="abstractIdCard" style="background:#f8fafc;padding:10px 12px;border-radius:8px;border:1px solid var(--kisi-border);">
+                    <div id="abstractIdCard" style="background:#f8fafc;padding:10px 12px;border-radius:8px;border:1px solid var(--kisi-border);<?php echo $initialEnOnly ? 'display:none;' : ''; ?>">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                             <h3 style="margin:0;font-size:13px;color:var(--kisi-navy);">🇮🇩 ABSTRAK (Indonesia)</h3>
                             <span id="idAbsWordCount" class="word-badge">0 kata</span>
@@ -954,7 +955,7 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
                     <!-- English Abstract -->
                     <div id="abstractEnCard" style="background:#f8fafc;padding:10px 12px;border-radius:8px;border:1px solid var(--kisi-border);">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                            <h3 id="abstractEnHeading" style="margin:0;font-size:13px;color:var(--kisi-navy);">🇬🇧 ABSTRACT (English)</h3>
+                            <h3 id="abstractEnHeading" style="margin:0;font-size:13px;color:var(--kisi-navy);"><?php echo $initialEnOnly ? '🇬🇧 ABSTRACT (English Only)' : '🇬🇧 ABSTRACT (English — Italic)'; ?></h3>
                             <span id="enAbsWordCount" class="word-badge">0 words</span>
                         </div>
                         <div class="field-group">
@@ -1353,7 +1354,7 @@ function applyVolumeTemplateMode() {
     }
     if (datesRow) datesRow.style.display = vol3Plus ? 'grid' : 'none';
     if (rolesGrp) rolesGrp.style.display = vol3Plus ? 'block' : 'none';
-    if (sdgsIdGrp) sdgsIdGrp.style.display = vol3Plus ? 'block' : 'none';
+    if (sdgsIdGrp) sdgsIdGrp.style.display = (vol3Plus && getActiveFormLanguageModeJs() !== 'en') ? 'block' : 'none';
     if (sdgsEnGrp) sdgsEnGrp.style.display = vol3Plus ? 'block' : 'none';
     if (retNoteGrp) retNoteGrp.style.opacity = vol3Plus ? '0.45' : '1';
     if (retNoteHint) retNoteHint.textContent = vol3Plus ? '(Otomatis dihapus di Vol 3+)' : '(Vol 1–2 Arsip)';
@@ -2674,7 +2675,9 @@ async function runAiRestructure() {
         const res = await fetch(BASE_URL + '/aiRestructure', { method: 'POST', body: fd });
         const data = await res.json();
         if (data.ok && data.article) {
+            const keptMode = getActiveFormLanguageModeJs();
             articleState = data.article;
+            articleState.form_mode = keptMode;
             populateFormFromState();
             showToast(data.message || 'Abstrak berhasil dirapikan!', 'success');
         } else {
