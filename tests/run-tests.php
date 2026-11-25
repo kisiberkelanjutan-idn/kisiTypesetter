@@ -700,16 +700,18 @@ $enParsedDocx = DocxParser::parse($tmpEnDocx);
 assertTrue(
     strpos($enParsedDocx['title_en'] ?? '', 'Effectiveness of Community Midwifery Telemonitoring') !== false
         && trim((string) ($enParsedDocx['title_id'] ?? '')) === ''
+        && ($enParsedDocx['corresponding_name'] ?? '') === 'Rina Sari'
+        && ($enParsedDocx['corresponding_email'] ?? '') === 'rina@example.ac.id'
         && trim((string) ($enParsedDocx['abstract_en']['intro_methods'] ?? '')) !== ''
         && strpos($enParsedDocx['sdgs_en'] ?? '', 'Sustainable Development Goals') !== false,
-    'DocxParser cleanly round-trips English-only DOCX title, structured English abstract, and SDGs EN'
+    'DocxParser cleanly round-trips English-only DOCX title, corresponding author, structured English abstract, and SDGs EN'
 );
 @unlink($tmpEnDocx);
 
 $enJatsXml = JatsXmlGenerator::generate($restructuredEnOnly);
 $enJatsDom = new DOMDocument();
 assertTrue($enJatsDom->loadXML($enJatsXml) !== false, 'JatsXmlGenerator generates well-formed XML for English-only mode');
-assertTrue(strpos($enJatsXml, '<article xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:mml="http://www.w3.org/1998/Math/MathML" article-type="research-article" xml:lang="en">') !== false, 'English-only JATS root sets xml:lang="en"');
+assertTrue(preg_match('/<article\b[^>]*\barticle-type="research-article"[^>]*\bxml:lang="en"/i', $enJatsXml) === 1, 'English-only JATS root sets xml:lang="en"');
 assertTrue(strpos($enJatsXml, '<trans-title-group') === false && strpos($enJatsXml, '<abstract xml:lang="en">') !== false && strpos($enJatsXml, '<trans-abstract') === false, 'English-only JATS emits primary <abstract xml:lang="en"> without duplicate <trans-title-group> or <trans-abstract>');
 assertTrue(strpos($enJatsXml, '* Corresponding author: Rina Sari') !== false, 'English-only JATS uses Corresponding author label');
 

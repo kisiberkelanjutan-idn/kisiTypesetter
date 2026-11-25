@@ -454,11 +454,15 @@ class DocxParser
         }
 
         // Row 4 Cell 1: Corresponding Author
+        $hasCorrespondingEn = false;
         if ($rows->length > 4) {
             $c1 = $xpath->query('./w:tc[2]', $rows->item(4))->item(0);
             if ($c1) {
                 $t = trim(self::getElementText($c1, $xpath));
-                if (preg_match('/Penulis\s+koresponden\s*:\s*([^\(]+)\(([^\)]+)\)/iu', $t, $m)) {
+                if (stripos($t, 'Corresponding author') !== false) {
+                    $hasCorrespondingEn = true;
+                }
+                if (preg_match('/(?:Penulis\s+koresponden|Corresponding\s+author)\s*:\s*([^\(]+)\(([^\)]+)\)/iu', $t, $m)) {
                     $result['corresponding_name'] = trim($m[1]);
                     $result['corresponding_email'] = trim($m[2]);
                     foreach ($result['authors'] as &$a) {
@@ -471,28 +475,72 @@ class DocxParser
             }
         }
 
-        // Row 7 Cell 1: Indonesian Abstract (and possible Vol 3+ SDGs row between R7 and last ABSTRACT row)
-        if ($rows->length > 7) {
-            $c1 = $xpath->query('./w:tc[2]', $rows->item(7))->item(0);
-            if ($c1) {
-                self::parseStructuredAbstractCell($c1, $xpath, 'id', $result);
+        // Rows 6+: ABSTRAK (ID), optional TPB/SDGs (ID), and ABSTRACT / SDGs (EN)
+        // Scan dynamically by cell content so English-Only templates (fewer rows) parse cleanly too.
+        $pendingAbstractLang = '';
+        for ($rIdx = 6; $rIdx < $rows->length; $rIdx++) {
+            $rowCells = $xpath->query('./w:tc', $rows->item($rIdx));
+            if ($rowCells->length === 0) {
+                continue;
             }
-        }
-
-        for ($rIdx = 8; $rIdx < $rows->length; $rIdx++) {
-            $cellNode = $xpath->query('./w:tc[1]', $rows->item($rIdx))->item(0);
-            if (!$cellNode) {
+            $cellNode = $rowCells->item($rowCells->length - 1);
+            if (!$cellNode instanceof DOMElement) {
                 continue;
             }
             $cellTxt = trim(self::getElementText($cellNode, $xpath));
             if ($cellTxt === '') {
                 continue;
             }
-            if (preg_match('/^Kontribusi\s+terhadap\s+Target\s+Pembangunan\s+Berkelanjutan/iu', $cellTxt)) {
+            if (preg_match('/^ABSTRAK$/iu', $cellTxt)) {
+                $pendingAbstractLang = 'id';
+                continue;
+            }
+            if (preg_match('/^ABSTRACT$/iu', $cellTxt)) {
+                $pendingAbstractLang = 'en';
+                continue;
+            }
+            if (
+                preg_match('/^Kontribusi\s+terhadap\s+Target\s+Pembangunan\s+Berkelanjutan/iu', $cellTxt)
+                || preg_match('/(?:^|\b)Pendahuluan\s+dan\s+Metode\b/iu', $cellTxt)
+                || preg_match('/\bKata\s+Kunci\s*:/iu', $cellTxt)
+            ) {
+                self::parseStructuredAbstractCell($cellNode, $xpath, 'id', $result);
+                $pendingAbstractLang = 'id';
+            } elseif (
+                preg_match('/^Contribution\s+to\s+Sustainable\s+Development\s+Goals/iu', $cellTxt)
+                || preg_match('/(?:^|\b)Introduction\s+and\s+Methods\b/iu', $cellTxt)
+                || preg_match('/^ABSTRACT\b/iu', $cellTxt)
+                || preg_match('/\bKeywords\s*:/iu', $cellTxt)
+            ) {
+                self::parseStructuredAbstractCell($cellNode, $xpath, 'en', $result);
+                $pendingAbstractLang = 'en';
+            } elseif ($pendingAbstractLang === 'id') {
                 self::parseStructuredAbstractCell($cellNode, $xpath, 'id', $result);
             } else {
                 self::parseStructuredAbstractCell($cellNode, $xpath, 'en', $result);
             }
+        }
+
+        // If front-matter table has only 1 title and English-Only cues (no ID abstract/keywords),
+        // map that single title to title_en instead of duplicating or misfiling into title_id.
+        if (
+            $result['title_en'] === ''
+            && $result['title_id'] !== ''
+            && (
+                $hasCorrespondingEn
+                || (
+                    trim((string) ($result['abstract_id']['pendahuluan_metode'] ?? '')) === ''
+                    && trim((string) ($result['keywords_id'] ?? '')) === ''
+                    && (
+                        trim((string) ($result['abstract_en']['intro_methods'] ?? '')) !== ''
+                        || trim((string) ($result['keywords_en'] ?? '')) !== ''
+                    )
+                )
+            )
+        ) {
+            $result['title_en'] = $result['title_id'];
+            $result['title_id'] = '';
+            $result['form_mode'] = 'en';
         }
     }
 
