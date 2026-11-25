@@ -175,13 +175,17 @@ PROMPT;
             return $articleData;
         }
 
-        // Split Indonesian Abstract if hasil & kesimpulan_saran are empty
-        $rawId = trim($articleData['abstract_id']['raw'] ?? $articleData['abstract_id']['pendahuluan_metode'] ?? '');
-        if ($rawId !== '' && trim($articleData['abstract_id']['hasil'] ?? '') === '') {
-            $splitId = self::heuristicSplitAbstract($rawId, 'id');
-            $articleData['abstract_id']['pendahuluan_metode'] = $splitId[0];
-            $articleData['abstract_id']['hasil'] = $splitId[1];
-            $articleData['abstract_id']['kesimpulan_saran'] = $splitId[2];
+        $isEnglishOnly = LanguageAuditor::isEnglishOnlyArticle($articleData);
+
+        // Split Indonesian Abstract only when not in English-only mode
+        if (!$isEnglishOnly) {
+            $rawId = trim($articleData['abstract_id']['raw'] ?? $articleData['abstract_id']['pendahuluan_metode'] ?? '');
+            if ($rawId !== '' && trim($articleData['abstract_id']['hasil'] ?? '') === '') {
+                $splitId = self::heuristicSplitAbstract($rawId, 'id');
+                $articleData['abstract_id']['pendahuluan_metode'] = $splitId[0];
+                $articleData['abstract_id']['hasil'] = $splitId[1];
+                $articleData['abstract_id']['kesimpulan_saran'] = $splitId[2];
+            }
         }
 
         // Split English Abstract if results & conclusions_recommendations are empty

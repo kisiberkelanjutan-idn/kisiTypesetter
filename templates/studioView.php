@@ -8,6 +8,7 @@ $defaultArticle = $activeArticleData ?: [
     'submission_id' => 76,
     'elocation_id' => 'e76',
     'article_type' => 'ORIGINAL ARTICLE',
+    'form_mode' => (($settings['formLanguageMode'] ?? 'en') === 'bilingual') ? 'bilingual' : 'en',
     'title_id' => '',
     'title_en' => '',
     'authors' => [
@@ -636,9 +637,24 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
             <div class="field-group">
                 <label>Tampilan Abstrak di Halaman Full-Text Artikel</label>
                 <select id="cfg_replaceDefaultAbstract">
-                    <option value="1" <?php echo (($settings['replaceDefaultAbstract'] ?? '1') !== '0') ? 'selected' : ''; ?>>✅ Tampilkan Tab Abstrak Terstruktur 2 Bahasa (ID &amp; EN) dari JATS XML</option>
+                    <option value="1" <?php echo (($settings['replaceDefaultAbstract'] ?? '1') !== '0') ? 'selected' : ''; ?>>✅ Tampilkan Abstrak Terstruktur dari JATS XML</option>
                     <option value="0" <?php echo (($settings['replaceDefaultAbstract'] ?? '1') === '0') ? 'selected' : ''; ?>>Gunakan tampilan Abstrak bawaan tema OJS</option>
                 </select>
+            </div>
+        </div>
+        <div class="row-2">
+            <div class="field-group" style="margin-bottom:0;">
+                <label>Bahasa Formulir Naskah Studio &amp; Ekspor <span class="hint">(Default: English-Only)</span></label>
+                <select id="cfg_formLanguageMode" onchange="applyFormLanguageMode(); syncStateFromInputs();">
+                    <option value="en" <?php echo (($settings['formLanguageMode'] ?? 'en') === 'en') ? 'selected' : ''; ?>>🇬🇧 English-Only Form (Hanya Form Bahasa Inggris — Form ID Disembunyikan)</option>
+                    <option value="auto" <?php echo (($settings['formLanguageMode'] ?? 'en') === 'auto') ? 'selected' : ''; ?>>🔄 Otomatis Ikuti Locale / Konten Naskah</option>
+                    <option value="bilingual" <?php echo (($settings['formLanguageMode'] ?? 'en') === 'bilingual') ? 'selected' : ''; ?>>🇮🇩🇬🇧 Bilingual Form (Indonesia &amp; Inggris — Arsip Vol 1–2)</option>
+                </select>
+            </div>
+            <div class="field-group" style="margin-bottom:0;display:flex;align-items:flex-end;">
+                <div style="font-size:11.5px;color:var(--kisi-muted);background:#f8fafc;border:1px solid var(--kisi-border);padding:7px 10px;border-radius:7px;width:100%;">
+                    💡 Dalam mode <strong>English-Only</strong>, form Judul &amp; Abstrak Indonesia disembunyikan dan output DOCX/JATS XML memakai <code>xml:lang=&quot;en&quot;</code> penuh.
+                </div>
             </div>
         </div>
     </div>
@@ -701,7 +717,7 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
 
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
                 <button type="button" class="btn btn-outline btn-sm" onclick="quickOpenLanguageAudit()">
-                    🔍 Audit Bahasa (ID/EN)
+                    🔍 Audit Bahasa
                 </button>
                 <button type="button" class="btn btn-ai btn-sm" onclick="runAiRestructure()">
                     ✨ AI Struktur &amp; Terjemahan
@@ -848,14 +864,14 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
                 <h2>📝 Editor Naskah, Abstrak &amp; Struktur (DOCX + JATS XML)</h2>
             </div>
 
-            <!-- Bilingual Titles Side-by-Side (Compact) -->
-            <div class="row-2">
-                <div class="field-group">
+            <!-- Article Titles (English-Only or Bilingual depending on Form Mode) -->
+            <div id="titleFieldsRow" class="row-2">
+                <div class="field-group" id="titleIdGroup">
                     <label>Judul Artikel (Indonesia — Bold 14pt)</label>
                     <textarea id="f_title_id" rows="2" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                 </div>
-                <div class="field-group">
-                    <label>Judul Artikel (Inggris — Italic 14pt)</label>
+                <div class="field-group" id="titleEnGroup">
+                    <label id="titleEnLabel">Judul Artikel (Inggris — Bold 14pt)</label>
                     <textarea id="f_title_en" rows="2" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                 </div>
             </div>
@@ -908,7 +924,7 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
                 </div>
                 <div id="abstractInputsGrid" class="row-2">
                     <!-- Indonesian Abstract -->
-                    <div style="background:#f8fafc;padding:10px 12px;border-radius:8px;border:1px solid var(--kisi-border);">
+                    <div id="abstractIdCard" style="background:#f8fafc;padding:10px 12px;border-radius:8px;border:1px solid var(--kisi-border);">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                             <h3 style="margin:0;font-size:13px;color:var(--kisi-navy);">🇮🇩 ABSTRAK (Indonesia)</h3>
                             <span id="idAbsWordCount" class="word-badge">0 kata</span>
@@ -936,9 +952,9 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
                     </div>
 
                     <!-- English Abstract -->
-                    <div style="background:#f8fafc;padding:10px 12px;border-radius:8px;border:1px solid var(--kisi-border);">
+                    <div id="abstractEnCard" style="background:#f8fafc;padding:10px 12px;border-radius:8px;border:1px solid var(--kisi-border);">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                            <h3 style="margin:0;font-size:13px;color:var(--kisi-navy);">🇬🇧 ABSTRACT (English — Italic)</h3>
+                            <h3 id="abstractEnHeading" style="margin:0;font-size:13px;color:var(--kisi-navy);">🇬🇧 ABSTRACT (English)</h3>
                             <span id="enAbsWordCount" class="word-badge">0 words</span>
                         </div>
                         <div class="field-group">
@@ -1175,7 +1191,8 @@ function applyArticleTypeLayoutMode(userInitiated = false) {
         absGrid.style.pointerEvents = noAbs ? 'none' : 'auto';
     }
     if (absBadge) {
-        absBadge.textContent = noAbs ? '(Tanpa Abstrak)' : '(ID & EN)';
+        const modeLabel = (getActiveFormLanguageModeJs() === 'en') ? '(English Only)' : '(ID & EN)';
+        absBadge.textContent = noAbs ? '(Tanpa Abstrak)' : modeLabel;
     }
 
     if (userInitiated && noAbs) {
@@ -1187,6 +1204,7 @@ function applyArticleTypeLayoutMode(userInitiated = false) {
         }
         showToast(`Mode ${articleState.article_type}: Abstrak dihilangkan & langsung ke Badan Artikel.`, 'info');
     }
+    applyFormLanguageMode();
     renderBodySectionsEditor();
 }
 
@@ -1341,6 +1359,56 @@ function applyVolumeTemplateMode() {
     if (retNoteHint) retNoteHint.textContent = vol3Plus ? '(Otomatis dihapus di Vol 3+)' : '(Vol 1–2 Arsip)';
 }
 
+function getActiveFormLanguageModeJs() {
+    const sel = document.getElementById('cfg_formLanguageMode');
+    const cfg = sel ? String(sel.value || 'en').toLowerCase() : String(articleState.form_mode || 'en').toLowerCase();
+    if (cfg === 'en' || cfg === 'english') return 'en';
+    if (cfg === 'bilingual' || cfg === 'id_en') return 'bilingual';
+    const hasIdData = !!(
+        (articleState.title_id && String(articleState.title_id).trim()) ||
+        (articleState.keywords_id && String(articleState.keywords_id).trim()) ||
+        (articleState.abstract_id && (
+            String(articleState.abstract_id.pendahuluan_metode || '').trim() ||
+            String(articleState.abstract_id.hasil || '').trim() ||
+            String(articleState.abstract_id.kesimpulan_saran || '').trim()
+        ))
+    );
+    return hasIdData ? 'bilingual' : 'en';
+}
+
+function applyFormLanguageMode() {
+    const mode = getActiveFormLanguageModeJs();
+    const enOnly = (mode === 'en');
+    articleState.form_mode = mode;
+
+    const titleRow = document.getElementById('titleFieldsRow');
+    const titleIdGrp = document.getElementById('titleIdGroup');
+    const titleEnLbl = document.getElementById('titleEnLabel');
+    const absGrid = document.getElementById('abstractInputsGrid');
+    const absIdCard = document.getElementById('abstractIdCard');
+    const absEnHead = document.getElementById('abstractEnHeading');
+    const absBadge = document.getElementById('absTabStatusBadge');
+
+    if (titleIdGrp) titleIdGrp.style.display = enOnly ? 'none' : 'block';
+    if (titleRow) titleRow.style.gridTemplateColumns = enOnly ? '1fr' : '';
+    if (titleEnLbl) {
+        titleEnLbl.textContent = enOnly
+            ? 'Article Title / Judul Artikel (English — Bold 14pt)'
+            : 'Judul Artikel (Inggris — Italic 14pt)';
+    }
+
+    if (absIdCard) absIdCard.style.display = enOnly ? 'none' : 'block';
+    if (absGrid) absGrid.style.gridTemplateColumns = enOnly ? '1fr' : '';
+    if (absEnHead) {
+        absEnHead.textContent = enOnly
+            ? '🇬🇧 ABSTRACT (English Only)'
+            : '🇬🇧 ABSTRACT (English — Italic)';
+    }
+    if (absBadge && !isNoAbstractType(articleState.article_type)) {
+        absBadge.textContent = enOnly ? '(English Only)' : '(ID & EN)';
+    }
+}
+
 function populateFormFromState() {
     syncArticleTypeControlFromState();
     document.getElementById('f_elocation_id').value = articleState.elocation_id || ('e' + (articleState.submission_id || '76'));
@@ -1389,6 +1457,7 @@ function populateFormFromState() {
     document.getElementById('refCountBadge').textContent = cleanRefs.length;
 
     applyVolumeTemplateMode();
+    applyFormLanguageMode();
     renderAuthorsEditor();
     renderBodySectionsEditor();
     updateAbstractWordCounts();
@@ -1396,6 +1465,7 @@ function populateFormFromState() {
 }
 
 function syncStateFromInputs() {
+    articleState.form_mode = getActiveFormLanguageModeJs();
     articleState.article_type = document.getElementById('f_article_type').value;
     articleState.elocation_id = document.getElementById('f_elocation_id').value;
     articleState.volume = document.getElementById('f_volume').value;
@@ -2484,7 +2554,7 @@ function rebuildApaCitation() {
 async function savePluginSettings() {
     showToast('Menyimpan pengaturan...', 'info');
     const fd = new FormData();
-    ['geminiApiKey', 'geminiModel', 'eissn', 'journalTitle', 'journalShortFooter', 'publisherName', 'referenceStyle', 'retypesetNote', 'enableFullTextDigest', 'replaceDefaultAbstract'].forEach(k => {
+    ['geminiApiKey', 'geminiModel', 'eissn', 'journalTitle', 'journalShortFooter', 'publisherName', 'referenceStyle', 'formLanguageMode', 'retypesetNote', 'enableFullTextDigest', 'replaceDefaultAbstract'].forEach(k => {
         const el = document.getElementById('cfg_' + k);
         if (el) fd.append(k, el.value);
     });
@@ -2528,9 +2598,16 @@ async function sendParseDocxRequest(formData) {
             return;
         }
         const p = data.parsed;
+        const enOnly = (getActiveFormLanguageModeJs() === 'en');
         if (p.article_type && (!articleState.article_type || articleState.article_type === 'ORIGINAL ARTICLE')) articleState.article_type = p.article_type;
-        if (p.title_id && !articleState.title_id) articleState.title_id = p.title_id;
-        if (p.title_en && !articleState.title_en) articleState.title_en = p.title_en;
+        if (enOnly) {
+            const parsedEnTitle = p.title_en || p.title_id || '';
+            if (parsedEnTitle && !articleState.title_en) articleState.title_en = parsedEnTitle;
+            articleState.title_id = '';
+        } else {
+            if (p.title_id && !articleState.title_id) articleState.title_id = p.title_id;
+            if (p.title_en && !articleState.title_en) articleState.title_en = p.title_en;
+        }
         if (p.review_editor && !articleState.review_editor) articleState.review_editor = p.review_editor;
         if (p.received_date && !articleState.received_date) articleState.received_date = p.received_date;
         if (p.accepted_date && !articleState.accepted_date) articleState.accepted_date = p.accepted_date;
@@ -2540,20 +2617,43 @@ async function sendParseDocxRequest(formData) {
         if (p.volume && !articleState.volume) articleState.volume = p.volume;
         if (p.issue_number && !articleState.issue_number) articleState.issue_number = p.issue_number;
         if (p.doi && !articleState.doi) articleState.doi = p.doi;
-        if (p.keywords_id && !articleState.keywords_id) articleState.keywords_id = p.keywords_id;
-        if (p.keywords_en && !articleState.keywords_en) articleState.keywords_en = p.keywords_en;
-        if (p.sdgs_id && !articleState.sdgs_id) articleState.sdgs_id = p.sdgs_id;
-        if (p.sdgs_en && !articleState.sdgs_en) articleState.sdgs_en = p.sdgs_en;
+        if (enOnly) {
+            const parsedEnKw = p.keywords_en || p.keywords_id || '';
+            if (parsedEnKw && !articleState.keywords_en) articleState.keywords_en = parsedEnKw;
+            const parsedEnSdgs = p.sdgs_en || p.sdgs_id || '';
+            if (parsedEnSdgs && !articleState.sdgs_en) articleState.sdgs_en = parsedEnSdgs;
+            articleState.keywords_id = '';
+            articleState.sdgs_id = '';
+        } else {
+            if (p.keywords_id && !articleState.keywords_id) articleState.keywords_id = p.keywords_id;
+            if (p.keywords_en && !articleState.keywords_en) articleState.keywords_en = p.keywords_en;
+            if (p.sdgs_id && !articleState.sdgs_id) articleState.sdgs_id = p.sdgs_id;
+            if (p.sdgs_en && !articleState.sdgs_en) articleState.sdgs_en = p.sdgs_en;
+        }
         if (p.authors && p.authors.length > 0 && (!articleState.authors || !articleState.authors[0].name)) {
             articleState.authors = p.authors;
             articleState.corresponding_name = p.corresponding_name || '';
             articleState.corresponding_email = p.corresponding_email || '';
         }
-        if (p.abstract_id && (p.abstract_id.pendahuluan_metode || p.abstract_id.raw)) {
-            articleState.abstract_id = p.abstract_id;
-        }
-        if (p.abstract_en && (p.abstract_en.intro_methods || p.abstract_en.raw)) {
-            articleState.abstract_en = p.abstract_en;
+        if (enOnly) {
+            articleState.abstract_id = { pendahuluan_metode: '', hasil: '', kesimpulan_saran: '', raw: '' };
+            if (p.abstract_en && (p.abstract_en.intro_methods || p.abstract_en.raw)) {
+                articleState.abstract_en = p.abstract_en;
+            } else if (p.abstract_id && (p.abstract_id.pendahuluan_metode || p.abstract_id.raw)) {
+                articleState.abstract_en = {
+                    intro_methods: p.abstract_id.pendahuluan_metode || p.abstract_id.raw || '',
+                    results: p.abstract_id.hasil || '',
+                    conclusions_recommendations: p.abstract_id.kesimpulan_saran || '',
+                    raw: p.abstract_id.raw || ''
+                };
+            }
+        } else {
+            if (p.abstract_id && (p.abstract_id.pendahuluan_metode || p.abstract_id.raw)) {
+                articleState.abstract_id = p.abstract_id;
+            }
+            if (p.abstract_en && (p.abstract_en.intro_methods || p.abstract_en.raw)) {
+                articleState.abstract_en = p.abstract_en;
+            }
         }
         articleState.sections = p.sections || articleState.sections;
         articleState.referensi = p.referensi || articleState.referensi;

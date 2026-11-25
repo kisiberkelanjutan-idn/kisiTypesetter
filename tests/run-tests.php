@@ -12,6 +12,7 @@ $root = dirname(__DIR__);
 require_once $root . '/classes/HealthTableFormatter.php';
 require_once $root . '/classes/LanguageAuditor.php';
 require_once $root . '/classes/VancouverFormatter.php';
+require_once $root . '/classes/GeminiRestructurer.php';
 require_once $root . '/classes/DocxParser.php';
 require_once $root . '/classes/DocxGenerator.php';
 require_once $root . '/classes/JatsXmlGenerator.php';
@@ -19,6 +20,7 @@ require_once $root . '/classes/JatsHtmlRenderer.php';
 
 use APP\plugins\generic\kisiTypesetter\classes\DocxGenerator;
 use APP\plugins\generic\kisiTypesetter\classes\DocxParser;
+use APP\plugins\generic\kisiTypesetter\classes\GeminiRestructurer;
 use APP\plugins\generic\kisiTypesetter\classes\HealthTableFormatter;
 use APP\plugins\generic\kisiTypesetter\classes\JatsHtmlRenderer;
 use APP\plugins\generic\kisiTypesetter\classes\JatsXmlGenerator;
@@ -609,6 +611,113 @@ assertTrue(
         && strpos($enOnlyHtml, 'style="display:block;">') !== false
         && strpos($enOnlyHtml, 'Visible English only abstract.') !== false,
     'JatsHtmlRenderer ensures English-only or empty-primary JATS abstract stays visibly displayed (never hidden)'
+);
+
+// 12. Verify English-Only Form Mode (form_mode = 'en') end-to-end across Auditor, Restructurer, DOCX & JATS XML
+$enFormArticle = [
+    'submission_id' => 105,
+    'elocation_id' => 'e105',
+    'article_type' => 'ORIGINAL ARTICLE',
+    'form_mode' => 'en',
+    'title_id' => '',
+    'title_en' => 'Effectiveness of Community Midwifery Telemonitoring in Rural Maternal Care',
+    'authors' => [
+        ['name' => 'Rina Sari', 'affiliation' => 'Faculty of Health Sciences, Jakarta', 'is_corresponding' => true],
+        ['name' => 'John Tan', 'affiliation' => 'Public Health Institute, Bandung', 'is_corresponding' => false],
+    ],
+    'corresponding_name' => 'Rina Sari',
+    'corresponding_email' => 'rina@example.ac.id',
+    'citation' => 'Sari, R., & Tan, J. (2026). Effectiveness of Community Midwifery Telemonitoring. Kisi Berkelanjutan, 3(3), e105.',
+    'doi' => '10.5281/zenodo.999999',
+    'review_editor' => 'Dr. Andi Wijaya (Universitas Indonesia)',
+    'received_date' => 'August 11, 2026',
+    'accepted_date' => 'September 25, 2026',
+    'published_date' => 'September 30, 2026',
+    'copyright_year' => '2026',
+    'volume' => '3',
+    'issue_number' => '3',
+    'footer_issue_line' => 'Volume 3 Nomor 3, Juli-September 2026',
+    'article_url' => 'https://kisiberkelanjutan.com/index.php/smk/article/view/105',
+    'funding' => 'None',
+    'competing_interests' => 'The authors have declared that no competing interests exist.',
+    'contributor_roles' => 'RS (Conceptualization, Writing), JT (Formal Analysis).',
+    'retypeset_note' => '',
+    'abstract_id' => ['pendahuluan_metode' => '', 'hasil' => '', 'kesimpulan_saran' => ''],
+    'keywords_id' => '',
+    'sdgs_id' => '',
+    'abstract_en' => [
+        'intro_methods' => '',
+        'results' => '',
+        'conclusions_recommendations' => '',
+        'raw' => 'Telemonitoring improves antenatal follow-up adherence in remote areas. We conducted a quasi-experimental study involving 120 pregnant women. Results showed that antenatal visits increased significantly (p < 0.01) by 34%. In conclusion, community telemonitoring supports safer rural maternal outcomes.',
+    ],
+    'keywords_en' => 'Maternal health; Midwifery; Telemonitoring',
+    'sdgs_en' => 'This study contributes to achieving the Sustainable Development Goals (SDGs) Goal 3.',
+    'sections' => [
+        'pendahuluan' => [['type' => 'paragraph', 'text' => 'Maternal mortality remains elevated in  rural districts due to delayed follow-up [1].']],
+        'metode' => [['type' => 'paragraph', 'text' => 'A prospective cohort was observed across six primary health centers.']],
+        'hasil' => [['type' => 'paragraph', 'text' => 'Adherence improved from 58% to 92% among enrolled mothers.']],
+        'pembahasan' => [['type' => 'paragraph', 'text' => 'Digital midwifery reminders strengthen continuity of care [1].']],
+        'kesimpulan_saran' => [['type' => 'paragraph', 'text' => 'Routine deployment of telemonitoring is recommended.']],
+    ],
+    'referensi' => ['World Health Organization. Recommendations on antenatal care for a positive pregnancy experience. Geneva: WHO; 2022.'],
+];
+
+assertTrue(LanguageAuditor::isEnglishOnlyArticle($enFormArticle) === true, 'LanguageAuditor detects explicit English-only form_mode');
+assertTrue(LanguageAuditor::isEnglishOnlyArticle(['form_mode' => 'bilingual', 'title_en' => 'Test']) === false, 'LanguageAuditor respects explicit bilingual form_mode');
+assertTrue(LanguageAuditor::isEnglishOnlyArticle(['title_en' => 'English Only', 'abstract_en' => ['intro_methods' => 'Text']]) === true, 'LanguageAuditor auto-detects English-only content');
+
+$restructuredEnOnly = GeminiRestructurer::restructureLocally($enFormArticle);
+assertTrue(
+    trim($restructuredEnOnly['abstract_id']['pendahuluan_metode'] ?? '') === ''
+        && trim($restructuredEnOnly['abstract_en']['intro_methods'] ?? '') !== ''
+        && trim($restructuredEnOnly['abstract_en']['results'] ?? '') !== ''
+        && trim($restructuredEnOnly['abstract_en']['conclusions_recommendations'] ?? '') !== '',
+    'GeminiRestructurer splits single-paragraph abstract_en and keeps abstract_id empty in English-only mode'
+);
+
+$auditEnOnly = LanguageAuditor::audit($restructuredEnOnly);
+$auditFieldLabels = array_map(static fn($it) => (string) ($it['field'] ?? ''), $auditEnOnly['issues'] ?? []);
+assertTrue(
+    !in_array('Judul (ID)', $auditFieldLabels, true) && count($auditEnOnly['issues'] ?? []) >= 1,
+    'LanguageAuditor audits English body spacing issues without checking unused Indonesian title/abstract fields'
+);
+
+$tmpEnDocx = tempnam(sys_get_temp_dir(), 'kisi_en_') . '.docx';
+assertTrue(DocxGenerator::generate($restructuredEnOnly, $masterDocx, $tmpEnDocx), 'DocxGenerator builds English-only Vol 3+ DOCX');
+$enZip = new ZipArchive();
+$enDocXml = '';
+if ($enZip->open($tmpEnDocx) === true) {
+    $enDocXml = (string) $enZip->getFromName('word/document.xml');
+    $enZip->close();
+}
+assertTrue(substr_count($enDocXml, 'Effectiveness of Community Midwifery Telemonitoring in Rural Maternal Care') === 1, 'English-only DOCX renders English title once (not duplicated)');
+assertTrue(strpos($enDocXml, '* Corresponding author: Rina Sari') !== false && strpos($enDocXml, 'Penulis koresponden') === false, 'English-only DOCX uses Corresponding author English label');
+assertTrue(strpos($enDocXml, '>ABSTRAK<') === false && strpos($enDocXml, '>ABSTRACT<') !== false, 'English-only DOCX removes empty ABSTRAK section while keeping ABSTRACT');
+assertTrue(strpos($enDocXml, 'Contribution to Sustainable Development Goals (SDGs)') !== false, 'English-only Vol 3+ DOCX retains Contribution to SDGs section');
+
+$enParsedDocx = DocxParser::parse($tmpEnDocx);
+assertTrue(
+    strpos($enParsedDocx['title_en'] ?? '', 'Effectiveness of Community Midwifery Telemonitoring') !== false
+        && trim((string) ($enParsedDocx['title_id'] ?? '')) === ''
+        && trim((string) ($enParsedDocx['abstract_en']['intro_methods'] ?? '')) !== ''
+        && strpos($enParsedDocx['sdgs_en'] ?? '', 'Sustainable Development Goals') !== false,
+    'DocxParser cleanly round-trips English-only DOCX title, structured English abstract, and SDGs EN'
+);
+@unlink($tmpEnDocx);
+
+$enJatsXml = JatsXmlGenerator::generate($restructuredEnOnly);
+$enJatsDom = new DOMDocument();
+assertTrue($enJatsDom->loadXML($enJatsXml) !== false, 'JatsXmlGenerator generates well-formed XML for English-only mode');
+assertTrue(strpos($enJatsXml, '<article xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:mml="http://www.w3.org/1998/Math/MathML" article-type="research-article" xml:lang="en">') !== false, 'English-only JATS root sets xml:lang="en"');
+assertTrue(strpos($enJatsXml, '<trans-title-group') === false && strpos($enJatsXml, '<abstract xml:lang="en">') !== false && strpos($enJatsXml, '<trans-abstract') === false, 'English-only JATS emits primary <abstract xml:lang="en"> without duplicate <trans-title-group> or <trans-abstract>');
+assertTrue(strpos($enJatsXml, '* Corresponding author: Rina Sari') !== false, 'English-only JATS uses Corresponding author label');
+
+$enRenderedHtml = JatsHtmlRenderer::renderFullTextHtml($enJatsXml, ['include_abstract' => true]);
+assertTrue(
+    strpos($enRenderedHtml, 'id="kisi-abs-pane-en"') !== false
+        && strpos($enRenderedHtml, 'Telemonitoring improves antenatal follow-up adherence') !== false,
+    'JatsHtmlRenderer displays English-only primary JATS abstract prominently on full-text page'
 );
 
 if ($failures > 0) {

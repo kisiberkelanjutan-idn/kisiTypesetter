@@ -218,6 +218,7 @@ class KisiTypesetterHandler extends Handler
             'publisherName',
             'eissn',
             'referenceStyle',
+            'formLanguageMode',
             'defaultFunding',
             'defaultCompetingInterests',
             'retypesetNote',
@@ -914,18 +915,13 @@ class KisiTypesetterHandler extends Handler
         $titleId = self::cleanHtmlText(self::pickLocaleValue($titles, ['id', 'id_ID'], false));
         $subIdText = self::cleanHtmlText(self::pickLocaleValue($subtitles, ['id', 'id_ID'], false));
         if ($subIdText !== '') {
-            $titleId = rtrim($titleId, ': ') . ': ' . $subIdText;
+            $titleId = $titleId !== '' ? (rtrim($titleId, ': ') . ': ' . $subIdText) : $subIdText;
         }
 
         $titleEn = self::cleanHtmlText(self::pickLocaleValue($titles, ['en', 'en_US'], false));
         $subEnText = self::cleanHtmlText(self::pickLocaleValue($subtitles, ['en', 'en_US'], false));
         if ($subEnText !== '') {
-            $titleEn = rtrim($titleEn, ': ') . ': ' . $subEnText;
-        }
-
-        if ($titleId === '') {
-            $fallbackTitle = self::cleanHtmlText(self::pickLocaleValue($titles, ['id', 'id_ID', 'en', 'en_US'], true));
-            $titleId = $titleEn !== '' ? $titleEn : $fallbackTitle;
+            $titleEn = $titleEn !== '' ? (rtrim($titleEn, ': ') . ': ' . $subEnText) : $subEnText;
         }
 
         // Section / Article Type
@@ -1086,6 +1082,39 @@ class KisiTypesetterHandler extends Handler
         $kwId = self::extractControlledVocabString($keywords, ['id', 'id_ID'], false);
         $kwEn = self::extractControlledVocabString($keywords, ['en', 'en_US'], false);
 
+        $effectiveFormMode = $this->resolveFormLanguageMode($context, $settings, [
+            'title_id' => $titleId,
+            'title_en' => $titleEn,
+            'abs_id' => $absIdRaw,
+            'abs_en' => $absEnRaw,
+            'kw_id' => $kwId,
+            'kw_en' => $kwEn,
+        ]);
+
+        if ($effectiveFormMode === 'en') {
+            if ($titleEn === '') {
+                $fallbackTitle = self::cleanHtmlText(self::pickLocaleValue($titles, ['en', 'en_US', 'id', 'id_ID'], true));
+                $titleEn = $titleId !== '' ? $titleId : $fallbackTitle;
+            }
+            if ($absEnRaw === '') {
+                $absEnRaw = $absIdRaw !== ''
+                    ? $absIdRaw
+                    : self::cleanHtmlText(self::pickLocaleValue($abstracts, ['en', 'en_US', 'id', 'id_ID'], true));
+            }
+            if ($kwEn === '') {
+                $kwEn = $kwId !== ''
+                    ? $kwId
+                    : self::extractControlledVocabString($keywords, ['en', 'en_US', 'id', 'id_ID'], true);
+            }
+            // English-only form mode: Indonesian submission fields are unused
+            $titleId = '';
+            $absIdRaw = '';
+            $kwId = '';
+        } elseif ($titleId === '') {
+            $fallbackTitle = self::cleanHtmlText(self::pickLocaleValue($titles, ['id', 'id_ID', 'en', 'en_US'], true));
+            $titleId = $titleEn !== '' ? $titleEn : $fallbackTitle;
+        }
+
         // Auto-build APA Citation for Left Sidebar
         $firstAuthorLast = DocxGenerator::extractFirstAuthorLastName($authorsData);
         $citeTitle = $titleEn !== '' ? $titleEn : $titleId;
@@ -1110,6 +1139,7 @@ class KisiTypesetterHandler extends Handler
             'submission_id' => $subId,
             'elocation_id' => $elocationId,
             'article_type' => $articleType,
+            'form_mode' => $effectiveFormMode,
             'title_id' => $titleId,
             'title_en' => $titleEn,
             'authors' => $authorsData,
@@ -1173,11 +1203,21 @@ class KisiTypesetterHandler extends Handler
      */
     protected function mergeOjsAndDocxData(array $ojsData, array $docxData): array
     {
-        if ($ojsData['title_id'] === '' && $docxData['title_id'] !== '') {
-            $ojsData['title_id'] = $docxData['title_id'];
-        }
-        if ($ojsData['title_en'] === '' && $docxData['title_en'] !== '') {
-            $ojsData['title_en'] = $docxData['title_en'];
+        $formMode = strtolower(trim((string) ($ojsData['form_mode'] ?? 'en')));
+        $enOnly = ($formMode === 'en');
+
+        if ($enOnly) {
+            if (($ojsData['title_en'] ?? '') === '') {
+                $ojsData['title_en'] = ($docxData['title_en'] ?? '') !== '' ? $docxData['title_en'] : ($docxData['title_id'] ?? '');
+            }
+            $ojsData['title_id'] = '';
+        } else {
+            if ($ojsData['title_id'] === '' && $docxData['title_id'] !== '') {
+                $ojsData['title_id'] = $docxData['title_id'];
+            }
+            if ($ojsData['title_en'] === '' && $docxData['title_en'] !== '') {
+                $ojsData['title_en'] = $docxData['title_en'];
+            }
         }
         if ($ojsData['review_editor'] === '' && $docxData['review_editor'] !== '') {
             $ojsData['review_editor'] = $docxData['review_editor'];
@@ -1197,26 +1237,54 @@ class KisiTypesetterHandler extends Handler
         if (!empty($docxData['footer_issue_line']) && ($ojsData['footer_issue_line'] ?? '') === '') {
             $ojsData['footer_issue_line'] = $docxData['footer_issue_line'];
         }
-        if ($ojsData['keywords_id'] === '' && $docxData['keywords_id'] !== '') {
-            $ojsData['keywords_id'] = $docxData['keywords_id'];
-        }
-        if ($ojsData['keywords_en'] === '' && $docxData['keywords_en'] !== '') {
-            $ojsData['keywords_en'] = $docxData['keywords_en'];
-        }
-        if (!empty($docxData['sdgs_id'])) {
-            $ojsData['sdgs_id'] = $docxData['sdgs_id'];
-        }
-        if (!empty($docxData['sdgs_en'])) {
-            $ojsData['sdgs_en'] = $docxData['sdgs_en'];
+        if ($enOnly) {
+            if (($ojsData['keywords_en'] ?? '') === '') {
+                $ojsData['keywords_en'] = ($docxData['keywords_en'] ?? '') !== '' ? $docxData['keywords_en'] : ($docxData['keywords_id'] ?? '');
+            }
+            $ojsData['keywords_id'] = '';
+            if (empty($ojsData['sdgs_en'])) {
+                $ojsData['sdgs_en'] = !empty($docxData['sdgs_en']) ? $docxData['sdgs_en'] : ($docxData['sdgs_id'] ?? '');
+            }
+            $ojsData['sdgs_id'] = '';
+        } else {
+            if ($ojsData['keywords_id'] === '' && $docxData['keywords_id'] !== '') {
+                $ojsData['keywords_id'] = $docxData['keywords_id'];
+            }
+            if ($ojsData['keywords_en'] === '' && $docxData['keywords_en'] !== '') {
+                $ojsData['keywords_en'] = $docxData['keywords_en'];
+            }
+            if (!empty($docxData['sdgs_id'])) {
+                $ojsData['sdgs_id'] = $docxData['sdgs_id'];
+            }
+            if (!empty($docxData['sdgs_en'])) {
+                $ojsData['sdgs_en'] = $docxData['sdgs_en'];
+            }
         }
 
         if (!LanguageAuditor::isNoAbstractArticleType((string) ($ojsData['article_type'] ?? ''))) {
-            // If DOCX has structured abstract, prefer DOCX's structured abstract
-            if (!empty($docxData['abstract_id']['hasil']) || $ojsData['abstract_id']['pendahuluan_metode'] === '') {
-                $ojsData['abstract_id'] = $docxData['abstract_id'];
-            }
-            if (!empty($docxData['abstract_en']['results']) || $ojsData['abstract_en']['intro_methods'] === '') {
-                $ojsData['abstract_en'] = $docxData['abstract_en'];
+            $hasDocxEn = !empty($docxData['abstract_en']['results'])
+                || trim((string) ($docxData['abstract_en']['intro_methods'] ?? '')) !== ''
+                || trim((string) ($docxData['abstract_en']['conclusions_recommendations'] ?? '')) !== '';
+            if ($enOnly) {
+                $ojsData['abstract_id'] = ['pendahuluan_metode' => '', 'hasil' => '', 'kesimpulan_saran' => '', 'raw' => ''];
+                if ($hasDocxEn && (!empty($docxData['abstract_en']['results']) || trim((string) ($ojsData['abstract_en']['intro_methods'] ?? '')) === '')) {
+                    $ojsData['abstract_en'] = $docxData['abstract_en'];
+                } elseif (trim((string) ($ojsData['abstract_en']['intro_methods'] ?? '')) === '' && !empty($docxData['abstract_id']['pendahuluan_metode'])) {
+                    $ojsData['abstract_en'] = [
+                        'intro_methods' => (string) ($docxData['abstract_id']['pendahuluan_metode'] ?? ''),
+                        'results' => (string) ($docxData['abstract_id']['hasil'] ?? ''),
+                        'conclusions_recommendations' => (string) ($docxData['abstract_id']['kesimpulan_saran'] ?? ''),
+                        'raw' => (string) ($docxData['abstract_id']['raw'] ?? ''),
+                    ];
+                }
+            } else {
+                // If DOCX has structured abstract, prefer DOCX's structured abstract
+                if (!empty($docxData['abstract_id']['hasil']) || $ojsData['abstract_id']['pendahuluan_metode'] === '') {
+                    $ojsData['abstract_id'] = $docxData['abstract_id'];
+                }
+                if (!empty($docxData['abstract_en']['results']) || $ojsData['abstract_en']['intro_methods'] === '') {
+                    $ojsData['abstract_en'] = $docxData['abstract_en'];
+                }
             }
         }
 
@@ -1229,6 +1297,33 @@ class KisiTypesetterHandler extends Handler
         }
 
         return GeminiRestructurer::restructureLocally($ojsData);
+    }
+
+    /**
+     * Resolve active form language mode ('en' = English-Only Form, 'bilingual' = ID & EN Forms).
+     * Defaults to 'en' while supporting explicit 'bilingual' or 'auto' archive detection.
+     */
+    protected function resolveFormLanguageMode($context, array $settings = [], array $signals = []): string
+    {
+        $configured = strtolower(trim((string) ($settings['formLanguageMode'] ?? 'en')));
+        if ($configured === 'bilingual' || $configured === 'id_en') {
+            return 'bilingual';
+        }
+        if ($configured === 'auto') {
+            $hasIdSignals = trim((string) ($signals['title_id'] ?? '')) !== ''
+                || trim((string) ($signals['abs_id'] ?? '')) !== ''
+                || trim((string) ($signals['kw_id'] ?? '')) !== '';
+            if ($hasIdSignals) {
+                return 'bilingual';
+            }
+            if ($context && method_exists($context, 'getSupportedFormLocales')) {
+                $formLocales = array_map('strtolower', (array) $context->getSupportedFormLocales());
+                if ((in_array('id', $formLocales, true) || in_array('id_id', $formLocales, true)) && count($formLocales) > 1) {
+                    return 'bilingual';
+                }
+            }
+        }
+        return 'en';
     }
 
     /**
@@ -1415,8 +1510,9 @@ class KisiTypesetterHandler extends Handler
             return;
         }
         try {
+            $isEnglishOnly = LanguageAuditor::isEnglishOnlyArticle($articleData);
             $existing = (array) $publication->getData('abstract');
-            $pubLocale = trim((string) ($publication->getData('locale') ?: 'id'));
+            $pubLocale = trim((string) ($publication->getData('locale') ?: ($isEnglishOnly ? 'en' : 'id')));
 
             $buildText = static function (array $parts): string {
                 $chunks = [];
@@ -1429,7 +1525,7 @@ class KisiTypesetterHandler extends Handler
                 return implode('', $chunks);
             };
 
-            $idHtml = $buildText([
+            $idHtml = $isEnglishOnly ? '' : $buildText([
                 $articleData['abstract_id']['pendahuluan_metode'] ?? '',
                 $articleData['abstract_id']['hasil'] ?? '',
                 $articleData['abstract_id']['kesimpulan_saran'] ?? '',
@@ -1442,21 +1538,40 @@ class KisiTypesetterHandler extends Handler
 
             $changed = false;
             $updated = $existing;
-            $idKeys = array_unique([$pubLocale, 'id', 'id_ID']);
-            foreach ($idKeys as $k) {
-                if (stripos($k, 'en') === 0) {
-                    continue;
-                }
-                if ($idHtml !== '' && trim(strip_tags((string) ($updated[$k] ?? ''))) === '') {
-                    $updated[$k] = $idHtml;
-                    $changed = true;
-                    break;
+            if (!$isEnglishOnly && $idHtml !== '') {
+                $idKeys = array_unique([$pubLocale, 'id', 'id_ID']);
+                foreach ($idKeys as $k) {
+                    if (stripos($k, 'en') === 0) {
+                        continue;
+                    }
+                    if (trim(strip_tags((string) ($updated[$k] ?? ''))) === '') {
+                        $updated[$k] = $idHtml;
+                        $changed = true;
+                        break;
+                    }
                 }
             }
-            $enKey = array_key_exists('en_US', $existing) ? 'en_US' : 'en';
-            if ($enHtml !== '' && trim(strip_tags((string) ($updated[$enKey] ?? ''))) === '' && trim(strip_tags((string) ($updated['en'] ?? ''))) === '') {
-                $updated[$enKey] = $enHtml;
-                $changed = true;
+
+            if ($enHtml !== '') {
+                $enCandidates = array_values(array_unique(array_filter(array_merge(
+                    stripos($pubLocale, 'en') === 0 ? [$pubLocale] : [],
+                    ['en', 'en_US']
+                ))));
+                $targetEnKey = $enCandidates[0] ?? 'en';
+                $enAlreadyPresent = false;
+                foreach ($enCandidates as $cand) {
+                    if (array_key_exists($cand, $existing)) {
+                        $targetEnKey = $cand;
+                    }
+                    if (trim(strip_tags((string) ($updated[$cand] ?? ''))) !== '') {
+                        $enAlreadyPresent = true;
+                        break;
+                    }
+                }
+                if (!$enAlreadyPresent) {
+                    $updated[$targetEnKey] = $enHtml;
+                    $changed = true;
+                }
             }
 
             if ($changed) {
@@ -1719,6 +1834,7 @@ class KisiTypesetterHandler extends Handler
             'publisherName' => 'PT Karya Inovasi Berkelanjutan',
             'eissn' => '3062-9063',
             'referenceStyle' => 'auto',
+            'formLanguageMode' => 'en',
             'defaultFunding' => 'none',
             'defaultCompetingInterests' => 'The authors have declared that no competing interests exist.',
             'retypesetNote' => "This article was re-typeset in 2026 to standardize the journal's visual layout. No changes were made to the scientific substance, data, or metadata of the original Version of Record.",

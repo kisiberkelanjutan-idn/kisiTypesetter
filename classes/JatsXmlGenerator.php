@@ -39,10 +39,12 @@ class JatsXmlGenerator
         $dom->encoding = 'UTF-8';
         $dom->formatOutput = true;
 
+        $isEnglishOnly = LanguageAuditor::isEnglishOnlyArticle($data);
+
         $article = $dom->createElement('article');
         $article->setAttribute('article-type', self::mapJatsArticleType((string) ($data['article_type'] ?? 'ORIGINAL ARTICLE')));
         $article->setAttribute('dtd-version', '1.2');
-        $article->setAttribute('xml:lang', 'id');
+        $article->setAttribute('xml:lang', $isEnglishOnly ? 'en' : 'id');
         $article->setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns:xlink', self::NS_XLINK);
         $article->setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns:mml', self::NS_MML);
         $dom->appendChild($article);
@@ -126,15 +128,21 @@ class JatsXmlGenerator
         $ac->appendChild($sg);
         $am->appendChild($ac);
 
-        // Title Group (Bilingual)
+        // Title Group (Single English Title when English-only; Bilingual ID + EN otherwise)
+        $isEnglishOnly = LanguageAuditor::isEnglishOnlyArticle($data);
+        $titleId = trim((string) ($data['title_id'] ?? ''));
+        $titleEn = trim((string) ($data['title_en'] ?? ''));
         $tg = $dom->createElement('title-group');
-        $tg->appendChild($dom->createElement('article-title', $data['title_id'] ?? ''));
-        $titleEn = trim($data['title_en'] ?? '');
-        if ($titleEn !== '') {
-            $ttg = $dom->createElement('trans-title-group');
-            $ttg->setAttribute('xml:lang', 'en');
-            $ttg->appendChild($dom->createElement('trans-title', $titleEn));
-            $tg->appendChild($ttg);
+        if ($isEnglishOnly || ($titleId === '' && $titleEn !== '')) {
+            $tg->appendChild($dom->createElement('article-title', $titleEn !== '' ? $titleEn : $titleId));
+        } else {
+            $tg->appendChild($dom->createElement('article-title', $titleId));
+            if ($titleEn !== '') {
+                $ttg = $dom->createElement('trans-title-group');
+                $ttg->setAttribute('xml:lang', 'en');
+                $ttg->appendChild($dom->createElement('trans-title', $titleEn));
+                $tg->appendChild($ttg);
+            }
         }
         $am->appendChild($tg);
 
@@ -239,7 +247,8 @@ class JatsXmlGenerator
         $corrEmail = trim($data['corresponding_email'] ?? '');
         $corresp = $dom->createElement('corresp');
         $corresp->setAttribute('id', 'cor1');
-        $corresp->appendChild($dom->createTextNode('* Penulis koresponden: ' . $corrName . ($corrEmail !== '' ? ' (' : '')));
+        $correspLabel = $isEnglishOnly ? '* Corresponding author: ' : '* Penulis koresponden: ';
+        $corresp->appendChild($dom->createTextNode($correspLabel . $corrName . ($corrEmail !== '' ? ' (' : '')));
         if ($corrEmail !== '') {
             $corresp->appendChild($dom->createElement('email', $corrEmail));
             $corresp->appendChild($dom->createTextNode(')'));
@@ -349,7 +358,7 @@ class JatsXmlGenerator
                     break;
                 }
             }
-            if ($hasIdAbs) {
+            if ($hasIdAbs && !$isEnglishOnly) {
                 $absId = $dom->createElement('abstract');
                 $absId->setAttribute('xml:lang', 'id');
                 foreach ($idParts as $secTitle => $secBody) {
@@ -372,14 +381,15 @@ class JatsXmlGenerator
                 $am->appendChild($absId);
             }
 
-            // Structured Translated Abstract (English)
+            // Structured English Abstract: primary <abstract xml:lang="en"> when English-only (or no ID abstract), <trans-abstract> otherwise
             $enParts = [
                 'Introduction and Methods' => trim($data['abstract_en']['intro_methods'] ?? ''),
                 'Results' => trim($data['abstract_en']['results'] ?? ''),
                 'Conclusions and Recommendations' => trim($data['abstract_en']['conclusions_recommendations'] ?? ''),
             ];
             if ($enParts['Introduction and Methods'] !== '' || $enParts['Results'] !== '' || $enParts['Conclusions and Recommendations'] !== '') {
-                $absEn = $dom->createElement('trans-abstract');
+                $enTagName = (!$hasIdAbs || $isEnglishOnly) ? 'abstract' : 'trans-abstract';
+                $absEn = $dom->createElement($enTagName);
                 $absEn->setAttribute('xml:lang', 'en');
                 foreach ($enParts as $secTitle => $secBody) {
                     if ($secBody === '') {
@@ -401,8 +411,8 @@ class JatsXmlGenerator
                 $am->appendChild($absEn);
             }
 
-            // Keywords ID
-            $kwIdList = array_filter(array_map('trim', preg_split('/[;,]/u', (string) ($data['keywords_id'] ?? ''))));
+            // Keywords ID (skip in English-only mode)
+            $kwIdList = $isEnglishOnly ? [] : array_filter(array_map('trim', preg_split('/[;,]/u', (string) ($data['keywords_id'] ?? ''))));
             if (!empty($kwIdList)) {
                 $kwgId = $dom->createElement('kwd-group');
                 $kwgId->setAttribute('xml:lang', 'id');

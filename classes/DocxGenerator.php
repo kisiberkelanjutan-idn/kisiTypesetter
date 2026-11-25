@@ -183,17 +183,24 @@ class DocxGenerator
             $typeCell->appendChild(self::createStyledPara($dom, '', ['sz' => '22']));
         }
 
-        // --- C. Row 1 Cell 1: Titles (ID & EN) ---
+        // --- C. Row 1 Cell 1: Titles (ID & EN or Single English Title when Indonesian form unused) ---
+        $isEnglishOnly = LanguageAuditor::isEnglishOnlyArticle($data);
         $titleCell = $xpath->query('./w:tc[2]', $rows->item(1))->item(0);
         if ($titleCell instanceof DOMElement) {
             self::clearCellParagraphs($titleCell, $xpath);
             $titleId = trim($data['title_id'] ?? '');
             $titleEn = trim($data['title_en'] ?? '');
-            $titleCell->appendChild(self::createStyledPara($dom, $titleId, ['sz' => '28', 'bold' => true]));
-            $titleCell->appendChild(self::createStyledPara($dom, '', ['sz' => '28', 'bold' => true]));
-            if ($titleEn !== '') {
-                $titleCell->appendChild(self::createStyledPara($dom, $titleEn, ['sz' => '28', 'italic' => true]));
-                $titleCell->appendChild(self::createStyledPara($dom, '', ['sz' => '28', 'italic' => true]));
+            if ($isEnglishOnly || ($titleId === '' && $titleEn !== '')) {
+                $primaryTitle = $titleEn !== '' ? $titleEn : $titleId;
+                $titleCell->appendChild(self::createStyledPara($dom, $primaryTitle, ['sz' => '28', 'bold' => true]));
+                $titleCell->appendChild(self::createStyledPara($dom, '', ['sz' => '28', 'bold' => true]));
+            } else {
+                $titleCell->appendChild(self::createStyledPara($dom, $titleId, ['sz' => '28', 'bold' => true]));
+                $titleCell->appendChild(self::createStyledPara($dom, '', ['sz' => '28', 'bold' => true]));
+                if ($titleEn !== '') {
+                    $titleCell->appendChild(self::createStyledPara($dom, $titleEn, ['sz' => '28', 'italic' => true]));
+                    $titleCell->appendChild(self::createStyledPara($dom, '', ['sz' => '28', 'italic' => true]));
+                }
             }
         }
 
@@ -306,7 +313,8 @@ class DocxGenerator
                     $corrEmail = trim($data['authors'][0]['email'] ?? '');
                 }
             }
-            $corrLine = '* Penulis koresponden: ' . $corrName . ($corrEmail !== '' ? ' (' . $corrEmail . ')' : '');
+            $corrPrefix = $isEnglishOnly ? '* Corresponding author: ' : '* Penulis koresponden: ';
+            $corrLine = $corrPrefix . $corrName . ($corrEmail !== '' ? ' (' . $corrEmail . ')' : '');
             $corrCell->appendChild(self::createStyledPara($dom, '', ['sz' => '22', 'italic' => true]));
             $corrCell->appendChild(self::createStyledPara($dom, $corrLine, ['sz' => '22', 'italic' => true]));
         }
@@ -322,72 +330,90 @@ class DocxGenerator
             return;
         }
 
-        // --- F. Row 7 Cell 1: Indonesian Structured Abstract ---
+        // --- F. Row 7 Cell 1: Indonesian Structured Abstract (or remove empty ID ABSTRAK rows 6..7 in English-only mode) ---
         $isVol3Plus = LanguageAuditor::isVolume3Plus($data['volume'] ?? '1');
         $sdgsId = trim((string) ($data['sdgs_id'] ?? ''));
         $sdgsEn = trim((string) ($data['sdgs_en'] ?? ''));
 
         $abEnRow = $rows->item(8);
-        $abIdCell = $xpath->query('./w:tc[2]', $rows->item(7))->item(0);
-        if ($abIdCell instanceof DOMElement) {
-            self::clearCellParagraphs($abIdCell, $xpath);
+        $hasIdAbsData = !$isEnglishOnly && (
+            trim($data['abstract_id']['pendahuluan_metode'] ?? '') !== ''
+            || trim($data['abstract_id']['hasil'] ?? '') !== ''
+            || trim($data['abstract_id']['kesimpulan_saran'] ?? '') !== ''
+            || trim($data['keywords_id'] ?? '') !== ''
+            || $sdgsId !== ''
+        );
 
-            $pmId = trim($data['abstract_id']['pendahuluan_metode'] ?? '');
-            $hasilId = trim($data['abstract_id']['hasil'] ?? '');
-            $kesId = trim($data['abstract_id']['kesimpulan_saran'] ?? '');
-            $kwId = rtrim(trim($data['keywords_id'] ?? ''), '.');
-
-            $abIdCell->appendChild(self::createStyledPara($dom, 'Pendahuluan dan Metode', ['bold' => true, 'jc' => 'both']));
-            $abIdCell->appendChild(self::createStyledPara($dom, $pmId, ['jc' => 'both']));
-            $abIdCell->appendChild(self::createStyledPara($dom, '', ['jc' => 'both']));
-
-            if ($hasilId !== '') {
-                $abIdCell->appendChild(self::createStyledPara($dom, 'Hasil', ['bold' => true, 'jc' => 'both']));
-                $abIdCell->appendChild(self::createStyledPara($dom, $hasilId, ['jc' => 'both']));
-                $abIdCell->appendChild(self::createStyledPara($dom, '', ['jc' => 'both']));
-            }
-
-            if ($kesId !== '') {
-                $abIdCell->appendChild(self::createStyledPara($dom, 'Kesimpulan dan Saran', ['bold' => true, 'jc' => 'both']));
-                $abIdCell->appendChild(self::createStyledPara($dom, $kesId, ['jc' => 'both']));
-                $abIdCell->appendChild(self::createStyledPara($dom, '', ['jc' => 'both']));
-            }
-
-            $pKwId = self::createStyledPara($dom, '', ['jc' => 'both']);
-            $pKwId->appendChild(self::createRun($dom, 'Kata Kunci', ['bold' => true]));
-            $pKwId->appendChild(self::createRun($dom, ': ' . $kwId . '.', []));
-            $abIdCell->appendChild($pKwId);
-            $abIdCell->appendChild(self::createStyledPara($dom, '', ['jc' => 'both']));
-        }
-
-        // Vol 3+: Insert full-width shaded (#E8E8E8) SDGs Indonesian block between ABSTRAK and ABSTRACT rows
-        if ($isVol3Plus && $sdgsId !== '' && $abEnRow instanceof DOMElement) {
-            $sdgsRow = $abEnRow->cloneNode(true);
-            if ($sdgsRow instanceof DOMElement) {
-                $sdgsCell = $xpath->query('./w:tc[1]', $sdgsRow)->item(0);
-                if ($sdgsCell instanceof DOMElement) {
-                    self::clearCellParagraphs($sdgsCell, $xpath);
-                    $tcPr = $xpath->query('./w:tcPr', $sdgsCell)->item(0);
-                    if ($tcPr instanceof DOMElement) {
-                        $oldShd = $xpath->query('./w:shd', $tcPr)->item(0);
-                        if ($oldShd) {
-                            $tcPr->removeChild($oldShd);
-                        }
-                        $shd = $dom->createElementNS(self::NS_W, 'w:shd');
-                        $shd->setAttribute('w:val', 'clear');
-                        $shd->setAttribute('w:color', 'auto');
-                        $shd->setAttribute('w:fill', 'E8E8E8');
-                        $tcPr->appendChild($shd);
-                    }
-                    $sdgsCell->appendChild(self::createStyledPara(
-                        $dom,
-                        'Kontribusi terhadap Target Pembangunan Berkelanjutan (TPB/SDGs)',
-                        ['bold' => true]
-                    ));
-                    $sdgsCell->appendChild(self::createStyledPara($dom, $sdgsId, ['jc' => 'both']));
-                    $sdgsCell->appendChild(self::createStyledPara($dom, '', ['jc' => 'both']));
+        if (!$hasIdAbsData) {
+            // Remove empty Indonesian ABSTRAK header & body rows (6 & 7); preserve Row 5 (last sidebar vMerge continuation) before Row 8
+            for ($ri = 7; $ri >= 6; $ri--) {
+                $rowNode = $rows->item($ri);
+                if ($rowNode instanceof DOMElement && $rowNode->parentNode === $tbl) {
+                    $tbl->removeChild($rowNode);
                 }
-                $tbl->insertBefore($sdgsRow, $abEnRow);
+            }
+        } else {
+            $abIdCell = $xpath->query('./w:tc[2]', $rows->item(7))->item(0);
+            if ($abIdCell instanceof DOMElement) {
+                self::clearCellParagraphs($abIdCell, $xpath);
+
+                $pmId = trim($data['abstract_id']['pendahuluan_metode'] ?? '');
+                $hasilId = trim($data['abstract_id']['hasil'] ?? '');
+                $kesId = trim($data['abstract_id']['kesimpulan_saran'] ?? '');
+                $kwId = rtrim(trim($data['keywords_id'] ?? ''), '.');
+
+                $abIdCell->appendChild(self::createStyledPara($dom, 'Pendahuluan dan Metode', ['bold' => true, 'jc' => 'both']));
+                $abIdCell->appendChild(self::createStyledPara($dom, $pmId, ['jc' => 'both']));
+                $abIdCell->appendChild(self::createStyledPara($dom, '', ['jc' => 'both']));
+
+                if ($hasilId !== '') {
+                    $abIdCell->appendChild(self::createStyledPara($dom, 'Hasil', ['bold' => true, 'jc' => 'both']));
+                    $abIdCell->appendChild(self::createStyledPara($dom, $hasilId, ['jc' => 'both']));
+                    $abIdCell->appendChild(self::createStyledPara($dom, '', ['jc' => 'both']));
+                }
+
+                if ($kesId !== '') {
+                    $abIdCell->appendChild(self::createStyledPara($dom, 'Kesimpulan dan Saran', ['bold' => true, 'jc' => 'both']));
+                    $abIdCell->appendChild(self::createStyledPara($dom, $kesId, ['jc' => 'both']));
+                    $abIdCell->appendChild(self::createStyledPara($dom, '', ['jc' => 'both']));
+                }
+
+                $pKwId = self::createStyledPara($dom, '', ['jc' => 'both']);
+                $pKwId->appendChild(self::createRun($dom, 'Kata Kunci', ['bold' => true]));
+                $pKwId->appendChild(self::createRun($dom, ': ' . $kwId . '.', []));
+                $abIdCell->appendChild($pKwId);
+                $abIdCell->appendChild(self::createStyledPara($dom, '', ['jc' => 'both']));
+            }
+
+            // Vol 3+: Insert full-width shaded (#E8E8E8) SDGs Indonesian block between ABSTRAK and ABSTRACT rows
+            if ($isVol3Plus && $sdgsId !== '' && $abEnRow instanceof DOMElement) {
+                $sdgsRow = $abEnRow->cloneNode(true);
+                if ($sdgsRow instanceof DOMElement) {
+                    $sdgsCell = $xpath->query('./w:tc[1]', $sdgsRow)->item(0);
+                    if ($sdgsCell instanceof DOMElement) {
+                        self::clearCellParagraphs($sdgsCell, $xpath);
+                        $tcPr = $xpath->query('./w:tcPr', $sdgsCell)->item(0);
+                        if ($tcPr instanceof DOMElement) {
+                            $oldShd = $xpath->query('./w:shd', $tcPr)->item(0);
+                            if ($oldShd) {
+                                $tcPr->removeChild($oldShd);
+                            }
+                            $shd = $dom->createElementNS(self::NS_W, 'w:shd');
+                            $shd->setAttribute('w:val', 'clear');
+                            $shd->setAttribute('w:color', 'auto');
+                            $shd->setAttribute('w:fill', 'E8E8E8');
+                            $tcPr->appendChild($shd);
+                        }
+                        $sdgsCell->appendChild(self::createStyledPara(
+                            $dom,
+                            'Kontribusi terhadap Target Pembangunan Berkelanjutan (TPB/SDGs)',
+                            ['bold' => true]
+                        ));
+                        $sdgsCell->appendChild(self::createStyledPara($dom, $sdgsId, ['jc' => 'both']));
+                        $sdgsCell->appendChild(self::createStyledPara($dom, '', ['jc' => 'both']));
+                    }
+                    $tbl->insertBefore($sdgsRow, $abEnRow);
+                }
             }
         }
 

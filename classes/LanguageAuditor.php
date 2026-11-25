@@ -60,6 +60,35 @@ class LanguageAuditor
     }
 
     /**
+     * Return true when article operates in English-only form mode (Indonesian form fields unused).
+     */
+    public static function isEnglishOnlyArticle(array $articleData): bool
+    {
+        $explicit = strtolower(trim((string) ($articleData['form_mode'] ?? '')));
+        if ($explicit === 'en' || $explicit === 'en_only' || $explicit === 'english') {
+            return true;
+        }
+        if ($explicit === 'bilingual' || $explicit === 'both' || $explicit === 'id_en') {
+            return false;
+        }
+
+        $hasIdContent = trim((string) ($articleData['title_id'] ?? '')) !== ''
+            || trim((string) ($articleData['abstract_id']['pendahuluan_metode'] ?? '')) !== ''
+            || trim((string) ($articleData['abstract_id']['hasil'] ?? '')) !== ''
+            || trim((string) ($articleData['abstract_id']['kesimpulan_saran'] ?? '')) !== ''
+            || trim((string) ($articleData['keywords_id'] ?? '')) !== ''
+            || trim((string) ($articleData['sdgs_id'] ?? '')) !== '';
+
+        $hasEnContent = trim((string) ($articleData['title_en'] ?? '')) !== ''
+            || trim((string) ($articleData['abstract_en']['intro_methods'] ?? '')) !== ''
+            || trim((string) ($articleData['abstract_en']['results'] ?? '')) !== ''
+            || trim((string) ($articleData['abstract_en']['conclusions_recommendations'] ?? '')) !== ''
+            || trim((string) ($articleData['keywords_en'] ?? '')) !== '';
+
+        return !$hasIdContent && $hasEnContent;
+    }
+
+    /**
      * Translate English or non-standard month names (full or abbreviated) into official Bahasa Indonesia
      * month names (KBBI / EYD V) across all volumes for footer consistency.
      */
@@ -214,24 +243,33 @@ class LanguageAuditor
             $issues[] = $issue;
         };
 
-        // 1. Fixed-language front-matter fields (omit abstracts/keywords for DATA REPORT & LETTER)
-        $fixedFields = [
-            ['path' => 'title_id', 'label' => 'Judul Artikel (ID)', 'lang' => 'id', 'text' => (string) ($articleData['title_id'] ?? '')],
-            ['path' => 'title_en', 'label' => 'Judul Artikel (EN)', 'lang' => 'en', 'text' => (string) ($articleData['title_en'] ?? '')],
-        ];
+        // 1. Fixed-language front-matter fields (omit Indonesian fields in English-only mode; omit abstracts/keywords for DATA REPORT & LETTER)
+        $isEnglishOnly = self::isEnglishOnlyArticle($articleData);
+        $fixedFields = [];
+        if (!$isEnglishOnly) {
+            $fixedFields[] = ['path' => 'title_id', 'label' => 'Judul Artikel (ID)', 'lang' => 'id', 'text' => (string) ($articleData['title_id'] ?? '')];
+        }
+        $fixedFields[] = ['path' => 'title_en', 'label' => 'Article Title (EN)', 'lang' => 'en', 'text' => (string) ($articleData['title_en'] ?? '')];
+
         if (!$noAbstract) {
+            if (!$isEnglishOnly) {
+                $fixedFields = array_merge($fixedFields, [
+                    ['path' => 'abstract_id.pendahuluan_metode', 'label' => 'Abstrak ID · Pendahuluan & Metode', 'lang' => 'id', 'text' => (string) ($articleData['abstract_id']['pendahuluan_metode'] ?? '')],
+                    ['path' => 'abstract_id.hasil', 'label' => 'Abstrak ID · Hasil', 'lang' => 'id', 'text' => (string) ($articleData['abstract_id']['hasil'] ?? '')],
+                    ['path' => 'abstract_id.kesimpulan_saran', 'label' => 'Abstrak ID · Kesimpulan & Saran', 'lang' => 'id', 'text' => (string) ($articleData['abstract_id']['kesimpulan_saran'] ?? '')],
+                    ['path' => 'keywords_id', 'label' => 'Kata Kunci (ID)', 'lang' => 'id', 'text' => (string) ($articleData['keywords_id'] ?? '')],
+                ]);
+                if (self::isVolume3Plus($articleData['volume'] ?? '1')) {
+                    $fixedFields[] = ['path' => 'sdgs_id', 'label' => 'Kontribusi TPB/SDGs (ID)', 'lang' => 'id', 'text' => (string) ($articleData['sdgs_id'] ?? '')];
+                }
+            }
             $fixedFields = array_merge($fixedFields, [
-                ['path' => 'abstract_id.pendahuluan_metode', 'label' => 'Abstrak ID · Pendahuluan & Metode', 'lang' => 'id', 'text' => (string) ($articleData['abstract_id']['pendahuluan_metode'] ?? '')],
-                ['path' => 'abstract_id.hasil', 'label' => 'Abstrak ID · Hasil', 'lang' => 'id', 'text' => (string) ($articleData['abstract_id']['hasil'] ?? '')],
-                ['path' => 'abstract_id.kesimpulan_saran', 'label' => 'Abstrak ID · Kesimpulan & Saran', 'lang' => 'id', 'text' => (string) ($articleData['abstract_id']['kesimpulan_saran'] ?? '')],
-                ['path' => 'keywords_id', 'label' => 'Kata Kunci (ID)', 'lang' => 'id', 'text' => (string) ($articleData['keywords_id'] ?? '')],
                 ['path' => 'abstract_en.intro_methods', 'label' => 'Abstract EN · Introduction & Methods', 'lang' => 'en', 'text' => (string) ($articleData['abstract_en']['intro_methods'] ?? '')],
                 ['path' => 'abstract_en.results', 'label' => 'Abstract EN · Results', 'lang' => 'en', 'text' => (string) ($articleData['abstract_en']['results'] ?? '')],
                 ['path' => 'abstract_en.conclusions_recommendations', 'label' => 'Abstract EN · Conclusions & Recommendations', 'lang' => 'en', 'text' => (string) ($articleData['abstract_en']['conclusions_recommendations'] ?? '')],
                 ['path' => 'keywords_en', 'label' => 'Keywords (EN)', 'lang' => 'en', 'text' => (string) ($articleData['keywords_en'] ?? '')],
             ]);
             if (self::isVolume3Plus($articleData['volume'] ?? '1')) {
-                $fixedFields[] = ['path' => 'sdgs_id', 'label' => 'Kontribusi TPB/SDGs (ID)', 'lang' => 'id', 'text' => (string) ($articleData['sdgs_id'] ?? '')];
                 $fixedFields[] = ['path' => 'sdgs_en', 'label' => 'Contribution to SDGs (EN)', 'lang' => 'en', 'text' => (string) ($articleData['sdgs_en'] ?? '')];
             }
         }
