@@ -627,9 +627,10 @@ class DocxGenerator
                 }
             }
             if (!empty($cleanRefs)) {
+                $refStyle = VancouverFormatter::resolveReferenceStyle((string) ($data['reference_style'] ?? 'vancouver'));
                 $body->insertBefore(self::createHeading1Para($dom, 'SUMBER PUSTAKA'), $publisherNoteNode);
                 foreach ($cleanRefs as $idx => $refText) {
-                    $vanLine = VancouverFormatter::formatDocxReferenceLine($idx + 1, $refText);
+                    $vanLine = VancouverFormatter::formatReferenceForStyle($refText, $refStyle, $idx + 1);
                     if ($vanLine === '') {
                         continue;
                     }

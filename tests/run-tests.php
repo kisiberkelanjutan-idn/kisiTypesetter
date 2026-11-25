@@ -530,6 +530,41 @@ $vanHtml = JatsHtmlRenderer::renderFullTextHtml($vanXml, ['include_abstract' => 
 assertTrue(strpos($vanHtml, 'href="#kisi-ref-B1"') !== false && strpos($vanHtml, 'href="#kisi-ref-B2"') !== false, 'JatsHtmlRenderer links in-text Vancouver citations directly to #kisi-ref-B1/#kisi-ref-B2');
 assertTrue(strpos($vanHtml, 'id="kisi-ref-B2"') !== false && strpos($vanHtml, '>1. Ahmed SOM') === false, 'JatsHtmlRenderer renders clean <ol> numbered bibliography without double 1. 1.');
 
+// 10. Verify Style-Aware OJS References Menu Formatting (Vancouver / IEEE / APA)
+assertTrue(VancouverFormatter::resolveReferenceStyle('auto') === 'vancouver', 'Default journal reference style resolves to vancouver');
+assertTrue(VancouverFormatter::resolveReferenceStyle('vancouver-brackets') === 'vancouver', 'Resolves CSL vancouver variants to vancouver');
+assertTrue(VancouverFormatter::resolveReferenceStyle('apa-7th-edition') === 'apa', 'Resolves CSL APA variants to apa');
+assertTrue(VancouverFormatter::resolveReferenceStyle('ieee') === 'ieee', 'Resolves CSL IEEE to ieee');
+
+$rawRefsMixed = [
+    'Smith, J. A., & Doe, B. C. (2023). Impact of exclusive breastfeeding on growth. J Nutr Health, 12(3), 44-51. https://doi.org/10.1016/j.jnh.2023.01',
+    'Depkes RI. (2013). Profil Kesehatan Indonesia. Jakarta, Departemen Kesehatan Republik Indonesia.',
+];
+
+$ojsBlockVan = VancouverFormatter::formatCitationsRawBlock($rawRefsMixed, 'vancouver');
+$vanLines = explode("\n", $ojsBlockVan);
+assertTrue(
+    count($vanLines) === 2
+        && strpos($vanLines[0], '1. Smith JA, Doe BC.') === 0
+        && strpos($vanLines[1], '2. Depkes RI. Profil Kesehatan Indonesia. Jakarta: Departemen Kesehatan Republik Indonesia; 2013.') === 0,
+    'formatCitationsRawBlock builds numbered OJS References block in Vancouver style'
+);
+
+$ojsBlockIeee = VancouverFormatter::formatCitationsRawBlock($rawRefsMixed, 'ieee');
+$ieeeLines = explode("\n", $ojsBlockIeee);
+assertTrue(
+    count($ieeeLines) === 2 && strpos($ieeeLines[0], '[1] Smith JA, Doe BC.') === 0 && strpos($ieeeLines[1], '[2] Depkes RI.') === 0,
+    'formatCitationsRawBlock supports IEEE style formatting for OJS References menu'
+);
+
+$vanSample = 'Smith JA, Doe BC. Impact of exclusive breastfeeding. J Nutr Health. 2023;12(3):44-51. doi:10.1016/j.jnh.2023.01';
+$ojsBlockApa = VancouverFormatter::formatCitationsRawBlock([$vanSample], 'apa');
+assertTrue(
+    strpos($ojsBlockApa, 'Smith, J. A., & Doe, B. C. (2023).') === 0
+        && strpos($ojsBlockApa, 'https://doi.org/10.1016/j.jnh.2023.01') !== false,
+    'formatCitationsRawBlock converts Vancouver reference cleanly to APA when journal style is APA'
+);
+
 if ($failures > 0) {
     fwrite(STDERR, "\nTotal test failures: {$failures}\n");
     exit(1);

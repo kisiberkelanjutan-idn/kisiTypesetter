@@ -74,6 +74,150 @@ class VancouverFormatter
     }
 
     /**
+     * Resolve raw style identifier (from OJS CSL plugin or KisiTypesetter settings) into canonical style family:
+     * 'vancouver' (default), 'apa', or 'ieee'.
+     */
+    public static function resolveReferenceStyle(string $style): string
+    {
+        $s = strtolower(trim($style));
+        if ($s === '' || $s === 'auto' || strpos($s, 'vancouver') !== false || strpos($s, 'ama') !== false || strpos($s, 'nlm') !== false) {
+            return 'vancouver';
+        }
+        if (strpos($s, 'ieee') !== false) {
+            return 'ieee';
+        }
+        if (strpos($s, 'apa') !== false || strpos($s, 'harvard') !== false || strpos($s, 'chicago-author') !== false) {
+            return 'apa';
+        }
+        return 'vancouver';
+    }
+
+    /**
+     * Format a single reference entry into the active journal reference style ('vancouver', 'ieee', or 'apa').
+     */
+    public static function formatReferenceForStyle(string $rawRef, string $style = 'vancouver', int $number = 1): string
+    {
+        $canonicalStyle = self::resolveReferenceStyle($style);
+        if ($canonicalStyle === 'apa') {
+            return self::formatToApaBody($rawRef);
+        }
+        $body = self::formatReferenceBody($rawRef);
+        if ($body === '') {
+            return '';
+        }
+        if ($canonicalStyle === 'ieee') {
+            return "[{$number}] {$body}";
+        }
+        return "{$number}. {$body}";
+    }
+
+    /**
+     * Build an OJS Publication `citationsRaw` multi-line block formatted strictly in the journal's reference style,
+     * ready to be parsed by OJS Repo::publication()->edit() / Repo::citation()->importCitations().
+     */
+    public static function formatCitationsRawBlock(array $refs, string $style = 'vancouver'): string
+    {
+        $lines = [];
+        $num = 1;
+        foreach ($refs as $rawRef) {
+            $trim = trim((string) $rawRef);
+            if ($trim === '') {
+                continue;
+            }
+            $formatted = self::formatReferenceForStyle($trim, $style, $num);
+            if ($formatted !== '') {
+                $lines[] = $formatted;
+                $num++;
+            }
+        }
+        return implode("\n", $lines);
+    }
+
+    /**
+     * Convert Vancouver/mixed reference into APA format (for journals explicitly configured to APA in OJS).
+     */
+    public static function formatToApaBody(string $rawRef): string
+    {
+        $ref = self::stripLeadingNumber($rawRef);
+        if ($ref === '') {
+            return '';
+        }
+
+        // Convert doi:10.xxx to https://doi.org/10.xxx and trim "Available from:" prefix
+        $ref = (string) preg_replace('/\bdoi\s*:\s*(10\.[^\s,;]+)/i', 'https://doi.org/$1', $ref);
+        $ref = (string) preg_replace('/\bAvailable\s+from\s*:\s*(https?:\/\/)/i', '$1', $ref);
+
+        // Already APA (parenthesized year after author)? Return normalized
+        if (preg_match('/^[^(\[\]]{2,160}\(\s*(?:19|20)\d{2}[a-z]?\s*\)\.?/u', $ref)) {
+            return LanguageAuditor::normalizeParagraphSpacing($ref);
+        }
+
+        // Extract trailing link
+        $tailLink = '';
+        if (preg_match('/^(.*?)\s+(https?:\/\/\S+)$/iu', $ref, $lm)) {
+            $ref = rtrim(trim($lm[1]), ' .');
+            $tailLink = trim($lm[2]);
+        }
+
+        // Parse Vancouver journal: "<Authors>. <Title>. <Journal>. YYYY[ Month Day];Vol[(Issue)]:Pages"
+        if (preg_match('/^(?<authors>[^.]+)\.\s*(?<title>.+?)\.\s*(?<journal>[^.;]+)\.\s*(?<year>(?:19|20)\d{2}[a-z]?)(?:\s+[A-Za-z]{3,9}(?:\s+\d{1,2})?)?\s*;\s*(?<vol>\d+)(?:\(\s*(?<issue>[^)]+)\s*\))?(?:\s*:\s*(?<pages>[\w–-]+))?\.?$/u', $ref, $jm)) {
+            $apaAuthors = self::convertVancouverAuthorsToApa($jm['authors']);
+            $year = $jm['year'];
+            $title = trim($jm['title']) . '.';
+            $journal = trim($jm['journal']);
+            $bib = $journal . ', ' . $jm['vol'] . (!empty($jm['issue']) ? '(' . trim($jm['issue']) . ')' : '') . (!empty($jm['pages']) ? ', ' . trim($jm['pages']) : '') . '.';
+            $out = "{$apaAuthors} ({$year}). {$title} {$bib}";
+            if ($tailLink !== '') {
+                $out .= ' ' . $tailLink;
+            }
+            return LanguageAuditor::normalizeParagraphSpacing($out);
+        }
+
+        // Parse Vancouver book: "<Authors>. <Title>. <City>: <Publisher>; YYYY."
+        if (preg_match('/^(?<authors>[^.]+)\.\s*(?<title>.+?)\.\s*(?<city>[^.:;]+)\s*:\s*(?<pub>[^;]+);\s*(?<year>(?:19|20)\d{2}[a-z]?)\.?$/u', $ref, $bm)) {
+            $apaAuthors = self::convertVancouverAuthorsToApa($bm['authors']);
+            $out = "{$apaAuthors} ({$bm['year']}). " . trim($bm['title']) . '. ' . trim($bm['pub']) . '.';
+            if ($tailLink !== '') {
+                $out .= ' ' . $tailLink;
+            }
+            return LanguageAuditor::normalizeParagraphSpacing($out);
+        }
+
+        return LanguageAuditor::normalizeParagraphSpacing($ref . ($tailLink !== '' ? ' ' . $tailLink : ''));
+    }
+
+    private static function convertVancouverAuthorsToApa(string $authorsRaw): string
+    {
+        $clean = trim($authorsRaw);
+        $hadEtAl = false;
+        if (preg_match('/,?\s*et\s+al\.?$/i', $clean)) {
+            $hadEtAl = true;
+            $clean = (string) preg_replace('/,?\s*et\s+al\.?$/i', '', $clean);
+        }
+        $parts = array_filter(array_map('trim', explode(',', $clean)), static fn ($x) => $x !== '');
+        if (empty($parts)) {
+            return $clean;
+        }
+        $out = [];
+        foreach ($parts as $p) {
+            if (preg_match('/^(.+?)\s+([A-Z]{1,4})$/u', $p, $pm)) {
+                $inits = implode('. ', str_split($pm[2])) . '.';
+                $out[] = trim($pm[1]) . ', ' . $inits;
+            } else {
+                $out[] = $p;
+            }
+        }
+        if ($hadEtAl) {
+            return implode(', ', $out) . ', et al.';
+        }
+        if (count($out) === 1) {
+            return $out[0];
+        }
+        $last = array_pop($out);
+        return implode(', ', $out) . ', & ' . $last;
+    }
+
+    /**
      * Format reference array cleanly for DOCX SUMBER PUSTAKA ("1. ...", "2. ...", ...).
      */
     public static function formatDocxReferenceLine(int $number, string $rawRef): string

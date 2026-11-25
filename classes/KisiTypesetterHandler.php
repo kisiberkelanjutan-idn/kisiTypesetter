@@ -217,6 +217,7 @@ class KisiTypesetterHandler extends Handler
             'journalShortFooter',
             'publisherName',
             'eissn',
+            'referenceStyle',
             'defaultFunding',
             'defaultCompetingInterests',
             'retypesetNote',
@@ -438,7 +439,76 @@ class KisiTypesetterHandler extends Handler
     }
 
     /**
-     * AJAX POST: Convert and normalize bibliography entries into Vancouver style and check citation sync
+     * AJAX POST: Parse & push bibliography entries into OJS 3.5 Publication -> References menu
+     * strictly formatted in the journal's configured citation style (default: Vancouver).
+     */
+    public function syncReferencesToOjs($args, $request)
+    {
+        if (!$this->ensureAuthorized($request)) {
+            return;
+        }
+        header('Content-Type: application/json; charset=UTF-8');
+
+        $context = $request->getContext();
+        $contextId = $context ? (int) $context->getId() : 0;
+        $plugin = $this->getPluginInstance();
+        $settings = $this->getSettingsArray($contextId, $plugin);
+        $journalStyle = $this->resolveJournalReferenceStyle($context, $settings);
+
+        $rawPayload = (string) $request->getUserVar('articleJson');
+        $articleData = json_decode($rawPayload, true);
+        if (!is_array($articleData)) {
+            echo json_encode(['ok' => false, 'error' => 'Data artikel JSON tidak valid.']);
+            return;
+        }
+
+        $submissionId = (int) ($articleData['submission_id'] ?? 0);
+        if ($submissionId <= 0) {
+            echo json_encode(['ok' => false, 'error' => 'Pilih artikel OJS terlebih dahulu sebelum menyinkronkan ke menu References OJS.']);
+            return;
+        }
+
+        $submission = Repo::submission()->get($submissionId);
+        if (!$submission) {
+            echo json_encode(['ok' => false, 'error' => 'Artikel OJS #' . $submissionId . ' tidak ditemukan.']);
+            return;
+        }
+
+        $publication = $submission->getCurrentPublication();
+        if (!$publication) {
+            echo json_encode(['ok' => false, 'error' => 'Publication aktif tidak ditemukan untuk artikel ini.']);
+            return;
+        }
+
+        try {
+            $syncRes = $this->syncPublicationReferencesToOjs($publication, $articleData, $journalStyle);
+            $updatedArticle = ($journalStyle === 'apa')
+                ? $this->normalizeArticleReferencesForStyle($articleData, 'apa')
+                : VancouverFormatter::convertAllReferences($articleData);
+            $updatedArticle['reference_style'] = $journalStyle;
+
+            $styleLabel = strtoupper($journalStyle);
+            echo json_encode([
+                'ok' => true,
+                'count' => $syncRes['count'],
+                'style' => $journalStyle,
+                'styleLabel' => $styleLabel,
+                'citationsRaw' => $syncRes['citationsRaw'],
+                'article' => $updatedArticle,
+                'message' => $syncRes['count'] > 0
+                    ? "Berhasil memparser {$syncRes['count']} referensi (gaya {$styleLabel}) ke menu References OJS artikel #{$submissionId}."
+                    : "Daftar References artikel #{$submissionId} dikosongkan (tidak ada entri referensi).",
+            ], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            echo json_encode([
+                'ok' => false,
+                'error' => 'Gagal memparser ke menu References OJS: ' . $e->getMessage(),
+            ], JSON_UNESCAPED_UNICODE);
+        }
+    }
+
+    /**
+     * AJAX POST: Convert and normalize bibliography entries into Vancouver (or active journal) style and check citation sync
      */
     public function formatVancouverReferences($args, $request)
     {
@@ -446,6 +516,12 @@ class KisiTypesetterHandler extends Handler
             return;
         }
         header('Content-Type: application/json; charset=UTF-8');
+
+        $context = $request->getContext();
+        $contextId = $context ? (int) $context->getId() : 0;
+        $plugin = $this->getPluginInstance();
+        $settings = $this->getSettingsArray($contextId, $plugin);
+        $journalStyle = $this->resolveJournalReferenceStyle($context, $settings);
 
         $rawPayload = (string) $request->getUserVar('articleJson');
         $articleData = json_decode($rawPayload, true);
@@ -455,7 +531,12 @@ class KisiTypesetterHandler extends Handler
         }
 
         $converted = 0;
-        $updated = VancouverFormatter::convertAllReferences($articleData, $converted);
+        if ($journalStyle === 'apa') {
+            $updated = $this->normalizeArticleReferencesForStyle($articleData, 'apa', $converted);
+        } else {
+            $updated = VancouverFormatter::convertAllReferences($articleData, $converted);
+        }
+        $updated['reference_style'] = $journalStyle;
         $updated = LanguageAuditor::normalizeArticleParagraphSpaces($updated);
         $syncReport = VancouverFormatter::auditSync($updated);
 
@@ -463,10 +544,11 @@ class KisiTypesetterHandler extends Handler
             'ok' => true,
             'article' => $updated,
             'converted' => $converted,
+            'style' => $journalStyle,
             'sync' => $syncReport,
             'message' => $converted > 0
-                ? "Berhasil mengonversi & menyinkronkan {$converted} entri sumber pustaka ke gaya Vancouver bernomor."
-                : 'Seluruh sumber pustaka sudah sesuai gaya Vancouver dan dinomori berurutan.',
+                ? 'Berhasil mengonversi ' . $converted . ' entri sumber pustaka ke gaya ' . strtoupper($journalStyle) . '.'
+                : 'Seluruh sumber pustaka sudah sesuai gaya ' . strtoupper($journalStyle) . ' jurnal.',
         ], JSON_UNESCAPED_UNICODE);
     }
 
@@ -676,6 +758,18 @@ class KisiTypesetterHandler extends Handler
                 }
             }
             @unlink($tmpDocx);
+
+            // 3. Parse & sync bibliography references directly into OJS Publication -> References menu
+            $syncRefsFlag = (string) $request->getUserVar('syncReferences');
+            if ($syncRefsFlag !== '0' && !empty($articleData['referensi'])) {
+                $contextId = $context ? (int) $context->getId() : 0;
+                $settings = $this->getSettingsArray($contextId, $plugin);
+                $journalStyle = $this->resolveJournalReferenceStyle($context, $settings);
+                $refSync = $this->syncPublicationReferencesToOjs($publication, $articleData, $journalStyle);
+                if ($refSync['count'] > 0) {
+                    $createdItems[] = 'Menu References OJS (' . $refSync['count'] . ' ' . strtoupper($journalStyle) . ')';
+                }
+            }
 
             echo json_encode([
                 'ok' => true,
@@ -1008,6 +1102,8 @@ class KisiTypesetterHandler extends Handler
         );
 
         $footerIssueLine = LanguageAuditor::formatIndonesianFooterIssueLine($volume, $issueNumber, $issuePeriod, $issueYear);
+        $journalRefStyle = $this->resolveJournalReferenceStyle($context, $settings);
+        $ojsReferensi = $this->extractOjsPublicationReferences($publication);
 
         $data = [
             'submission_id' => $subId,
@@ -1034,6 +1130,7 @@ class KisiTypesetterHandler extends Handler
             'journal_short_footer' => $settings['journalShortFooter'] ?? 'Kisi Berkelanjutan: SMK',
             'publisher_name' => $settings['publisherName'] ?? 'PT Karya Inovasi Berkelanjutan',
             'eissn' => $settings['eissn'] ?? '3062-9063',
+            'reference_style' => $journalRefStyle,
             'funding' => $settings['defaultFunding'] ?? ($isVol3Plus ? 'None' : 'none'),
             'competing_interests' => $settings['defaultCompetingInterests'] ?? 'The authors have declared that no competing interests exist.',
             'contributor_roles' => $contributorRoles,
@@ -1062,7 +1159,7 @@ class KisiTypesetterHandler extends Handler
                 'pembahasan' => [],
                 'kesimpulan_saran' => [],
             ],
-            'referensi' => [],
+            'referensi' => $ojsReferensi,
         ];
 
         // Perform automatic local heuristic split on OJS abstract if single paragraph
@@ -1126,9 +1223,185 @@ class KisiTypesetterHandler extends Handler
             $docxData['sections']['badan_artikel'] = [];
         }
         $ojsData['sections'] = $docxData['sections'];
-        $ojsData['referensi'] = $docxData['referensi'];
+        if (!empty($docxData['referensi'])) {
+            $ojsData['referensi'] = $docxData['referensi'];
+        }
 
         return GeminiRestructurer::restructureLocally($ojsData);
+    }
+
+    /**
+     * Resolve the journal's authoritative citation/reference style ('vancouver', 'apa', or 'ieee').
+     * Respects KisiTypesetter setting override or falls back to OJS CSL plugin settings (default: vancouver).
+     */
+    protected function resolveJournalReferenceStyle($context, array $settings = []): string
+    {
+        $configured = strtolower(trim((string) ($settings['referenceStyle'] ?? 'auto')));
+        if ($configured !== '' && $configured !== 'auto') {
+            return VancouverFormatter::resolveReferenceStyle($configured);
+        }
+
+        if ($context) {
+            try {
+                $contextId = (int) $context->getId();
+                // 1. Check loaded generic plugin instance
+                if (class_exists('\PKP\plugins\PluginRegistry')) {
+                    $csl = \PKP\plugins\PluginRegistry::getPlugin('generic', 'citationstylelanguageplugin');
+                    if ($csl && method_exists($csl, 'getEnabled') && $csl->getEnabled($contextId) && method_exists($csl, 'getSetting')) {
+                        $primary = (string) $csl->getSetting($contextId, 'primaryCitationStyle');
+                        if (trim($primary) !== '') {
+                            return VancouverFormatter::resolveReferenceStyle($primary);
+                        }
+                    }
+                }
+                // 2. Fallback via PluginSettingsDAO
+                if (class_exists('\PKP\db\DAORegistry')) {
+                    $psDao = \PKP\db\DAORegistry::getDAO('PluginSettingsDAO');
+                    if ($psDao && method_exists($psDao, 'getPluginSettings')) {
+                        foreach (['CitationStyleLanguagePlugin', 'citationstylelanguageplugin'] as $plugName) {
+                            $cslSettings = $psDao->getPluginSettings($contextId, $plugName);
+                            if (is_array($cslSettings) && !empty($cslSettings['enabled']) && !empty($cslSettings['primaryCitationStyle'])) {
+                                return VancouverFormatter::resolveReferenceStyle((string) $cslSettings['primaryCitationStyle']);
+                            }
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                // Fall back safely to vancouver
+            }
+        }
+
+        return 'vancouver';
+    }
+
+    /**
+     * Extract existing references stored in OJS 3.4/3.5 Publication -> References (`citationsRaw` or parsed `citations`).
+     */
+    protected function extractOjsPublicationReferences($publication): array
+    {
+        if (!$publication) {
+            return [];
+        }
+
+        $lines = [];
+        try {
+            $raw = trim((string) $publication->getData('citationsRaw'));
+            if ($raw !== '') {
+                $lines = preg_split('/\r?\n/', $raw, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            }
+
+            if (empty($lines)) {
+                $citations = $publication->getData('citations');
+                if (empty($citations) && method_exists(Repo::class, 'citation')) {
+                    $citRepo = Repo::citation();
+                    if (method_exists($citRepo, 'getCollector')) {
+                        $citations = $citRepo->getCollector()
+                            ->filterByPublicationIds([(int) $publication->getId()])
+                            ->getMany();
+                    } elseif (method_exists($citRepo, 'getByPublicationId')) {
+                        $citations = $citRepo->getByPublicationId((int) $publication->getId());
+                    }
+                }
+                if ($citations) {
+                    foreach ($citations as $cit) {
+                        $txt = '';
+                        if (is_object($cit)) {
+                            if (method_exists($cit, 'getData')) {
+                                $txt = (string) ($cit->getData('rawCitation') ?: '');
+                            }
+                            if ($txt === '' && method_exists($cit, 'getRawCitation')) {
+                                $txt = (string) $cit->getRawCitation();
+                            }
+                        } elseif (is_string($cit)) {
+                            $txt = $cit;
+                        }
+                        if (trim($txt) !== '') {
+                            $lines[] = trim($txt);
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            // ignore if citations API unavailable
+        }
+
+        $out = [];
+        foreach ($lines as $line) {
+            $clean = VancouverFormatter::stripLeadingNumber((string) $line);
+            if ($clean !== '') {
+                $out[] = $clean;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Parse and save bibliography entries directly into OJS Publication -> References menu (`citationsRaw` + `citations`).
+     */
+    protected function syncPublicationReferencesToOjs($publication, array $articleData, string $referenceStyle = 'vancouver'): array
+    {
+        $refs = (array) ($articleData['referensi'] ?? []);
+        $citationsRaw = VancouverFormatter::formatCitationsRawBlock($refs, $referenceStyle);
+        $count = ($citationsRaw !== '') ? count(explode("\n", $citationsRaw)) : 0;
+
+        // OJS 3.5 Publication::edit validates citationsRaw as string (never pass null)
+        Repo::publication()->edit($publication, ['citationsRaw' => (string) $citationsRaw]);
+
+        // Verify structured citation rows exist when references were provided; trigger Repo::citation()->importCitations() if empty
+        try {
+            $pubId = (int) $publication->getId();
+            if ($pubId > 0 && method_exists(Repo::class, 'citation')) {
+                $citRepo = Repo::citation();
+                $existingCount = 0;
+                if (method_exists($citRepo, 'getCollector')) {
+                    $rows = $citRepo->getCollector()->filterByPublicationIds([$pubId])->getMany();
+                    foreach ($rows as $_row) {
+                        $existingCount++;
+                    }
+                }
+                if ($count > 0 && $existingCount === 0 && method_exists($citRepo, 'importCitations')) {
+                    $rm = new \ReflectionMethod($citRepo, 'importCitations');
+                    $params = $rm->getParameters();
+                    $firstParam = $params[0] ?? null;
+                    $expectsInt = $firstParam && $firstParam->getType() && $firstParam->getType()->getName() === 'int';
+                    $citRepo->importCitations($expectsInt ? $pubId : $publication, (string) $citationsRaw);
+                }
+            }
+        } catch (\Throwable $e) {
+            // Do not abort if Repo::publication()->edit() already persisted citationsRaw cleanly
+        }
+
+        return [
+            'ok' => true,
+            'count' => $count,
+            'style' => $referenceStyle,
+            'citationsRaw' => $citationsRaw,
+        ];
+    }
+
+    private function normalizeArticleReferencesForStyle(array $articleData, string $style, int &$convertedCount = 0): array
+    {
+        if ($style !== 'apa') {
+            return VancouverFormatter::convertAllReferences($articleData, $convertedCount);
+        }
+        $convertedCount = 0;
+        $cleanList = [];
+        foreach ((array) ($articleData['referensi'] ?? []) as $rawRef) {
+            $orig = trim((string) $rawRef);
+            if ($orig === '') {
+                continue;
+            }
+            $formatted = VancouverFormatter::formatToApaBody($orig);
+            if ($formatted === '') {
+                continue;
+            }
+            if ($formatted !== VancouverFormatter::stripLeadingNumber($orig)) {
+                $convertedCount++;
+            }
+            $cleanList[] = $formatted;
+        }
+        $articleData['referensi'] = $cleanList;
+        return $articleData;
     }
 
     /**
@@ -1382,6 +1655,7 @@ class KisiTypesetterHandler extends Handler
             'journalShortFooter' => 'Kisi Berkelanjutan: SMK',
             'publisherName' => 'PT Karya Inovasi Berkelanjutan',
             'eissn' => '3062-9063',
+            'referenceStyle' => 'auto',
             'defaultFunding' => 'none',
             'defaultCompetingInterests' => 'The authors have declared that no competing interests exist.',
             'retypesetNote' => "This article was re-typeset in 2026 to standardize the journal's visual layout. No changes were made to the scientific substance, data, or metadata of the original Version of Record.",

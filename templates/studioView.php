@@ -31,6 +31,7 @@ $defaultArticle = $activeArticleData ?: [
     'journal_short_footer' => $settings['journalShortFooter'] ?? 'Kisi Berkelanjutan: SMK',
     'publisher_name' => $settings['publisherName'] ?? 'PT Karya Inovasi Berkelanjutan',
     'eissn' => $settings['eissn'] ?? '3062-9063',
+    'reference_style' => ($settings['referenceStyle'] ?? 'auto') !== 'auto' ? $settings['referenceStyle'] : 'vancouver',
     'funding' => $settings['defaultFunding'] ?? 'none',
     'competing_interests' => $settings['defaultCompetingInterests'] ?? 'The authors have declared that no competing interests exist.',
     'contributor_roles' => '',
@@ -609,9 +610,20 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
                 <input type="text" id="cfg_publisherName" value="<?php echo htmlspecialchars($settings['publisherName'] ?? 'PT Karya Inovasi Berkelanjutan', ENT_QUOTES, 'UTF-8'); ?>">
             </div>
         </div>
-        <div class="field-group">
-            <label>Teks Kotak Catatan Publisher's Note Box <span class="hint">(Opsional — kosongkan bila tidak diperlukan)</span></label>
-            <input type="text" id="cfg_retypesetNote" value="<?php echo htmlspecialchars($settings['retypesetNote'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+        <div class="row-2">
+            <div class="field-group">
+                <label>Teks Kotak Catatan Publisher's Note Box <span class="hint">(Opsional — kosongkan bila tidak diperlukan)</span></label>
+                <input type="text" id="cfg_retypesetNote" value="<?php echo htmlspecialchars($settings['retypesetNote'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+            </div>
+            <div class="field-group">
+                <label>Format Referensi Menu References OJS <span class="hint">(Sesuai gaya sitasi resmi jurnal)</span></label>
+                <select id="cfg_referenceStyle">
+                    <option value="auto" <?php echo (($settings['referenceStyle'] ?? 'auto') === 'auto') ? 'selected' : ''; ?>>🔄 Otomatis Ikuti Pengaturan CSL OJS (Default: Vancouver)</option>
+                    <option value="vancouver" <?php echo (($settings['referenceStyle'] ?? 'auto') === 'vancouver') ? 'selected' : ''; ?>>📚 Vancouver (ICMJE Bernomor: 1. Author AA...)</option>
+                    <option value="ieee" <?php echo (($settings['referenceStyle'] ?? 'auto') === 'ieee') ? 'selected' : ''; ?>>📘 IEEE ([1] Author AA...)</option>
+                    <option value="apa" <?php echo (($settings['referenceStyle'] ?? 'auto') === 'apa') ? 'selected' : ''; ?>>📙 APA (Author, A. A. (Tahun)...)</option>
+                </select>
+            </div>
         </div>
         <div class="row-2">
             <div class="field-group">
@@ -977,15 +989,20 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
                 <div id="bodySectionsContainer"></div>
             </div>
 
-            <!-- TAB 3: References (Vancouver Style Synchronized) -->
+            <!-- TAB 3: References (Journal Style Synchronized + OJS References Menu Parser) -->
             <div id="tab-references" class="tab-pane">
                 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px;background:#f8fafc;border:1px solid #cbd5e1;padding:10px 14px;border-radius:8px;">
                     <div style="font-size:12.5px;color:#334155;">
-                        📚 <strong>Daftar Sumber Pustaka (Gaya Vancouver):</strong> Sinkron otomatis dengan sitasi angka di naskah <code>(1)</code> / <code>[1]</code>. Otomatis diberi nomor urut <code>1. ...</code> pada DOCX dan ditautkan <code>&lt;xref&gt;</code> ↔ <code>&lt;ref id="B#"&gt;</code> di JATS XML.
+                        📚 <strong>Daftar Sumber Pustaka (<span id="journalRefStyleLabel">Gaya Vancouver</span>):</strong> Otomatis sinkron dengan sitasi naskah, tercetak di DOCX &amp; JATS XML, serta dapat diparser langsung ke menu <strong>References OJS</strong>.
                     </div>
-                    <button type="button" class="btn btn-teal btn-sm" onclick="formatVancouverReferencesAjax()">
-                        📚 Konversi &amp; Sinkronkan Gaya Vancouver
-                    </button>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button type="button" class="btn btn-teal btn-sm" onclick="formatVancouverReferencesAjax()">
+                            📚 Format Sesuai Gaya Jurnal
+                        </button>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="syncReferencesToOjsMenu()">
+                            📤 Parser ke Menu References OJS
+                        </button>
+                    </div>
                 </div>
                 <div id="vancouverSyncStatusBox" style="font-size:12px;padding:7px 12px;border-radius:7px;margin-bottom:10px;background:#f1f5f9;color:#334155;border:1px solid #e2e8f0;"></div>
                 <div class="field-group">
@@ -1066,7 +1083,7 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
             🧬 Download JATS XML
         </button>
         <button type="button" class="btn btn-primary btn-sm" onclick="saveDirectlyToOjsGalley()">
-            🚀 Simpan ke Galley OJS 3.5
+            🚀 Simpan ke Galley &amp; References OJS
         </button>
     </div>
 </div>
@@ -1365,7 +1382,10 @@ function populateFormFromState() {
     const refs = Array.isArray(articleState.referensi) ? articleState.referensi : [];
     const cleanRefs = refs.map(r => stripRefPrefixJs(r)).filter(Boolean);
     articleState.referensi = cleanRefs;
-    document.getElementById('f_referensi').value = cleanRefs.map((r, i) => `${i + 1}. ${r}`).join('\n');
+    const activeRefStyle = getActiveJournalRefStyleJs();
+    const styleLbl = document.getElementById('journalRefStyleLabel');
+    if (styleLbl) styleLbl.textContent = 'Gaya ' + activeRefStyle.toUpperCase();
+    document.getElementById('f_referensi').value = formatRefsListForTextareaJs(cleanRefs, activeRefStyle);
     document.getElementById('refCountBadge').textContent = cleanRefs.length;
 
     applyVolumeTemplateMode();
@@ -1436,6 +1456,24 @@ function updateAbstractWordCounts() {
     }
 }
 
+function getActiveJournalRefStyleJs() {
+    const sel = document.getElementById('cfg_referenceStyle');
+    if (sel && sel.value && sel.value !== 'auto') {
+        return sel.value.toLowerCase();
+    }
+    return String(articleState.reference_style || 'vancouver').toLowerCase();
+}
+
+function formatRefsListForTextareaJs(cleanRefs, style) {
+    if (style === 'apa') {
+        return cleanRefs.join('\n');
+    }
+    if (style === 'ieee') {
+        return cleanRefs.map((r, i) => `[${i + 1}] ${r}`).join('\n');
+    }
+    return cleanRefs.map((r, i) => `${i + 1}. ${r}`).join('\n');
+}
+
 function stripRefPrefixJs(line) {
     let s = String(line || '').trim();
     s = s.replace(/^\s*(?:\[\s*\d+\s*\]|\(\s*\d+\s*\)|\d+\s*[\.\)])\s*/, '');
@@ -1500,7 +1538,7 @@ function refreshVancouverSyncBannerJs() {
 async function formatVancouverReferencesAjax() {
     syncStateFromInputs();
     syncReferencesFromInput();
-    showToast('Mengonversi & menyinkronkan Sumber Pustaka ke gaya Vancouver...', 'info');
+    showToast('Mengonversi & menyinkronkan Sumber Pustaka ke gaya referensi jurnal...', 'info');
     const fd = new FormData();
     fd.append('articleJson', JSON.stringify(articleState));
     try {
@@ -1509,12 +1547,35 @@ async function formatVancouverReferencesAjax() {
         if (data.ok && data.article) {
             articleState = data.article;
             populateFormFromState();
-            showToast(data.message || 'Sumber pustaka disinkronkan ke gaya Vancouver.', 'success');
+            showToast(data.message || 'Sumber pustaka disinkronkan ke gaya jurnal.', 'success');
         } else {
-            showToast(data.error || 'Gagal menyinkronkan referensi Vancouver.', 'error');
+            showToast(data.error || 'Gagal menyinkronkan referensi.', 'error');
         }
     } catch (e) {
-        showToast('Error jaringan saat konversi Vancouver: ' + e.message, 'error');
+        showToast('Error jaringan saat konversi referensi: ' + e.message, 'error');
+    }
+}
+
+async function syncReferencesToOjsMenu() {
+    syncStateFromInputs();
+    syncReferencesFromInput();
+    showToast('📤 Memparser daftar pustaka langsung ke menu References OJS...', 'info');
+    const fd = new FormData();
+    fd.append('articleJson', JSON.stringify(articleState));
+    try {
+        const res = await fetch(BASE_URL + '/syncReferencesToOjs', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.ok) {
+            if (data.article) {
+                articleState = data.article;
+                populateFormFromState();
+            }
+            showToast(data.message || 'Referensi berhasil diparser ke menu References OJS.', 'success');
+        } else {
+            showToast(data.error || 'Gagal memparser ke menu References OJS.', 'error');
+        }
+    } catch (e) {
+        showToast('Error jaringan saat menyinkronkan menu References OJS: ' + e.message, 'error');
     }
 }
 
@@ -2423,7 +2484,7 @@ function rebuildApaCitation() {
 async function savePluginSettings() {
     showToast('Menyimpan pengaturan...', 'info');
     const fd = new FormData();
-    ['geminiApiKey', 'geminiModel', 'eissn', 'journalTitle', 'journalShortFooter', 'publisherName', 'retypesetNote', 'enableFullTextDigest', 'replaceDefaultAbstract'].forEach(k => {
+    ['geminiApiKey', 'geminiModel', 'eissn', 'journalTitle', 'journalShortFooter', 'publisherName', 'referenceStyle', 'retypesetNote', 'enableFullTextDigest', 'replaceDefaultAbstract'].forEach(k => {
         const el = document.getElementById('cfg_' + k);
         if (el) fd.append(k, el.value);
     });
@@ -2660,9 +2721,10 @@ async function loadFullTextDigestPreview() {
 
 async function saveDirectlyToOjsGalley() {
     normalizeAllArticleSpacing(false);
-    showToast('🚀 Menyimpan JATS XML & DOCX langsung ke Galley artikel OJS 3.5...', 'info');
+    showToast('🚀 Menyimpan JATS XML, DOCX, dan References ke OJS 3.5...', 'info');
     const fd = new FormData();
     fd.append('articleJson', JSON.stringify(articleState));
+    fd.append('syncReferences', '1');
     try {
         const res = await fetch(BASE_URL + '/saveToGalley', { method: 'POST', body: fd });
         const data = await res.json();
