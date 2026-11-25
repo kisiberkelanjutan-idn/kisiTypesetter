@@ -18,6 +18,8 @@ $defaultArticle = $activeArticleData ?: [
     'citation' => '',
     'doi' => '',
     'review_editor' => '',
+    'received_date' => '',
+    'accepted_date' => '',
     'published_date' => 'March 30, 2024',
     'copyright_year' => '2024',
     'volume' => '1',
@@ -31,6 +33,7 @@ $defaultArticle = $activeArticleData ?: [
     'eissn' => $settings['eissn'] ?? '3062-9063',
     'funding' => $settings['defaultFunding'] ?? 'none',
     'competing_interests' => $settings['defaultCompetingInterests'] ?? 'The authors have declared that no competing interests exist.',
+    'contributor_roles' => '',
     'retypeset_note' => $settings['retypesetNote'] ?? "This article was re-typeset in 2026 to standardize the journal's visual layout. No changes were made to the scientific substance, data, or metadata of the original Version of Record.",
     'abstract_id' => [
         'pendahuluan_metode' => '',
@@ -39,6 +42,7 @@ $defaultArticle = $activeArticleData ?: [
         'raw' => '',
     ],
     'keywords_id' => '',
+    'sdgs_id' => '',
     'abstract_en' => [
         'intro_methods' => '',
         'results' => '',
@@ -46,6 +50,7 @@ $defaultArticle = $activeArticleData ?: [
         'raw' => '',
     ],
     'keywords_en' => '',
+    'sdgs_en' => '',
     'sections' => [
         'badan_artikel' => [],
         'pendahuluan' => [],
@@ -729,15 +734,28 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
                     <div class="row-3">
                         <div class="field-group">
                             <label>Volume</label>
-                            <input type="text" id="f_volume" oninput="syncStateFromInputs()">
+                            <input type="text" id="f_volume" oninput="syncStateFromInputs(); applyVolumeTemplateMode();">
                         </div>
                         <div class="field-group">
                             <label>Nomor</label>
-                            <input type="text" id="f_issue_number" oninput="syncStateFromInputs()">
+                            <input type="text" id="f_issue_number" oninput="syncStateFromInputs();">
                         </div>
                         <div class="field-group">
                             <label>Tahun</label>
-                            <input type="text" id="f_copyright_year" oninput="syncStateFromInputs()">
+                            <input type="text" id="f_copyright_year" oninput="syncStateFromInputs();">
+                        </div>
+                    </div>
+
+                    <div id="volumeTemplateModeBadge" style="font-size:11px;font-weight:600;padding:4px 8px;border-radius:6px;margin:-4px 0 8px;background:#f1f5f9;color:#334155;"></div>
+
+                    <div id="vol3DatesRow" class="row-2" style="display:none;">
+                        <div class="field-group">
+                            <label>Received <span class="hint">(Vol 3+)</span></label>
+                            <input type="text" id="f_received_date" placeholder="August 11, 2026" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)">
+                        </div>
+                        <div class="field-group">
+                            <label>Accepted <span class="hint">(Vol 3+)</span></label>
+                            <input type="text" id="f_accepted_date" placeholder="September 25, 2026" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)">
                         </div>
                     </div>
 
@@ -747,8 +765,11 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
                             <input type="text" id="f_published_date" placeholder="March 30, 2024" oninput="syncStateFromInputs()">
                         </div>
                         <div class="field-group">
-                            <label>Footer Edisi</label>
-                            <input type="text" id="f_footer_issue_line" placeholder="Vol 1 No 1, Jan-Mar 2024" oninput="syncStateFromInputs()">
+                            <label>
+                                <span>Footer Edisi <span class="hint">(Bulan ID)</span></span>
+                                <button type="button" class="btn btn-outline btn-xs" onclick="rebuildFooterIssueLine()" title="Susun footer edisi berbahasa Indonesia">↻ ID</button>
+                            </label>
+                            <input type="text" id="f_footer_issue_line" placeholder="Volume 3 Nomor 3, Juli-September 2026" oninput="syncStateFromInputs()" onblur="normalizeFooterMonthsInput(this)">
                         </div>
                     </div>
 
@@ -783,8 +804,8 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
                 </div>
             </details>
 
-            <details class="meta-group">
-                <summary>3. Funding, Konflik &amp; Catatan Footer</summary>
+            <details class="meta-group" open>
+                <summary>3. Funding, Konflik &amp; Contributor Roles</summary>
                 <div class="meta-group-body">
                     <div class="field-group">
                         <label>Funding</label>
@@ -794,8 +815,15 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
                         <label>Competing Interests</label>
                         <input type="text" id="f_competing_interests" oninput="syncStateFromInputs()">
                     </div>
-                    <div class="field-group">
-                        <label>Catatan Publisher's Note <span class="hint">(Opsional)</span></label>
+                    <div class="field-group" id="vol3ContribRolesGroup" style="display:none;">
+                        <label>
+                            <span>Contributor’s Roles <span class="hint">(Vol 3+)</span></span>
+                            <button type="button" class="btn btn-outline btn-xs" onclick="rebuildContributorRolesDefault()">↻ Inisial</button>
+                        </label>
+                        <textarea id="f_contributor_roles" rows="2" placeholder="ARAP (Conceptualization, Methodology, Writing – Original Draft Preparation), ..." oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
+                    </div>
+                    <div class="field-group" id="retypesetNoteGroup">
+                        <label>Catatan Re-typeset 2026 <span class="hint" id="retypesetNoteHint">(Vol 1–2 Arsip)</span></label>
                         <textarea id="f_retypeset_note" rows="2" oninput="syncStateFromInputs()"></textarea>
                     </div>
                 </div>
@@ -885,9 +913,13 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
                             <label>Kesimpulan dan Saran</label>
                             <textarea id="f_ab_id_kes" rows="3" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                         </div>
-                        <div class="field-group" style="margin-bottom:0;">
+                        <div class="field-group">
                             <label>Kata Kunci <span class="hint">(Pisah titik koma ;)</span></label>
                             <input type="text" id="f_keywords_id" placeholder="Sosial budaya; Pemberian ASI" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)">
+                        </div>
+                        <div class="field-group" id="vol3SdgsIdGroup" style="display:none;margin-bottom:0;">
+                            <label>Kontribusi terhadap Target Pembangunan Berkelanjutan (TPB/SDGs) <span class="hint">(Vol 3+)</span></label>
+                            <textarea id="f_sdgs_id" rows="2" placeholder="Penelitian ini berkontribusi pada pencapaian Tujuan Pembangunan Berkelanjutan (TPB/SDGs)..." oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                         </div>
                     </div>
 
@@ -909,9 +941,13 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
                             <label>Conclusions and Recommendations</label>
                             <textarea id="f_ab_en_conc" rows="3" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                         </div>
-                        <div class="field-group" style="margin-bottom:0;">
+                        <div class="field-group">
                             <label>Keywords <span class="hint">(Separate with ;)</span></label>
                             <input type="text" id="f_keywords_en" placeholder="Breastfeeding; Socio-cultural" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)">
+                        </div>
+                        <div class="field-group" id="vol3SdgsEnGroup" style="display:none;margin-bottom:0;">
+                            <label>Contribution to Sustainable Development Goals (SDGs) <span class="hint">(Vol 3+ — Italic)</span></label>
+                            <textarea id="f_sdgs_en" rows="2" placeholder="This study contributes to achieving the Sustainable Development Goals (SDGs)..." oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                         </div>
                     </div>
                 </div>
@@ -1149,20 +1185,153 @@ function mergeImradSectionsIntoDirectBody() {
     showToast(`📥 ${moved} blok dari bagian IMRaD digabungkan ke Badan Artikel Langsung.`, 'success');
 }
 
+function isVolume3Plus(vol) {
+    const num = parseInt(String(vol || '').replace(/\D+/g, ''), 10);
+    return !isNaN(num) && num >= 3;
+}
+
+function translateFooterMonthsToId(str) {
+    if (typeof str !== 'string' || !str.trim()) return '';
+    const rules = [
+        [/\bJanuary\b/gi, 'Januari'],
+        [/\bJan\.?\b/gi, 'Januari'],
+        [/\bFebruary\b/gi, 'Februari'],
+        [/\bFeb\.?\b/gi, 'Februari'],
+        [/\bMarch\b/gi, 'Maret'],
+        [/\bMar\.?\b/gi, 'Maret'],
+        [/\bApril\b/gi, 'April'],
+        [/\bApr\.?\b/gi, 'April'],
+        [/\bMay\b/g, 'Mei'],
+        [/\bJune\b/gi, 'Juni'],
+        [/\bJun\.?\b/gi, 'Juni'],
+        [/\bJuly\b/gi, 'Juli'],
+        [/\bJul\.?\b/gi, 'Juli'],
+        [/\bAugust\b/gi, 'Agustus'],
+        [/\bAug\.?\b/gi, 'Agustus'],
+        [/\bAgt\.?\b/gi, 'Agustus'],
+        [/\bSeptember\b/gi, 'September'],
+        [/\bSept?\.?\b/gi, 'September'],
+        [/\bOctober\b/gi, 'Oktober'],
+        [/\bOct\.?\b/gi, 'Oktober'],
+        [/\bOkt\.?\b/gi, 'Oktober'],
+        [/\bNopember\b/gi, 'November'],
+        [/\bNovember\b/gi, 'November'],
+        [/\bNop\.?\b/gi, 'November'],
+        [/\bNov\.?\b/gi, 'November'],
+        [/\bDecember\b/gi, 'Desember'],
+        [/\bDec\.?\b/gi, 'Desember'],
+        [/\bDes\.?\b/gi, 'Desember'],
+    ];
+    let out = str;
+    rules.forEach(([re, rep]) => { out = out.replace(re, rep); });
+    const idMonths = '(Januari|Februari|Maret|April|Mei|Juni|Juli|Agustus|September|Oktober|November|Desember)';
+    out = out.replace(new RegExp(`\\b${idMonths}\\s*[–—-]\\s*${idMonths}\\b`, 'g'), '$1-$2');
+    return normalizeParagraphSpacingJs(out);
+}
+
+function normalizeFooterMonthsInput(el) {
+    if (!el || typeof el.value !== 'string') return;
+    const translated = translateFooterMonthsToId(el.value);
+    if (translated !== el.value) {
+        el.value = translated;
+        syncStateFromInputs();
+    }
+}
+
+function rebuildFooterIssueLine() {
+    syncStateFromInputs();
+    const vol = String(articleState.volume || '1').trim() || '1';
+    const no = String(articleState.issue_number || '1').trim() || '1';
+    const yr = String(articleState.copyright_year || '2026').trim();
+    const quarterDefaults = {
+        '1': 'Januari-Maret',
+        '2': 'April-Juni',
+        '3': 'Juli-September',
+        '4': 'Oktober-Desember',
+    };
+    let current = String(articleState.footer_issue_line || '');
+    current = current.replace(/^Volume\s+\S+\s+Nomor\s+\S+\s*,?\s*/i, '');
+    if (yr) current = current.replace(new RegExp(`(?:\\s*,)?\\s*\\b${yr}\\b\\s*$`), '');
+    current = translateFooterMonthsToId(current);
+    const period = current || quarterDefaults[no] || 'Januari-Maret';
+    const rebuilt = `Volume ${vol} Nomor ${no}, ${period}${yr ? ' ' + yr : ''}`;
+    articleState.footer_issue_line = rebuilt;
+    document.getElementById('f_footer_issue_line').value = rebuilt;
+    showToast('Footer edisi disusun ulang dengan nama bulan Indonesia.', 'success');
+}
+
+function rebuildContributorRolesDefault() {
+    syncStateFromInputs();
+    const authors = Array.isArray(articleState.authors) ? articleState.authors : [];
+    const parts = [];
+    authors.forEach((a, idx) => {
+        const nameOnly = String((a && a.name) || '').split(',')[0].trim();
+        if (!nameOnly) return;
+        const initials = nameOnly.split(/\s+/).map(w => w.charAt(0).toUpperCase()).filter(Boolean).join('');
+        if (!initials) return;
+        const roles = idx === 0
+            ? 'Conceptualization, Data Curation, Investigation, Methodology, Writing – Original Draft Preparation, Writing – Review & Editing'
+            : 'Supervision, Validation';
+        parts.push(`${initials} (${roles})`);
+    });
+    if (!parts.length) {
+        showToast('Isi nama penulis terlebih dahulu untuk membuat inisial Contributor Roles.', 'info');
+        return;
+    }
+    const text = parts.join(', ') + '.';
+    articleState.contributor_roles = text;
+    document.getElementById('f_contributor_roles').value = text;
+    showToast('Inisial Contributor’s Roles (CRediT) diperbarui.', 'success');
+}
+
+function applyVolumeTemplateMode() {
+    const vol3Plus = isVolume3Plus(articleState.volume);
+    const badge = document.getElementById('volumeTemplateModeBadge');
+    const datesRow = document.getElementById('vol3DatesRow');
+    const rolesGrp = document.getElementById('vol3ContribRolesGroup');
+    const sdgsIdGrp = document.getElementById('vol3SdgsIdGroup');
+    const sdgsEnGrp = document.getElementById('vol3SdgsEnGroup');
+    const retNoteGrp = document.getElementById('retypesetNoteGroup');
+    const retNoteHint = document.getElementById('retypesetNoteHint');
+
+    if (badge) {
+        if (vol3Plus) {
+            badge.textContent = '✨ Mode Templat Vol 3+: Received/Accepted, CRediT, TPB/SDGs, Tanpa Boks Re-typeset 2026';
+            badge.style.background = '#ecfdf5';
+            badge.style.color = '#065f46';
+            badge.style.border = '1px solid #a7f3d0';
+        } else {
+            badge.textContent = '📚 Mode Arsip Vol 1–2: Dengan Boks Re-typeset 2026 (Footer tetap Bulan Indonesia)';
+            badge.style.background = '#f1f5f9';
+            badge.style.color = '#334155';
+            badge.style.border = '1px solid #cbd5e1';
+        }
+    }
+    if (datesRow) datesRow.style.display = vol3Plus ? 'grid' : 'none';
+    if (rolesGrp) rolesGrp.style.display = vol3Plus ? 'block' : 'none';
+    if (sdgsIdGrp) sdgsIdGrp.style.display = vol3Plus ? 'block' : 'none';
+    if (sdgsEnGrp) sdgsEnGrp.style.display = vol3Plus ? 'block' : 'none';
+    if (retNoteGrp) retNoteGrp.style.opacity = vol3Plus ? '0.45' : '1';
+    if (retNoteHint) retNoteHint.textContent = vol3Plus ? '(Otomatis dihapus di Vol 3+)' : '(Vol 1–2 Arsip)';
+}
+
 function populateFormFromState() {
     syncArticleTypeControlFromState();
     document.getElementById('f_elocation_id').value = articleState.elocation_id || ('e' + (articleState.submission_id || '76'));
     document.getElementById('f_volume').value = articleState.volume || '1';
     document.getElementById('f_issue_number').value = articleState.issue_number || '1';
     document.getElementById('f_copyright_year').value = articleState.copyright_year || '2024';
-    document.getElementById('f_footer_issue_line').value = articleState.footer_issue_line || 'Volume 1 Nomor 1, Januari-Maret 2024';
+    document.getElementById('f_footer_issue_line').value = translateFooterMonthsToId(articleState.footer_issue_line || 'Volume 1 Nomor 1, Januari-Maret 2024');
     document.getElementById('f_article_url').value = articleState.article_url || '';
     document.getElementById('f_citation').value = articleState.citation || '';
     document.getElementById('f_doi').value = articleState.doi || '';
     document.getElementById('f_review_editor').value = articleState.review_editor || '';
+    document.getElementById('f_received_date').value = articleState.received_date || '';
+    document.getElementById('f_accepted_date').value = articleState.accepted_date || '';
     document.getElementById('f_published_date').value = articleState.published_date || '';
-    document.getElementById('f_funding').value = articleState.funding || 'none';
+    document.getElementById('f_funding').value = articleState.funding || (isVolume3Plus(articleState.volume) ? 'None' : 'none');
     document.getElementById('f_competing_interests').value = articleState.competing_interests || '';
+    document.getElementById('f_contributor_roles').value = articleState.contributor_roles || '';
     document.getElementById('f_retypeset_note').value = articleState.retypeset_note || '';
 
     document.getElementById('f_title_id').value = articleState.title_id || '';
@@ -1175,17 +1344,20 @@ function populateFormFromState() {
     document.getElementById('f_ab_id_hasil').value = abId.hasil || '';
     document.getElementById('f_ab_id_kes').value = abId.kesimpulan_saran || '';
     document.getElementById('f_keywords_id').value = articleState.keywords_id || '';
+    document.getElementById('f_sdgs_id').value = articleState.sdgs_id || '';
 
     const abEn = articleState.abstract_en || {};
     document.getElementById('f_ab_en_im').value = abEn.intro_methods || '';
     document.getElementById('f_ab_en_res').value = abEn.results || '';
     document.getElementById('f_ab_en_conc').value = abEn.conclusions_recommendations || '';
     document.getElementById('f_keywords_en').value = articleState.keywords_en || '';
+    document.getElementById('f_sdgs_en').value = articleState.sdgs_en || '';
 
     const refs = Array.isArray(articleState.referensi) ? articleState.referensi : [];
     document.getElementById('f_referensi').value = refs.join('\n');
     document.getElementById('refCountBadge').textContent = refs.length;
 
+    applyVolumeTemplateMode();
     renderAuthorsEditor();
     renderBodySectionsEditor();
     updateAbstractWordCounts();
@@ -1197,14 +1369,17 @@ function syncStateFromInputs() {
     articleState.volume = document.getElementById('f_volume').value;
     articleState.issue_number = document.getElementById('f_issue_number').value;
     articleState.copyright_year = document.getElementById('f_copyright_year').value;
-    articleState.footer_issue_line = document.getElementById('f_footer_issue_line').value;
+    articleState.footer_issue_line = translateFooterMonthsToId(document.getElementById('f_footer_issue_line').value);
     articleState.article_url = document.getElementById('f_article_url').value;
     articleState.citation = document.getElementById('f_citation').value;
     articleState.doi = document.getElementById('f_doi').value;
     articleState.review_editor = document.getElementById('f_review_editor').value;
+    articleState.received_date = document.getElementById('f_received_date').value;
+    articleState.accepted_date = document.getElementById('f_accepted_date').value;
     articleState.published_date = document.getElementById('f_published_date').value;
     articleState.funding = document.getElementById('f_funding').value;
     articleState.competing_interests = document.getElementById('f_competing_interests').value;
+    articleState.contributor_roles = document.getElementById('f_contributor_roles').value;
     articleState.retypeset_note = document.getElementById('f_retypeset_note').value;
 
     articleState.title_id = document.getElementById('f_title_id').value;
@@ -1217,12 +1392,14 @@ function syncStateFromInputs() {
     articleState.abstract_id.hasil = document.getElementById('f_ab_id_hasil').value;
     articleState.abstract_id.kesimpulan_saran = document.getElementById('f_ab_id_kes').value;
     articleState.keywords_id = document.getElementById('f_keywords_id').value;
+    articleState.sdgs_id = document.getElementById('f_sdgs_id').value;
 
     if (!articleState.abstract_en) articleState.abstract_en = {};
     articleState.abstract_en.intro_methods = document.getElementById('f_ab_en_im').value;
     articleState.abstract_en.results = document.getElementById('f_ab_en_res').value;
     articleState.abstract_en.conclusions_recommendations = document.getElementById('f_ab_en_conc').value;
     articleState.keywords_en = document.getElementById('f_keywords_en').value;
+    articleState.sdgs_en = document.getElementById('f_sdgs_en').value;
 
     updateAbstractWordCounts();
 }
@@ -2191,12 +2368,22 @@ async function sendParseDocxRequest(formData) {
             return;
         }
         const p = data.parsed;
+        if (p.article_type && (!articleState.article_type || articleState.article_type === 'ORIGINAL ARTICLE')) articleState.article_type = p.article_type;
         if (p.title_id && !articleState.title_id) articleState.title_id = p.title_id;
         if (p.title_en && !articleState.title_en) articleState.title_en = p.title_en;
         if (p.review_editor && !articleState.review_editor) articleState.review_editor = p.review_editor;
+        if (p.received_date && !articleState.received_date) articleState.received_date = p.received_date;
+        if (p.accepted_date && !articleState.accepted_date) articleState.accepted_date = p.accepted_date;
+        if (p.published_date && !articleState.published_date) articleState.published_date = p.published_date;
+        if (p.contributor_roles && !articleState.contributor_roles) articleState.contributor_roles = p.contributor_roles;
+        if (p.footer_issue_line && !articleState.footer_issue_line) articleState.footer_issue_line = translateFooterMonthsToId(p.footer_issue_line);
+        if (p.volume && !articleState.volume) articleState.volume = p.volume;
+        if (p.issue_number && !articleState.issue_number) articleState.issue_number = p.issue_number;
         if (p.doi && !articleState.doi) articleState.doi = p.doi;
         if (p.keywords_id && !articleState.keywords_id) articleState.keywords_id = p.keywords_id;
         if (p.keywords_en && !articleState.keywords_en) articleState.keywords_en = p.keywords_en;
+        if (p.sdgs_id && !articleState.sdgs_id) articleState.sdgs_id = p.sdgs_id;
+        if (p.sdgs_en && !articleState.sdgs_en) articleState.sdgs_en = p.sdgs_en;
         if (p.authors && p.authors.length > 0 && (!articleState.authors || !articleState.authors[0].name)) {
             articleState.authors = p.authors;
             articleState.corresponding_name = p.corresponding_name || '';
@@ -2267,11 +2454,18 @@ function normalizeAllArticleSpacing(showNotice = true) {
         return cleaned;
     };
 
-    ['article_type', 'title_id', 'title_en', 'keywords_id', 'keywords_en', 'citation',
-     'review_editor', 'published_date', 'funding', 'competing_interests',
-     'corresponding_name', 'journal_short_footer', 'footer_issue_line', 'retypeset_note'].forEach(k => {
+    ['article_type', 'title_id', 'title_en', 'keywords_id', 'keywords_en', 'sdgs_id', 'sdgs_en', 'citation',
+     'review_editor', 'received_date', 'accepted_date', 'published_date', 'funding', 'competing_interests',
+     'contributor_roles', 'corresponding_name', 'journal_short_footer', 'footer_issue_line', 'retypeset_note'].forEach(k => {
         if (typeof articleState[k] === 'string') articleState[k] = norm(articleState[k]);
     });
+    if (typeof articleState.footer_issue_line === 'string') {
+        const transFooter = translateFooterMonthsToId(articleState.footer_issue_line);
+        if (transFooter !== articleState.footer_issue_line) {
+            articleState.footer_issue_line = transFooter;
+            changes++;
+        }
+    }
 
     if (Array.isArray(articleState.authors)) {
         articleState.authors.forEach(a => {

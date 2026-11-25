@@ -301,6 +301,141 @@ assertTrue(!empty($drParsed['sections']['badan_artikel']), 'DocxParser restores 
 $favFile = $root . '/resources/kisi-favicon.png';
 assertTrue(file_exists($favFile) && filesize($favFile) > 1000, 'Bundled Kisi Berkelanjutan favicon PNG exists');
 
+// 7. Verify Indonesian month enforcement across ALL volumes (Vol 1, 2, 3+)
+assertTrue(!LanguageAuditor::isVolume3Plus('1') && !LanguageAuditor::isVolume3Plus('2'), 'Volumes 1 and 2 use archive template mode');
+assertTrue(LanguageAuditor::isVolume3Plus('3') && LanguageAuditor::isVolume3Plus('Vol. 4'), 'Volumes 3+ activate the new template mode');
+assertTrue(
+    LanguageAuditor::formatIndonesianFooterIssueLine('1', '1', 'January-March 2024', '2024') === 'Volume 1 Nomor 1, Januari-Maret 2024',
+    'Vol 1 footer deduplicates year and uses Indonesian months'
+);
+assertTrue(
+    LanguageAuditor::formatIndonesianFooterIssueLine('2', '4', 'October - December', '2025') === 'Volume 2 Nomor 4, Oktober-Desember 2025',
+    'Vol 2 footer translates October-December to Oktober-Desember'
+);
+assertTrue(
+    LanguageAuditor::formatIndonesianFooterIssueLine('3', '3', 'July - September 2026', '2026') === 'Volume 3 Nomor 3, Juli-September 2026',
+    'Vol 3 footer translates July - September to Juli-September'
+);
+assertTrue(
+    LanguageAuditor::translateMonthsToIndonesian('May-August 2026 & Dec 2025') === 'Mei-Agustus 2026 & Desember 2025',
+    'Translates May, August, and Dec to Mei, Agustus, and Desember'
+);
+
+// Check Vol 1-2 DOCX preserves re-typeset box AND translates English footer month if accidentally provided
+$vol1DocxTest = array_merge($sampleData, [
+    'volume' => '1',
+    'issue_number' => '1',
+    'footer_issue_line' => 'Volume 1 Nomor 1, January-March 2024',
+]);
+$tmpV1Docx = tempnam(sys_get_temp_dir(), 'kisi_v1_') . '.docx';
+assertTrue(DocxGenerator::generate($vol1DocxTest, $masterDocx, $tmpV1Docx), 'DocxGenerator builds Vol 1-2 archive DOCX');
+$v1Zip = new ZipArchive();
+$v1DocXml = '';
+$v1FooterXml = '';
+if ($v1Zip->open($tmpV1Docx) === true) {
+    $v1DocXml = (string) $v1Zip->getFromName('word/document.xml');
+    $v1FooterXml = (string) $v1Zip->getFromName('word/footer1.xml');
+    $v1Zip->close();
+}
+assertTrue(strpos($v1DocXml, 're-typeset in 2026') !== false, 'Vol 1-2 DOCX preserves 2026 re-typeset Publisher Note box');
+assertTrue(strpos($v1DocXml, 'Received:') === false && strpos($v1DocXml, 'Accepted:') === false, 'Vol 1-2 DOCX omits Received/Accepted sidebar fields');
+assertTrue(strpos($v1FooterXml, 'Januari-Maret 2024') !== false && strpos($v1FooterXml, 'January') === false, 'Vol 1-2 DOCX footer converts English month to Indonesian');
+@unlink($tmpV1Docx);
+
+// 8. Verify Volume 3+ Template (Received, Accepted, Contributor's Roles, TPB/SDGs, No re-typeset 2026 box, Indonesian Footer)
+$vol3Data = [
+    'submission_id' => 84,
+    'elocation_id' => 'e84',
+    'article_type' => 'CASE REPORT',
+    'title_id' => 'Laporan Kasus: Asuhan Kebidanan pada Bayi Usia 7 Bulan',
+    'title_en' => 'Case Report: Midwifery Care for a 7-Month-Old Infant',
+    'authors' => [
+        ['name' => 'Ain Rositahur Amalia Putri', 'affiliation' => 'Poltekkes Kemenkes Surabaya, Indonesia', 'email' => 'ain@example.com', 'is_corresponding' => true],
+        ['name' => 'Suryaningsih', 'affiliation' => 'Poltekkes Kemenkes Surabaya, Indonesia', 'email' => '', 'is_corresponding' => false],
+    ],
+    'corresponding_name' => 'Ain Rositahur Amalia Putri',
+    'corresponding_email' => 'ain@example.com',
+    'citation' => 'Putri et al., (2026). Case Report: Midwifery Care... 3(3), e84.',
+    'doi' => '10.5281/zenodo.23490319',
+    'review_editor' => 'Inda Corniawati, SST., M.Keb (Poltekkes Kemenkes Kaltim, Indonesia)',
+    'received_date' => 'August 11, 2026',
+    'accepted_date' => 'September 25, 2026',
+    'published_date' => 'September 30, 2026',
+    'copyright_year' => '2026',
+    'volume' => '3',
+    'issue_number' => '3',
+    'footer_issue_line' => 'Volume 3 Nomor 3, July-September 2026',
+    'article_url' => 'https://kisiberkelanjutan.com/index.php/smk/article/view/84',
+    'funding' => 'None',
+    'competing_interests' => 'The authors have declared that no competing interests exist.',
+    'contributor_roles' => 'ARAP (Conceptualization, Data Curation, Writing – Original Draft Preparation), S (Supervision, Validation).',
+    'retypeset_note' => "This article was re-typeset in 2026 to standardize the journal's visual layout.",
+    'abstract_id' => [
+        'pendahuluan_metode' => 'Periode usia bayi memerlukan pemantauan gizi.',
+        'hasil' => 'Berat badan bayi meningkat menjadi 6,1 kg.',
+        'kesimpulan_saran' => 'Stimulasi pijat bayi membantu kenaikan berat badan.',
+    ],
+    'keywords_id' => 'Asuhan kebidanan; Bayi; Pijat bayi',
+    'sdgs_id' => 'Laporan kasus ini berkontribusi pada pencapaian Tujuan Pembangunan Berkelanjutan (TPB/SDGs) Tujuan 2 dan Tujuan 3.',
+    'abstract_en' => [
+        'intro_methods' => 'Infancy requires close nutritional monitoring.',
+        'results' => 'Infant body weight increased to 6.1 kg.',
+        'conclusions_recommendations' => 'Infant massage therapy helps improve weight gain.',
+    ],
+    'keywords_en' => 'Infant; Infant massage; Midwifery care',
+    'sdgs_en' => 'This case report contributes to achieving the Sustainable Development Goals (SDGs) Goal 2 and Goal 3.',
+    'sections' => [
+        'pendahuluan' => [['type' => 'paragraph', 'text' => 'Berat badan kurang pada bayi masih menjadi tantangan kesehatan masyarakat.']],
+        'metode' => [['type' => 'paragraph', 'text' => 'Studi kasus dilaksanakan melalui tiga kali kunjungan rumah.']],
+        'hasil' => [$formattedTbl],
+        'pembahasan' => [['type' => 'paragraph', 'text' => 'Intervensi edukasi gizi dan pijat bayi menunjukkan hasil positif.']],
+        'kesimpulan_saran' => [['type' => 'paragraph', 'text' => 'Pemantauan rutin perlu dilakukan setiap bulan.']],
+    ],
+    'referensi' => ['Kulkarni A, et al. Massage and touch therapy in neonates. Indian Pediatr. 2010;47(9):771-6.'],
+];
+
+$tmpV3Docx = tempnam(sys_get_temp_dir(), 'kisi_v3_') . '.docx';
+assertTrue(DocxGenerator::generate($vol3Data, $masterDocx, $tmpV3Docx), 'DocxGenerator builds Volume 3+ DOCX');
+$v3Zip = new ZipArchive();
+$v3DocXml = '';
+$v3Footer1 = '';
+$v3Footer2 = '';
+if ($v3Zip->open($tmpV3Docx) === true) {
+    $v3DocXml = (string) $v3Zip->getFromName('word/document.xml');
+    $v3Footer1 = (string) $v3Zip->getFromName('word/footer1.xml');
+    $v3Footer2 = (string) $v3Zip->getFromName('word/footer2.xml');
+    $v3Zip->close();
+}
+assertTrue(strpos($v3DocXml, 'Received:') !== false && strpos($v3DocXml, 'August 11, 2026') !== false, 'Vol 3+ DOCX includes Received date in sidebar');
+assertTrue(strpos($v3DocXml, 'Accepted:') !== false && strpos($v3DocXml, 'September 25, 2026') !== false, 'Vol 3+ DOCX includes Accepted date in sidebar');
+assertTrue(strpos($v3DocXml, 'Roles:') !== false && strpos($v3DocXml, 'ARAP (Conceptualization') !== false, 'Vol 3+ DOCX includes Contributor Roles in sidebar');
+assertTrue(strpos($v3DocXml, 'TPB/SDGs') !== false && strpos($v3DocXml, 'w:fill="E8E8E8"') !== false, 'Vol 3+ DOCX renders shaded TPB/SDGs Indonesian box');
+assertTrue(strpos($v3DocXml, 'Contribution to Sustainable Development Goals (SDGs)') !== false, 'Vol 3+ DOCX renders Contribution to SDGs in English abstract');
+assertTrue(strpos($v3DocXml, 're-typeset in 2026') === false && strpos($v3DocXml, '<w:txbxContent') === false, 'Vol 3+ DOCX omits 2026 re-typeset textbox cleanly');
+assertTrue(strpos($v3DocXml, 'remains neutral') !== false, 'Vol 3+ DOCX retains Publisher Note neutrality declaration');
+assertTrue(strpos($v3Footer1, 'Juli-September 2026') !== false && strpos($v3Footer2, 'Juli-September 2026') !== false && strpos($v3Footer1, 'July') === false, 'Vol 3+ DOCX footers render Indonesian months (Juli-September 2026)');
+
+$v3Parsed = DocxParser::parse($tmpV3Docx);
+assertTrue($v3Parsed['received_date'] === 'August 11, 2026', 'DocxParser extracts Vol 3+ Received date');
+assertTrue($v3Parsed['accepted_date'] === 'September 25, 2026', 'DocxParser extracts Vol 3+ Accepted date');
+assertTrue(strpos($v3Parsed['contributor_roles'], 'ARAP (Conceptualization') !== false, 'DocxParser extracts Vol 3+ Contributor Roles');
+assertTrue(strpos($v3Parsed['sdgs_id'], 'Tujuan Pembangunan Berkelanjutan') !== false, 'DocxParser extracts Vol 3+ Indonesian SDGs text');
+assertTrue(strpos($v3Parsed['sdgs_en'], 'Sustainable Development Goals') !== false, 'DocxParser extracts Vol 3+ English SDGs text');
+assertTrue($v3Parsed['volume'] === '3' && strpos($v3Parsed['footer_issue_line'], 'Juli-September 2026') !== false, 'DocxParser extracts Vol 3 footer issue line');
+@unlink($tmpV3Docx);
+
+$v3Xml = JatsXmlGenerator::generate($vol3Data);
+$v3Dom = new DOMDocument();
+assertTrue($v3Dom->loadXML($v3Xml) !== false, 'JatsXmlGenerator generates well-formed XML for Vol 3+');
+assertTrue(strpos($v3Xml, '<history>') !== false && strpos($v3Xml, 'date-type="received"') !== false && strpos($v3Xml, 'date-type="accepted"') !== false, 'Vol 3+ JATS XML emits <history> with received and accepted dates');
+assertTrue(strpos($v3Xml, 'fn-type="con"') !== false && strpos($v3Xml, 'ARAP (Conceptualization') !== false, 'Vol 3+ JATS XML emits Contributor Roles in <author-notes>');
+assertTrue(strpos($v3Xml, 'content-type="sdgs"') !== false, 'Vol 3+ JATS XML emits SDGs sections inside abstracts');
+assertTrue(strpos($v3Xml, 're-typeset in 2026') === false, 'Vol 3+ JATS XML omits 2026 re-typeset note in <back>');
+
+$v3Html = JatsHtmlRenderer::renderFullTextHtml($v3Xml, ['include_abstract' => true]);
+assertTrue(strpos($v3Html, 'Received:') !== false && strpos($v3Html, 'Accepted:') !== false && strpos($v3Html, 'ARAP (Conceptualization') !== false, 'JatsHtmlRenderer displays Vol 3+ history dates and contributor roles');
+assertTrue(strpos($v3Html, 'kisi-jats-retypeset-box') === false && strpos($v3Html, 'TPB/SDGs') !== false, 'JatsHtmlRenderer omits retypeset box and renders TPB/SDGs for Vol 3+');
+
 if ($failures > 0) {
     fwrite(STDERR, "\nTotal test failures: {$failures}\n");
     exit(1);

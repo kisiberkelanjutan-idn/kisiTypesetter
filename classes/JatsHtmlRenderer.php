@@ -56,10 +56,24 @@ class JatsHtmlRenderer
         }
 
         $correspText = self::getNodeText($xpath, '//article-meta/author-notes/corresp');
+        $contribRolesText = self::getNodeText($xpath, '//article-meta/author-notes/fn[@fn-type="con"]/p');
         $conflictText = self::getNodeText($xpath, '//article-meta/author-notes/fn[@fn-type="conflict"]/p');
         $fundingText = self::getNodeText($xpath, '//article-meta/funding-group/funding-statement');
         $licenseText = self::getNodeText($xpath, '//article-meta/permissions/license/license-p');
         $copyrightStmt = self::getNodeText($xpath, '//article-meta/permissions/copyright-statement');
+
+        $formatHistoryDate = static function (string $dateType) use ($xpath): string {
+            $y = self::getNodeText($xpath, "//article-meta/history/date[@date-type=\"{$dateType}\"]/year");
+            $m = self::getNodeText($xpath, "//article-meta/history/date[@date-type=\"{$dateType}\"]/month");
+            $d = self::getNodeText($xpath, "//article-meta/history/date[@date-type=\"{$dateType}\"]/day");
+            if ($y === '' || $m === '' || $d === '') {
+                return '';
+            }
+            $ts = strtotime(sprintf('%04d-%02d-%02d', (int) $y, (int) $m, (int) $d));
+            return $ts ? date('F j, Y', $ts) : '';
+        };
+        $receivedDisp = $formatHistoryDate('received');
+        $acceptedDisp = $formatHistoryDate('accepted');
 
         // Build TOC & Body Sections HTML
         $tocItems = [];
@@ -158,6 +172,12 @@ class JatsHtmlRenderer
         if ($editorDisplay !== '') {
             $metaDetails[] = '<strong>Review Editor:</strong> ' . htmlspecialchars($editorDisplay, ENT_QUOTES, 'UTF-8');
         }
+        if ($receivedDisp !== '') {
+            $metaDetails[] = '<strong>Received:</strong> ' . htmlspecialchars($receivedDisp, ENT_QUOTES, 'UTF-8');
+        }
+        if ($acceptedDisp !== '') {
+            $metaDetails[] = '<strong>Accepted:</strong> ' . htmlspecialchars($acceptedDisp, ENT_QUOTES, 'UTF-8');
+        }
         if ($correspText !== '') {
             $metaDetails[] = '<strong>Korespondensi:</strong> ' . htmlspecialchars(ltrim($correspText, '* '), ENT_QUOTES, 'UTF-8');
         }
@@ -166,6 +186,10 @@ class JatsHtmlRenderer
         }
         if ($conflictText !== '') {
             $metaDetails[] = '<strong>Competing Interests:</strong> ' . htmlspecialchars($conflictText, ENT_QUOTES, 'UTF-8');
+        }
+        if ($contribRolesText !== '') {
+            $cleanRoles = (string) preg_replace('/^Contributor[’\']?s?\s+Roles\s*:\s*/iu', '', $contribRolesText);
+            $metaDetails[] = '<strong>Contributor’s Roles:</strong> ' . htmlspecialchars($cleanRoles, ENT_QUOTES, 'UTF-8');
         }
         if (!empty($metaDetails)) {
             $metaBarHtml .= '<div class="kisi-jats-metabar-details">' . implode(' &nbsp;|&nbsp; ', $metaDetails) . '</div>';
@@ -218,7 +242,7 @@ class JatsHtmlRenderer
         // Indonesian Abstract Pane
         if ($absIdNode) {
             $html .= '<div id="kisi-abs-pane-id" class="kisi-abs-pane">';
-            $secs = $xpath->query('./sec', $absIdNode);
+            $secs = $xpath->query('./sec[not(@content-type="sdgs")]', $absIdNode);
             if ($secs && $secs->length > 0) {
                 foreach ($secs as $s) {
                     $st = self::getNodeText($xpath, './title', $s);
@@ -238,13 +262,26 @@ class JatsHtmlRenderer
             if (!empty($kwId)) {
                 $html .= '<p class="kisi-abs-keywords"><strong>Kata Kunci:</strong> ' . htmlspecialchars(implode('; ', $kwId) . '.', ENT_QUOTES, 'UTF-8') . '</p>';
             }
+            $sdgIdSec = $xpath->query('./sec[@content-type="sdgs"]', $absIdNode)->item(0);
+            if ($sdgIdSec) {
+                $st = self::getNodeText($xpath, './title', $sdgIdSec);
+                $sp = self::getNodeText($xpath, './p', $sdgIdSec);
+                $html .= '<div style="margin-top:10px;padding:10px 12px;background:#eef2f7;border-radius:6px;">';
+                if ($st !== '') {
+                    $html .= '<h4 class="kisi-abs-subhead" style="margin-top:0;">' . htmlspecialchars($st, ENT_QUOTES, 'UTF-8') . '</h4>';
+                }
+                if ($sp !== '') {
+                    $html .= '<p class="kisi-abs-p" style="margin-bottom:0;">' . htmlspecialchars($sp, ENT_QUOTES, 'UTF-8') . '</p>';
+                }
+                $html .= '</div>';
+            }
             $html .= '</div>';
         }
 
         // English Abstract Pane
         if ($absEnNode) {
             $html .= '<div id="kisi-abs-pane-en" class="kisi-abs-pane kisi-abs-en" style="display:none;">';
-            $secs = $xpath->query('./sec', $absEnNode);
+            $secs = $xpath->query('./sec[not(@content-type="sdgs")]', $absEnNode);
             if ($secs && $secs->length > 0) {
                 foreach ($secs as $s) {
                     $st = self::getNodeText($xpath, './title', $s);
@@ -263,6 +300,17 @@ class JatsHtmlRenderer
             }
             if (!empty($kwEn)) {
                 $html .= '<p class="kisi-abs-keywords"><em><strong>Keywords:</strong> ' . htmlspecialchars(implode('; ', $kwEn) . '.', ENT_QUOTES, 'UTF-8') . '</em></p>';
+            }
+            $sdgEnSec = $xpath->query('./sec[@content-type="sdgs"]', $absEnNode)->item(0);
+            if ($sdgEnSec) {
+                $st = self::getNodeText($xpath, './title', $sdgEnSec);
+                $sp = self::getNodeText($xpath, './p', $sdgEnSec);
+                if ($st !== '') {
+                    $html .= '<h4 class="kisi-abs-subhead"><em>' . htmlspecialchars($st, ENT_QUOTES, 'UTF-8') . '</em></h4>';
+                }
+                if ($sp !== '') {
+                    $html .= '<p class="kisi-abs-p"><em>' . htmlspecialchars($sp, ENT_QUOTES, 'UTF-8') . '</em></p>';
+                }
             }
             $html .= '</div>';
         }

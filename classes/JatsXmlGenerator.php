@@ -245,6 +245,18 @@ class JatsXmlGenerator
         }
         $an->appendChild($corresp);
 
+        $isVol3Plus = LanguageAuditor::isVolume3Plus($data['volume'] ?? '1');
+        $contributorRoles = trim((string) ($data['contributor_roles'] ?? ''));
+        if ($isVol3Plus && $contributorRoles === '') {
+            $contributorRoles = LanguageAuditor::buildDefaultContributorRoles($authors);
+        }
+        if ($isVol3Plus && $contributorRoles !== '') {
+            $fnContrib = $dom->createElement('fn');
+            $fnContrib->setAttribute('fn-type', 'con');
+            $fnContrib->appendChild($dom->createElement('p', "Contributor\u{2019}s Roles: " . $contributorRoles));
+            $an->appendChild($fnContrib);
+        }
+
         $competing = trim($data['competing_interests'] ?? 'The authors have declared that no competing interests exist.');
         $fnConflict = $dom->createElement('fn');
         $fnConflict->setAttribute('fn-type', 'conflict');
@@ -266,6 +278,32 @@ class JatsXmlGenerator
         $am->appendChild($dom->createElement('volume', (string) ($data['volume'] ?? '1')));
         $am->appendChild($dom->createElement('issue', (string) ($data['issue_number'] ?? '1')));
         $am->appendChild($dom->createElement('elocation-id', (string) ($data['elocation_id'] ?? ('e' . $subId))));
+
+        // History dates (Received / Accepted for Volume 3+)
+        $receivedRaw = trim((string) ($data['received_date'] ?? ''));
+        $acceptedRaw = trim((string) ($data['accepted_date'] ?? ''));
+        $recTs = ($receivedRaw !== '') ? strtotime($receivedRaw) : false;
+        $accTs = ($acceptedRaw !== '') ? strtotime($acceptedRaw) : false;
+        if ($recTs || $accTs) {
+            $hist = $dom->createElement('history');
+            if ($recTs) {
+                $dRec = $dom->createElement('date');
+                $dRec->setAttribute('date-type', 'received');
+                $dRec->appendChild($dom->createElement('day', date('d', $recTs)));
+                $dRec->appendChild($dom->createElement('month', date('m', $recTs)));
+                $dRec->appendChild($dom->createElement('year', date('Y', $recTs)));
+                $hist->appendChild($dRec);
+            }
+            if ($accTs) {
+                $dAcc = $dom->createElement('date');
+                $dAcc->setAttribute('date-type', 'accepted');
+                $dAcc->appendChild($dom->createElement('day', date('d', $accTs)));
+                $dAcc->appendChild($dom->createElement('month', date('m', $accTs)));
+                $dAcc->appendChild($dom->createElement('year', date('Y', $accTs)));
+                $hist->appendChild($dAcc);
+            }
+            $am->appendChild($hist);
+        }
 
         // Permissions (CC BY-SA 4.0)
         $year = (string) ($data['copyright_year'] ?? date('Y', $ts));
@@ -322,6 +360,14 @@ class JatsXmlGenerator
                     $sec->appendChild($dom->createElement('p', $secBody));
                     $absId->appendChild($sec);
                 }
+                $sdgsId = trim((string) ($data['sdgs_id'] ?? ''));
+                if ($isVol3Plus && $sdgsId !== '') {
+                    $secSdg = $dom->createElement('sec');
+                    $secSdg->setAttribute('content-type', 'sdgs');
+                    $secSdg->appendChild($dom->createElement('title', 'Kontribusi terhadap Target Pembangunan Berkelanjutan (TPB/SDGs)'));
+                    $secSdg->appendChild($dom->createElement('p', $sdgsId));
+                    $absId->appendChild($secSdg);
+                }
                 $am->appendChild($absId);
             }
 
@@ -342,6 +388,14 @@ class JatsXmlGenerator
                     $sec->appendChild($dom->createElement('title', $secTitle));
                     $sec->appendChild($dom->createElement('p', $secBody));
                     $absEn->appendChild($sec);
+                }
+                $sdgsEn = trim((string) ($data['sdgs_en'] ?? ''));
+                if ($isVol3Plus && $sdgsEn !== '') {
+                    $secSdgEn = $dom->createElement('sec');
+                    $secSdgEn->setAttribute('content-type', 'sdgs');
+                    $secSdgEn->appendChild($dom->createElement('title', 'Contribution to Sustainable Development Goals (SDGs)'));
+                    $secSdgEn->appendChild($dom->createElement('p', $sdgsEn));
+                    $absEn->appendChild($secSdgEn);
                 }
                 $am->appendChild($absEn);
             }
@@ -660,8 +714,13 @@ class JatsXmlGenerator
             'p',
             'The publisher of ' . ($data['publisher_name'] ?? 'PT Karya Inovasi Berkelanjutan') . ' states that it remains neutral with respect to the published ideas and from any institutional affiliation.'
         ));
-        $retypesetNote = trim($data['retypeset_note'] ?? "This article was re-typeset in 2026 to standardize the journal's visual layout. No changes were made to the scientific substance, data, or metadata of the original Version of Record.");
-        $fn->appendChild($dom->createElement('p', $retypesetNote));
+        $isVol3Plus = LanguageAuditor::isVolume3Plus($data['volume'] ?? '1');
+        $retypesetNote = $isVol3Plus
+            ? ''
+            : trim((string) ($data['retypeset_note'] ?? "This article was re-typeset in 2026 to standardize the journal's visual layout. No changes were made to the scientific substance, data, or metadata of the original Version of Record."));
+        if ($retypesetNote !== '') {
+            $fn->appendChild($dom->createElement('p', $retypesetNote));
+        }
         $fng->appendChild($fn);
         $back->appendChild($fng);
 

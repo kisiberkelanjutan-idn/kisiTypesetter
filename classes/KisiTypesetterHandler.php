@@ -857,7 +857,7 @@ class KisiTypesetterHandler extends Handler
         $volume = '1';
         $issueNumber = '1';
         $issueYear = '2024';
-        $issuePeriod = 'Januari-Maret';
+        $issuePeriod = '';
         $issueId = $publication ? (int) $publication->getData('issueId') : 0;
         if ($issueId > 0) {
             $issue = Repo::issue()->get($issueId);
@@ -871,25 +871,47 @@ class KisiTypesetterHandler extends Handler
                 if ($issue->getYear()) {
                     $issueYear = (string) $issue->getYear();
                 }
-                $issueTitle = trim((string) $issue->getLocalizedTitle());
-                if ($issueTitle !== '') {
-                    $issuePeriod = $issueTitle;
-                } else {
-                    $quarterMap = [
-                        '1' => 'Januari-Maret',
-                        '2' => 'April-Juni',
-                        '3' => 'Juli-September',
-                        '4' => 'Oktober-Desember',
-                    ];
-                    $issuePeriod = $quarterMap[$issueNumber] ?? 'Januari-Maret';
+                $rawIssueTitles = method_exists($issue, 'getData') ? (array) $issue->getData('title') : [];
+                $issueTitleId = self::pickLocaleValue($rawIssueTitles, ['id', 'id_ID', 'en', 'en_US'], true);
+                if ($issueTitleId === '') {
+                    $issueTitleId = trim((string) $issue->getLocalizedTitle());
+                }
+                $issuePeriod = $issueTitleId;
+            }
+        }
+
+        $dateSubRaw = $submission->getData('dateSubmitted');
+        $recTs = $dateSubRaw ? strtotime((string) $dateSubRaw) : false;
+        $receivedDateFormatted = $recTs ? date('F j, Y', $recTs) : '';
+
+        $acceptedDateFormatted = '';
+        try {
+            if (method_exists(Repo::class, 'decision')) {
+                $decisions = Repo::decision()->getCollector()
+                    ->filterBySubmissionIds([$subId])
+                    ->getMany();
+                foreach ($decisions as $dec) {
+                    $decType = (int) $dec->getData('decision');
+                    // PKP Decision::ACCEPT == 1, INITIAL_DECLINE == 8, etc. Also accept date if decision matches accept
+                    if ($decType === 1 || stripos(get_class($dec), 'Accept') !== false) {
+                        $decDate = $dec->getData('dateDecided');
+                        $accTs = $decDate ? strtotime((string) $decDate) : false;
+                        if ($accTs) {
+                            $acceptedDateFormatted = date('F j, Y', $accTs);
+                        }
+                    }
                 }
             }
+        } catch (\Throwable $e) {
+            // ignore if decision collector unavailable
         }
 
         $datePubRaw = $publication ? $publication->getData('datePublished') : '';
         $ts = $datePubRaw ? strtotime((string) $datePubRaw) : false;
         $publishedDateFormatted = $ts ? date('F j, Y', $ts) : ('March 30, ' . $issueYear);
         $copyrightYear = $ts ? date('Y', $ts) : $issueYear;
+        $isVol3Plus = LanguageAuditor::isVolume3Plus($volume);
+        $contributorRoles = $isVol3Plus ? LanguageAuditor::buildDefaultContributorRoles($authorsData) : '';
 
         // Elocation ID / Pages (e.g. e76)
         $pages = $publication ? trim((string) $publication->getData('pages')) : '';
@@ -950,7 +972,7 @@ class KisiTypesetterHandler extends Handler
             $articleUrl
         );
 
-        $footerIssueLine = sprintf('Volume %s Nomor %s, %s %s', $volume, $issueNumber, $issuePeriod, $issueYear);
+        $footerIssueLine = LanguageAuditor::formatIndonesianFooterIssueLine($volume, $issueNumber, $issuePeriod, $issueYear);
 
         $data = [
             'submission_id' => $subId,
@@ -964,6 +986,8 @@ class KisiTypesetterHandler extends Handler
             'citation' => $citation,
             'doi' => $doi,
             'review_editor' => $reviewEditor,
+            'received_date' => $receivedDateFormatted,
+            'accepted_date' => $acceptedDateFormatted,
             'published_date' => $publishedDateFormatted,
             'copyright_year' => $copyrightYear,
             'volume' => $volume,
@@ -975,9 +999,10 @@ class KisiTypesetterHandler extends Handler
             'journal_short_footer' => $settings['journalShortFooter'] ?? 'Kisi Berkelanjutan: SMK',
             'publisher_name' => $settings['publisherName'] ?? 'PT Karya Inovasi Berkelanjutan',
             'eissn' => $settings['eissn'] ?? '3062-9063',
-            'funding' => $settings['defaultFunding'] ?? 'none',
+            'funding' => $settings['defaultFunding'] ?? ($isVol3Plus ? 'None' : 'none'),
             'competing_interests' => $settings['defaultCompetingInterests'] ?? 'The authors have declared that no competing interests exist.',
-            'retypeset_note' => $settings['retypesetNote'] ?? "This article was re-typeset in 2026 to standardize the journal's visual layout. No changes were made to the scientific substance, data, or metadata of the original Version of Record.",
+            'contributor_roles' => $contributorRoles,
+            'retypeset_note' => $isVol3Plus ? '' : ($settings['retypesetNote'] ?? "This article was re-typeset in 2026 to standardize the journal's visual layout. No changes were made to the scientific substance, data, or metadata of the original Version of Record."),
             'abstract_id' => [
                 'pendahuluan_metode' => $absIdRaw,
                 'hasil' => '',
@@ -985,6 +1010,7 @@ class KisiTypesetterHandler extends Handler
                 'raw' => $absIdRaw,
             ],
             'keywords_id' => $kwId,
+            'sdgs_id' => '',
             'abstract_en' => [
                 'intro_methods' => $absEnRaw,
                 'results' => '',
@@ -992,6 +1018,7 @@ class KisiTypesetterHandler extends Handler
                 'raw' => $absEnRaw,
             ],
             'keywords_en' => $kwEn,
+            'sdgs_en' => '',
             'sections' => [
                 'badan_artikel' => [],
                 'pendahuluan' => [],
@@ -1025,11 +1052,29 @@ class KisiTypesetterHandler extends Handler
         if ($ojsData['doi'] === '' && $docxData['doi'] !== '') {
             $ojsData['doi'] = $docxData['doi'];
         }
+        if (($ojsData['received_date'] ?? '') === '' && !empty($docxData['received_date'])) {
+            $ojsData['received_date'] = $docxData['received_date'];
+        }
+        if (($ojsData['accepted_date'] ?? '') === '' && !empty($docxData['accepted_date'])) {
+            $ojsData['accepted_date'] = $docxData['accepted_date'];
+        }
+        if (!empty($docxData['contributor_roles'])) {
+            $ojsData['contributor_roles'] = $docxData['contributor_roles'];
+        }
+        if (!empty($docxData['footer_issue_line']) && ($ojsData['footer_issue_line'] ?? '') === '') {
+            $ojsData['footer_issue_line'] = $docxData['footer_issue_line'];
+        }
         if ($ojsData['keywords_id'] === '' && $docxData['keywords_id'] !== '') {
             $ojsData['keywords_id'] = $docxData['keywords_id'];
         }
         if ($ojsData['keywords_en'] === '' && $docxData['keywords_en'] !== '') {
             $ojsData['keywords_en'] = $docxData['keywords_en'];
+        }
+        if (!empty($docxData['sdgs_id'])) {
+            $ojsData['sdgs_id'] = $docxData['sdgs_id'];
+        }
+        if (!empty($docxData['sdgs_en'])) {
+            $ojsData['sdgs_en'] = $docxData['sdgs_en'];
         }
 
         if (!LanguageAuditor::isNoAbstractArticleType((string) ($ojsData['article_type'] ?? ''))) {

@@ -48,6 +48,144 @@ class LanguageAuditor
     }
 
     /**
+     * Articles published in Volume 3 and onward adopt the updated 2026+ front-matter layout
+     * (Received/Accepted/Contributor's Roles, SDGs boxes, and Publisher's Note without re-typeset box).
+     */
+    public static function isVolume3Plus($volume): bool
+    {
+        $digits = preg_replace('/\D+/', '', trim((string) $volume));
+        return $digits !== '' && (int) $digits >= 3;
+    }
+
+    /**
+     * Translate English or non-standard month names (full or abbreviated) into official Bahasa Indonesia
+     * month names (KBBI / EYD V) across all volumes for footer consistency.
+     */
+    public static function translateMonthsToIndonesian(string $text): string
+    {
+        if ($text === '') {
+            return '';
+        }
+
+        $replacements = [
+            '/\bJanuary\b/iu' => 'Januari',
+            '/\bJan\.?\b/iu' => 'Januari',
+            '/\bFebruary\b/iu' => 'Februari',
+            '/\bFeb\.?\b/iu' => 'Februari',
+            '/\bMarch\b/iu' => 'Maret',
+            '/\bMar\.?\b/iu' => 'Maret',
+            '/\bApril\b/iu' => 'April',
+            '/\bApr\.?\b/iu' => 'April',
+            '/\bMay\b/u' => 'Mei',
+            '/\bJune\b/iu' => 'Juni',
+            '/\bJun\.?\b/iu' => 'Juni',
+            '/\bJuly\b/iu' => 'Juli',
+            '/\bJul\.?\b/iu' => 'Juli',
+            '/\bAugust\b/iu' => 'Agustus',
+            '/\bAug\.?\b/iu' => 'Agustus',
+            '/\bAgt\.?\b/iu' => 'Agustus',
+            '/\bSeptember\b/iu' => 'September',
+            '/\bSept?\.?\b/iu' => 'September',
+            '/\bOctober\b/iu' => 'Oktober',
+            '/\bOct\.?\b/iu' => 'Oktober',
+            '/\bOkt\.?\b/iu' => 'Oktober',
+            '/\bNopember\b/iu' => 'November',
+            '/\bNovember\b/iu' => 'November',
+            '/\bNop\.?\b/iu' => 'November',
+            '/\bNov\.?\b/iu' => 'November',
+            '/\bDecember\b/iu' => 'Desember',
+            '/\bDec\.?\b/iu' => 'Desember',
+            '/\bDes\.?\b/iu' => 'Desember',
+        ];
+
+        $out = (string) preg_replace(array_keys($replacements), array_values($replacements), $text);
+        $monthsPattern = 'Januari|Februari|Maret|April|Mei|Juni|Juli|Agustus|September|Oktober|November|Desember';
+        $out = (string) preg_replace('/\b(' . $monthsPattern . ')\s*[–—-]\s*(' . $monthsPattern . ')\b/u', '$1-$2', $out);
+        return self::normalizeParagraphSpacing($out);
+    }
+
+    /**
+     * Build canonical footer issue line: "Volume X Nomor Y, <Bulan Indonesia> <Tahun>".
+     */
+    public static function formatIndonesianFooterIssueLine(
+        string $volume,
+        string $issueNumber,
+        string $periodText,
+        string $year = ''
+    ): string {
+        $vol = trim($volume) !== '' ? trim($volume) : '1';
+        $no = trim($issueNumber) !== '' ? trim($issueNumber) : '1';
+        $yr = trim($year);
+
+        $period = trim($periodText);
+        // Strip leading "Volume X Nomor Y," prefix if caller passed a full line
+        $period = (string) preg_replace('/^Volume\s+\S+\s+Nomor\s+\S+\s*,?\s*/iu', '', $period);
+        // Strip duplicated year at the end of issue title
+        if ($yr !== '') {
+            $period = (string) preg_replace('/(?:\s*,)?\s*\b' . preg_quote($yr, '/') . '\b\s*$/u', '', $period);
+        } elseif (preg_match('/\b(20\d{2})\s*$/u', $period, $ym)) {
+            $yr = $ym[1];
+            $period = trim((string) preg_replace('/(?:\s*,)?\s*\b20\d{2}\s*$/u', '', $period));
+        }
+
+        $period = self::translateMonthsToIndonesian($period);
+        if ($period === '') {
+            $quarterMap = [
+                '1' => 'Januari-Maret',
+                '2' => 'April-Juni',
+                '3' => 'Juli-September',
+                '4' => 'Oktober-Desember',
+            ];
+            $period = $quarterMap[$no] ?? 'Januari-Maret';
+        }
+
+        return sprintf('Volume %s Nomor %s, %s%s', $vol, $no, $period, $yr !== '' ? ' ' . $yr : '');
+    }
+
+    /**
+     * Generate an editable CRediT initials summary from authors when none was supplied.
+     */
+    public static function buildDefaultContributorRoles(array $authors): string
+    {
+        if (empty($authors)) {
+            return '';
+        }
+        $parts = [];
+        foreach ($authors as $idx => $author) {
+            if (!is_array($author)) {
+                continue;
+            }
+            $rawName = trim((string) ($author['name'] ?? ''));
+            if ($rawName === '') {
+                continue;
+            }
+            $nameOnly = trim(explode(',', $rawName)[0]);
+            $words = preg_split('/\s+/u', $nameOnly, -1, PREG_SPLIT_NO_EMPTY);
+            if (empty($words)) {
+                continue;
+            }
+            $initials = '';
+            foreach ($words as $w) {
+                $ch = mb_substr($w, 0, 1, 'UTF-8');
+                if (preg_match('/[\p{L}\p{N}]/u', $ch)) {
+                    $initials .= mb_strtoupper($ch, 'UTF-8');
+                }
+            }
+            if ($initials === '') {
+                continue;
+            }
+            $roles = ($idx === 0)
+                ? 'Conceptualization, Data Curation, Investigation, Methodology, Writing – Original Draft Preparation, Writing – Review & Editing'
+                : 'Supervision, Validation';
+            $parts[] = $initials . ' (' . $roles . ')';
+        }
+        if (empty($parts)) {
+            return '';
+        }
+        return implode(', ', $parts) . '.';
+    }
+
+    /**
      * Audit all article fields for typos, non-standard words, and academic orthography issues.
      *
      * @param array $articleData Studio article state array
@@ -90,6 +228,10 @@ class LanguageAuditor
                 ['path' => 'abstract_en.conclusions_recommendations', 'label' => 'Abstract EN · Conclusions & Recommendations', 'lang' => 'en', 'text' => (string) ($articleData['abstract_en']['conclusions_recommendations'] ?? '')],
                 ['path' => 'keywords_en', 'label' => 'Keywords (EN)', 'lang' => 'en', 'text' => (string) ($articleData['keywords_en'] ?? '')],
             ]);
+            if (self::isVolume3Plus($articleData['volume'] ?? '1')) {
+                $fixedFields[] = ['path' => 'sdgs_id', 'label' => 'Kontribusi TPB/SDGs (ID)', 'lang' => 'id', 'text' => (string) ($articleData['sdgs_id'] ?? '')];
+                $fixedFields[] = ['path' => 'sdgs_en', 'label' => 'Contribution to SDGs (EN)', 'lang' => 'en', 'text' => (string) ($articleData['sdgs_en'] ?? '')];
+            }
         }
 
         $enSegmentsForLt = [];
@@ -690,12 +832,21 @@ class LanguageAuditor
 
         $topKeys = [
             'article_type', 'title_id', 'title_en', 'keywords_id', 'keywords_en',
-            'citation', 'review_editor', 'published_date', 'funding', 'competing_interests',
-            'corresponding_name', 'journal_short_footer', 'footer_issue_line', 'retypeset_note',
+            'sdgs_id', 'sdgs_en', 'citation', 'review_editor', 'received_date',
+            'accepted_date', 'published_date', 'funding', 'competing_interests',
+            'contributor_roles', 'corresponding_name', 'journal_short_footer',
+            'footer_issue_line', 'retypeset_note',
         ];
         foreach ($topKeys as $k) {
             if (isset($articleData[$k]) && is_string($articleData[$k])) {
                 $articleData[$k] = $normField($articleData[$k]);
+            }
+        }
+        if (isset($articleData['footer_issue_line']) && is_string($articleData['footer_issue_line']) && $articleData['footer_issue_line'] !== '') {
+            $idFooter = self::translateMonthsToIndonesian($articleData['footer_issue_line']);
+            if ($idFooter !== $articleData['footer_issue_line']) {
+                $articleData['footer_issue_line'] = $idFooter;
+                $changesCount++;
             }
         }
 

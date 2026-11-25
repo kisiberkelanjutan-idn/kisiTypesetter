@@ -107,14 +107,24 @@ class DocxGenerator
                 $sidebarCell->removeChild($pNodes[$i]);
             }
 
+            $isVol3Plus = LanguageAuditor::isVolume3Plus($data['volume'] ?? '1');
             $citation = trim($data['citation'] ?? '');
             $doi = trim($data['doi'] ?? '');
             $reviewEditor = trim($data['review_editor'] ?? '');
+            $receivedDate = trim($data['received_date'] ?? '');
+            $acceptedDate = trim($data['accepted_date'] ?? '');
             $publishedDate = trim($data['published_date'] ?? '');
             $copyrightYear = trim($data['copyright_year'] ?? date('Y'));
             $firstAuthorLast = self::extractFirstAuthorLastName($data['authors'] ?? []);
-            $funding = trim($data['funding'] ?? 'none');
+            $funding = trim($data['funding'] ?? ($isVol3Plus ? 'None' : 'none'));
+            if ($isVol3Plus && strcasecmp($funding, 'none') === 0) {
+                $funding = 'None';
+            }
             $competing = trim($data['competing_interests'] ?? 'The authors have declared that no competing interests exist.');
+            $contributorRoles = trim($data['contributor_roles'] ?? '');
+            if ($isVol3Plus && $contributorRoles === '') {
+                $contributorRoles = LanguageAuditor::buildDefaultContributorRoles($data['authors'] ?? []);
+            }
 
             // Citation
             $sidebarCell->appendChild(self::createSidebarLabelValuePara($dom, 'Citation:', ' ' . $citation, true));
@@ -124,13 +134,25 @@ class DocxGenerator
             $sidebarCell->appendChild(self::createSidebarLabelValuePara($dom, 'Digital Object Identifier:', ' ' . $doi, false));
             $sidebarCell->appendChild(self::createSidebarEmptyPara($dom));
 
-            // Review Editor (on next line as in template)
-            $sidebarCell->appendChild(self::createSidebarLabelValuePara($dom, 'Review Editor: ', '', false));
-            $sidebarCell->appendChild(self::createSidebarLabelValuePara($dom, '', $reviewEditor, false));
+            // Review Editor (Vol 3+ puts editor inline after label; Vol 1-2 archive preserves next-line layout)
+            if ($isVol3Plus) {
+                $sidebarCell->appendChild(self::createSidebarLabelValuePara($dom, 'Review Editor:', ' ' . $reviewEditor, false));
+            } else {
+                $sidebarCell->appendChild(self::createSidebarLabelValuePara($dom, 'Review Editor: ', '', false));
+                $sidebarCell->appendChild(self::createSidebarLabelValuePara($dom, '', $reviewEditor, false));
+            }
             $sidebarCell->appendChild(self::createSidebarEmptyPara($dom));
 
-            // Published Date
-            $sidebarCell->appendChild(self::createSidebarLabelValuePara($dom, 'Published:', ' ' . $publishedDate, false));
+            // Received / Accepted / Published dates
+            if ($isVol3Plus) {
+                if ($receivedDate !== '') {
+                    $sidebarCell->appendChild(self::createSidebarLabelValuePara($dom, 'Received:', ' ' . $receivedDate, false));
+                }
+                if ($acceptedDate !== '') {
+                    $sidebarCell->appendChild(self::createSidebarLabelValuePara($dom, 'Accepted:', ' ' . $acceptedDate, true));
+                }
+            }
+            $sidebarCell->appendChild(self::createSidebarLabelValuePara($dom, 'Published:', ' ' . $publishedDate, $isVol3Plus));
             $sidebarCell->appendChild(self::createSidebarEmptyPara($dom));
 
             // Copyright with CC BY-SA 4.0 hyperlink (rId12)
@@ -138,11 +160,17 @@ class DocxGenerator
             $sidebarCell->appendChild(self::createSidebarEmptyPara($dom));
 
             // Funding
-            $sidebarCell->appendChild(self::createSidebarLabelValuePara($dom, 'Funding:', ' ' . $funding, false));
+            $sidebarCell->appendChild(self::createSidebarLabelValuePara($dom, 'Funding:', ' ' . $funding, $isVol3Plus));
             $sidebarCell->appendChild(self::createSidebarEmptyPara($dom));
 
             // Competing interests
-            $sidebarCell->appendChild(self::createSidebarLabelValuePara($dom, 'Competing interests:', ' ' . $competing, false));
+            $sidebarCell->appendChild(self::createSidebarLabelValuePara($dom, 'Competing interests:', ' ' . $competing, $isVol3Plus));
+
+            // Contributor's Roles (Vol 3+)
+            if ($isVol3Plus && $contributorRoles !== '') {
+                $sidebarCell->appendChild(self::createSidebarEmptyPara($dom));
+                $sidebarCell->appendChild(self::createSidebarLabelValuePara($dom, "Contributor\u{2019}s Roles:", ' ' . $contributorRoles, true));
+            }
         }
 
         // --- B. Row 0 Cell 1: Article Type ---
@@ -294,6 +322,11 @@ class DocxGenerator
         }
 
         // --- F. Row 7 Cell 1: Indonesian Structured Abstract ---
+        $isVol3Plus = LanguageAuditor::isVolume3Plus($data['volume'] ?? '1');
+        $sdgsId = trim((string) ($data['sdgs_id'] ?? ''));
+        $sdgsEn = trim((string) ($data['sdgs_en'] ?? ''));
+
+        $abEnRow = $rows->item(8);
         $abIdCell = $xpath->query('./w:tc[2]', $rows->item(7))->item(0);
         if ($abIdCell instanceof DOMElement) {
             self::clearCellParagraphs($abIdCell, $xpath);
@@ -326,8 +359,39 @@ class DocxGenerator
             $abIdCell->appendChild(self::createStyledPara($dom, '', ['jc' => 'both']));
         }
 
+        // Vol 3+: Insert full-width shaded (#E8E8E8) SDGs Indonesian block between ABSTRAK and ABSTRACT rows
+        if ($isVol3Plus && $sdgsId !== '' && $abEnRow instanceof DOMElement) {
+            $sdgsRow = $abEnRow->cloneNode(true);
+            if ($sdgsRow instanceof DOMElement) {
+                $sdgsCell = $xpath->query('./w:tc[1]', $sdgsRow)->item(0);
+                if ($sdgsCell instanceof DOMElement) {
+                    self::clearCellParagraphs($sdgsCell, $xpath);
+                    $tcPr = $xpath->query('./w:tcPr', $sdgsCell)->item(0);
+                    if ($tcPr instanceof DOMElement) {
+                        $oldShd = $xpath->query('./w:shd', $tcPr)->item(0);
+                        if ($oldShd) {
+                            $tcPr->removeChild($oldShd);
+                        }
+                        $shd = $dom->createElementNS(self::NS_W, 'w:shd');
+                        $shd->setAttribute('w:val', 'clear');
+                        $shd->setAttribute('w:color', 'auto');
+                        $shd->setAttribute('w:fill', 'E8E8E8');
+                        $tcPr->appendChild($shd);
+                    }
+                    $sdgsCell->appendChild(self::createStyledPara(
+                        $dom,
+                        'Kontribusi terhadap Target Pembangunan Berkelanjutan (TPB/SDGs)',
+                        ['bold' => true]
+                    ));
+                    $sdgsCell->appendChild(self::createStyledPara($dom, $sdgsId, ['jc' => 'both']));
+                    $sdgsCell->appendChild(self::createStyledPara($dom, '', ['jc' => 'both']));
+                }
+                $tbl->insertBefore($sdgsRow, $abEnRow);
+            }
+        }
+
         // --- G. Row 8 Cell 0: English Structured Abstract ---
-        $abEnCell = $xpath->query('./w:tc[1]', $rows->item(8))->item(0);
+        $abEnCell = ($abEnRow instanceof DOMElement) ? $xpath->query('./w:tc[1]', $abEnRow)->item(0) : null;
         if ($abEnCell instanceof DOMElement) {
             self::clearCellParagraphs($abEnCell, $xpath);
 
@@ -360,6 +424,16 @@ class DocxGenerator
             $pKwEn->appendChild(self::createRun($dom, ': ' . $kwEn . '.', ['italic' => true]));
             $abEnCell->appendChild($pKwEn);
             $abEnCell->appendChild(self::createStyledPara($dom, '', ['italic' => true, 'jc' => 'both']));
+
+            if ($isVol3Plus && $sdgsEn !== '') {
+                $abEnCell->appendChild(self::createStyledPara(
+                    $dom,
+                    'Contribution to Sustainable Development Goals (SDGs)',
+                    ['bold' => true, 'italic' => true, 'jc' => 'both']
+                ));
+                $abEnCell->appendChild(self::createStyledPara($dom, $sdgsEn, ['italic' => true, 'jc' => 'both']));
+                $abEnCell->appendChild(self::createStyledPara($dom, '', ['italic' => true, 'jc' => 'both']));
+            }
         }
     }
 
@@ -421,9 +495,19 @@ class DocxGenerator
             $body->removeChild($rmNode);
         }
 
-        // Update Re-typeset 2026 TextBox content if custom text provided
-        if (!empty($data['retypeset_note'])) {
-            $retypesetText = rtrim(trim($data['retypeset_note']), '.');
+        // Starting Volume 3+ (or when retypeset note is cleared): omit the 2026 re-typeset textbox cleanly
+        $isVol3Plus = LanguageAuditor::isVolume3Plus($data['volume'] ?? '1');
+        $retypesetNote = trim((string) ($data['retypeset_note'] ?? ''));
+        if ($isVol3Plus || $retypesetNote === '') {
+            $tbContainers = [];
+            foreach ($xpath->query('./w:p[.//w:txbxContent]', $body) as $tbParaNode) {
+                $tbContainers[] = $tbParaNode;
+            }
+            foreach ($tbContainers as $rmTb) {
+                $body->removeChild($rmTb);
+            }
+        } else {
+            $retypesetText = rtrim($retypesetNote, '.');
             foreach ($xpath->query('.//w:txbxContent/w:p', $body) as $tbPara) {
                 self::clearElementChildren($tbPara);
                 $r1 = $dom->createElementNS(self::NS_W, 'w:r');
@@ -1099,6 +1183,8 @@ class DocxGenerator
         string $articleUrl,
         string $footerIssueLine
     ): void {
+        // Always enforce official Indonesian month names in footers across every volume
+        $footerIssueLine = LanguageAuditor::translateMonthsToIndonesian($footerIssueLine);
         $resolvedFooter = DocxParser::resolveZipEntryName($zip, $footerEntry);
         $fXml = $zip->getFromName($resolvedFooter);
         if ($fXml) {

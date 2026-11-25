@@ -36,9 +36,16 @@ class DocxParser
             'citation' => '',
             'doi' => '',
             'review_editor' => '',
+            'received_date' => '',
+            'accepted_date' => '',
             'published_date' => '',
+            'copyright_year' => '',
+            'volume' => '',
+            'issue_number' => '',
+            'footer_issue_line' => '',
             'funding' => 'none',
             'competing_interests' => 'The authors have declared that no competing interests exist.',
+            'contributor_roles' => '',
             'abstract_id' => [
                 'pendahuluan_metode' => '',
                 'hasil' => '',
@@ -46,6 +53,7 @@ class DocxParser
                 'raw' => '',
             ],
             'keywords_id' => '',
+            'sdgs_id' => '',
             'abstract_en' => [
                 'intro_methods' => '',
                 'results' => '',
@@ -53,6 +61,7 @@ class DocxParser
                 'raw' => '',
             ],
             'keywords_en' => '',
+            'sdgs_en' => '',
             'sections' => [
                 'badan_artikel' => [],
                 'pendahuluan' => [],
@@ -76,6 +85,31 @@ class DocxParser
 
         $docEntry = self::resolveZipEntryName($zip, 'word/document.xml');
         $xmlContent = $zip->getFromName($docEntry);
+
+        // Extract footer issue line & volume/issue metadata from footer2.xml / footer1.xml if present
+        foreach (['word/footer2.xml', 'word/footer1.xml'] as $fCandidate) {
+            $fEntry = self::resolveZipEntryName($zip, $fCandidate);
+            $fXml = $zip->getFromName($fEntry);
+            if ($fXml) {
+                $fDom = new DOMDocument();
+                @$fDom->loadXML($fXml, LIBXML_NOENT | LIBXML_NONET);
+                $fXp = new DOMXPath($fDom);
+                $fXp->registerNamespace('w', self::NS_W);
+                foreach ($fXp->query('//w:p') as $fp) {
+                    $ft = trim(self::getElementText($fp, $fXp));
+                    if (preg_match('/^Volume\s+(\S+)\s+Nomor\s+(\S+)\s*,?\s*(.*)$/iu', $ft, $fm)) {
+                        $result['volume'] = $fm[1];
+                        $result['issue_number'] = $fm[2];
+                        $result['footer_issue_line'] = LanguageAuditor::translateMonthsToIndonesian($ft);
+                        if (preg_match('/\b(20\d{2})\b/', $ft, $ym)) {
+                            $result['copyright_year'] = $ym[1];
+                        }
+                        break 2;
+                    }
+                }
+            }
+        }
+
         $zip->close();
 
         if (!$xmlContent) {
@@ -102,13 +136,37 @@ class DocxParser
         $startIndex = 0;
         $hasFrontMatterTable = false;
 
-        // Check if child 0 is a front-matter layout table (like Kisi 2026 / Letter / Data Report template)
+        // Check if child 0 is a front-matter layout table (like Kisi 2026 / Letter / Data Report / Vol 3+ template)
         if (count($children) > 0 && $children[0]->localName === 'tbl') {
             $firstTblText = self::getElementText($children[0], $xpath);
             if (stripos($firstTblText, 'ABSTRAK') !== false || stripos($firstTblText, 'OPEN ACCESS') !== false || stripos($firstTblText, 'Citation:') !== false) {
                 self::parseFrontMatterTable($children[0], $xpath, $result);
                 $startIndex = 1;
                 $hasFrontMatterTable = true;
+
+                // Handle manual Vol 3+ DOCX files where SDGs ID box or ABSTRACT row were split into immediately following tables
+                while ($startIndex < count($children) && $children[$startIndex]->localName === 'tbl') {
+                    $nextTblText = trim(self::getElementText($children[$startIndex], $xpath));
+                    $cells = $xpath->query('./w:tr/w:tc', $children[$startIndex]);
+                    if (
+                        $cells->length === 1
+                        && preg_match('/^Kontribusi\s+terhadap\s+Target\s+Pembangunan\s+Berkelanjutan/iu', $nextTblText)
+                    ) {
+                        self::parseStructuredAbstractCell($cells->item(0), $xpath, 'id', $result);
+                        $startIndex++;
+                        continue;
+                    }
+                    if (
+                        $cells->length === 1
+                        && preg_match('/^ABSTRACT\b/i', $nextTblText)
+                        && stripos($nextTblText, 'Introduction and Methods') !== false
+                    ) {
+                        self::parseStructuredAbstractCell($cells->item(0), $xpath, 'en', $result);
+                        $startIndex++;
+                        continue;
+                    }
+                    break;
+                }
             }
         }
 
@@ -267,9 +325,13 @@ class DocxParser
         if ($sidebarCell) {
             $pNodes = $xpath->query('./w:p', $sidebarCell);
             $expectingReviewEditor = false;
+            $collectingContribRoles = false;
             foreach ($pNodes as $p) {
                 $txt = trim(self::getElementText($p, $xpath));
                 if ($txt === '' || $txt === 'OPEN ACCESS') {
+                    if ($txt === '' && $collectingContribRoles) {
+                        $collectingContribRoles = false;
+                    }
                     continue;
                 }
                 if ($expectingReviewEditor) {
@@ -278,22 +340,48 @@ class DocxParser
                     continue;
                 }
                 if (stripos($txt, 'Citation:') === 0) {
+                    $collectingContribRoles = false;
                     $result['citation'] = trim(substr($txt, strlen('Citation:')));
+                    if ($result['volume'] === '' && preg_match('/,\s*(\d+)\((\d+)\)\s*,/', $result['citation'], $cm)) {
+                        $result['volume'] = $cm[1];
+                        $result['issue_number'] = $cm[2];
+                    }
                 } elseif (stripos($txt, 'Digital Object Identifier:') === 0) {
+                    $collectingContribRoles = false;
                     $result['doi'] = trim(substr($txt, strlen('Digital Object Identifier:')));
                 } elseif (stripos($txt, 'Review Editor:') === 0) {
+                    $collectingContribRoles = false;
                     $after = trim(substr($txt, strlen('Review Editor:')));
                     if ($after !== '') {
                         $result['review_editor'] = $after;
                     } else {
                         $expectingReviewEditor = true;
                     }
+                } elseif (stripos($txt, 'Received:') === 0) {
+                    $collectingContribRoles = false;
+                    $result['received_date'] = trim(substr($txt, strlen('Received:')));
+                } elseif (stripos($txt, 'Accepted:') === 0) {
+                    $collectingContribRoles = false;
+                    $result['accepted_date'] = trim(substr($txt, strlen('Accepted:')));
                 } elseif (stripos($txt, 'Published:') === 0) {
+                    $collectingContribRoles = false;
                     $result['published_date'] = trim(substr($txt, strlen('Published:')));
+                } elseif (stripos($txt, 'Copyright:') === 0) {
+                    $collectingContribRoles = false;
+                    if ($result['copyright_year'] === '' && preg_match('/©\s*(20\d{2})/', $txt, $ym)) {
+                        $result['copyright_year'] = $ym[1];
+                    }
                 } elseif (stripos($txt, 'Funding:') === 0) {
+                    $collectingContribRoles = false;
                     $result['funding'] = trim(substr($txt, strlen('Funding:')));
                 } elseif (stripos($txt, 'Competing interests:') === 0) {
+                    $collectingContribRoles = false;
                     $result['competing_interests'] = trim(substr($txt, strlen('Competing interests:')));
+                } elseif (preg_match('/^Contributor[’\']?s?\s+Roles\s*:\s*(.*)$/iu', $txt, $crm)) {
+                    $result['contributor_roles'] = trim($crm[1]);
+                    $collectingContribRoles = true;
+                } elseif ($collectingContribRoles) {
+                    $result['contributor_roles'] = trim($result['contributor_roles'] . ' ' . $txt);
                 }
             }
         }
@@ -382,7 +470,7 @@ class DocxParser
             }
         }
 
-        // Row 7 Cell 1: Indonesian Abstract
+        // Row 7 Cell 1: Indonesian Abstract (and possible Vol 3+ SDGs row between R7 and last ABSTRACT row)
         if ($rows->length > 7) {
             $c1 = $xpath->query('./w:tc[2]', $rows->item(7))->item(0);
             if ($c1) {
@@ -390,11 +478,19 @@ class DocxParser
             }
         }
 
-        // Row 8 Cell 0: English Abstract
-        if ($rows->length > 8) {
-            $c0 = $xpath->query('./w:tc[1]', $rows->item(8))->item(0);
-            if ($c0) {
-                self::parseStructuredAbstractCell($c0, $xpath, 'en', $result);
+        for ($rIdx = 8; $rIdx < $rows->length; $rIdx++) {
+            $cellNode = $xpath->query('./w:tc[1]', $rows->item($rIdx))->item(0);
+            if (!$cellNode) {
+                continue;
+            }
+            $cellTxt = trim(self::getElementText($cellNode, $xpath));
+            if ($cellTxt === '') {
+                continue;
+            }
+            if (preg_match('/^Kontribusi\s+terhadap\s+Target\s+Pembangunan\s+Berkelanjutan/iu', $cellTxt)) {
+                self::parseStructuredAbstractCell($cellNode, $xpath, 'id', $result);
+            } else {
+                self::parseStructuredAbstractCell($cellNode, $xpath, 'en', $result);
             }
         }
     }
@@ -430,6 +526,15 @@ class DocxParser
                     $result['keywords_id'] = rtrim(trim($m[1]), '.');
                     continue;
                 }
+                if (preg_match('/^Kontribusi\s+terhadap\s+Target\s+Pembangunan\s+Berkelanjutan/iu', $t)) {
+                    $currentKey = 'sdgs_id';
+                    continue;
+                }
+
+                if ($currentKey === 'sdgs_id') {
+                    $result['sdgs_id'] = trim(($result['sdgs_id'] ?? '') . ' ' . $t);
+                    continue;
+                }
 
                 $rawParts[] = $t;
                 if ($currentKey !== '') {
@@ -444,12 +549,21 @@ class DocxParser
                     $currentKey = 'results';
                     continue;
                 }
-                if (preg_match('/^Conclusions(\s+and\s+Recommendations)?$/iu', $t)) {
+                if (preg_match('/^Conclusions(\s+and\s+Recommendations?)?$/iu', $t)) {
                     $currentKey = 'conclusions_recommendations';
                     continue;
                 }
                 if (preg_match('/^Keywords\s*:\s*(.+)$/iu', $t, $m)) {
                     $result['keywords_en'] = rtrim(trim($m[1]), '.');
+                    continue;
+                }
+                if (preg_match('/^Contribution\s+to\s+Sustainable\s+Development\s+Goals/iu', $t)) {
+                    $currentKey = 'sdgs_en';
+                    continue;
+                }
+
+                if ($currentKey === 'sdgs_en') {
+                    $result['sdgs_en'] = trim(($result['sdgs_en'] ?? '') . ' ' . $t);
                     continue;
                 }
 
