@@ -36,7 +36,7 @@ class KisiTypesetterPlugin extends GenericPlugin
         $success = parent::register($category, $path, $mainContextId);
 
         if ($success && $this->getEnabled($mainContextId)) {
-            // 1. Page handler for Studio Re-Layout & JATS XML
+            // 1. Page handler for Kisi Berkelanjutan Typesetter Studio & JATS XML
             Hook::add('LoadHandler', [$this, 'setupHandler']);
 
             // 2. Direct Full-Text JATS XML Digest on public article landing page (/article/view/{id})
@@ -262,8 +262,8 @@ HTML;
         var btn = document.createElement('a');
         btn.id = 'kisi-typesetter-fab';
         btn.href = resolveTypesetterUrl(baseUrl);
-        btn.innerHTML = '⚡ <strong>Kisi Re-Layout &amp; JATS XML</strong>';
-        btn.title = 'Buka Kisi Typesetter Studio (otomatis mendeteksi naskah yang sedang dibuka)';
+        btn.innerHTML = '⚡ <strong>Kisi Berkelanjutan Typesetter</strong>';
+        btn.title = 'Buka Kisi Berkelanjutan Typesetter (otomatis mendeteksi naskah yang sedang dibuka)';
         btn.style.cssText = 'position:fixed;bottom:22px;right:24px;z-index:99999;background:linear-gradient(135deg,#0a2e46,#1565c0);color:#fff;padding:10px 18px;border-radius:999px;font-family:system-ui,-apple-system,sans-serif;font-size:13px;text-decoration:none;box-shadow:0 6px 20px rgba(10,46,70,0.35);border:1px solid rgba(255,255,255,0.2);display:inline-flex;align-items:center;gap:8px;transition:transform 0.15s ease;';
         btn.addEventListener('click', function() {
             btn.href = resolveTypesetterUrl(baseUrl);

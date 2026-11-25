@@ -12,13 +12,13 @@ msgstr ""
 "Language: en\n"
 
 msgid "plugins.generic.kisiTypesetter.displayName"
-msgstr "Kisi Berkelanjutan Automated Typesetter & AmeliCA JATS XML"
+msgstr "Kisi Berkelanjutan Typesetter"
 
 msgid "plugins.generic.kisiTypesetter.description"
-msgstr "Automated re-layout (DOCX template 2026) and JATS 1.2 XML (AmeliCA standard) generator with Gemini AI integration for Jurnal Kisi Berkelanjutan (OJS 3.5)."
+msgstr "Automated DOCX layout, bilingual spell/style auditor, and JATS 1.2 XML (AmeliCA) generator for ongoing and archival issues of Jurnal Kisi Berkelanjutan (OJS 3.5)."
 
 msgid "plugins.generic.kisiTypesetter.openStudio"
-msgstr "Open Re-Layout & JATS XML Studio (Issues 1-3)"
+msgstr "Open Kisi Berkelanjutan Typesetter"
 
 msgid "plugins.generic.kisiTypesetter.navTitle"
 msgstr "Kisi Typesetter"

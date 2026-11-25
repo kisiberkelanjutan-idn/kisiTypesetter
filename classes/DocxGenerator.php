@@ -146,10 +146,10 @@ class DocxGenerator
         }
 
         // --- B. Row 0 Cell 1: Article Type ---
+        $articleType = mb_strtoupper(trim($data['article_type'] ?? 'ORIGINAL ARTICLE'), 'UTF-8');
         $typeCell = $xpath->query('./w:tc[2]', $rows->item(0))->item(0);
         if ($typeCell instanceof DOMElement) {
             self::clearCellParagraphs($typeCell, $xpath);
-            $articleType = mb_strtoupper(trim($data['article_type'] ?? 'ORIGINAL ARTICLE'), 'UTF-8');
             $typeCell->appendChild(self::createStyledPara($dom, $articleType, ['sz' => '22']));
             $typeCell->appendChild(self::createStyledPara($dom, '', ['sz' => '22']));
         }
@@ -280,6 +280,17 @@ class DocxGenerator
             $corrLine = '* Penulis koresponden: ' . $corrName . ($corrEmail !== '' ? ' (' . $corrEmail . ')' : '');
             $corrCell->appendChild(self::createStyledPara($dom, '', ['sz' => '22', 'italic' => true]));
             $corrCell->appendChild(self::createStyledPara($dom, $corrLine, ['sz' => '22', 'italic' => true]));
+        }
+
+        // For DATA REPORT & LETTER: remove ABSTRAK/ABSTRACT rows (rows 5..8) so front-matter ends after Corresponding Author
+        if (LanguageAuditor::isNoAbstractArticleType($articleType)) {
+            for ($ri = $rows->length - 1; $ri >= 5; $ri--) {
+                $rowNode = $rows->item($ri);
+                if ($rowNode instanceof DOMElement && $rowNode->parentNode === $tbl) {
+                    $tbl->removeChild($rowNode);
+                }
+            }
+            return;
         }
 
         // --- F. Row 7 Cell 1: Indonesian Structured Abstract ---
@@ -422,23 +433,8 @@ class DocxGenerator
         }
 
         // Insert Main Body Sections before $publisherNoteNode
-        $sectionMap = [
-            'pendahuluan' => 'PENDAHULUAN',
-            'metode' => 'METODE',
-            'hasil' => 'HASIL',
-            'pembahasan' => 'PEMBAHASAN',
-            'kesimpulan_saran' => 'KESIMPULAN DAN SARAN',
-        ];
         $tableCounter = 1;
-
-        foreach ($sectionMap as $secKey => $secTitle) {
-            $blocks = $data['sections'][$secKey] ?? [];
-            if (empty($blocks)) {
-                continue;
-            }
-
-            $body->insertBefore(self::createHeading1Para($dom, $secTitle), $publisherNoteNode);
-
+        $emitBlocks = static function (array $blocks) use ($dom, $publisherNoteNode, $body, &$tableCounter): void {
             foreach ($blocks as $block) {
                 if (is_string($block)) {
                     $block = ['type' => 'paragraph', 'text' => $block];
@@ -476,6 +472,37 @@ class DocxGenerator
                     }
                 }
             }
+        };
+
+        $badanBlocks = $data['sections']['badan_artikel'] ?? [];
+        if (!empty($badanBlocks)) {
+            $emitBlocks($badanBlocks);
+        }
+
+        $noAbstract = LanguageAuditor::isNoAbstractArticleType((string) ($data['article_type'] ?? 'ORIGINAL ARTICLE'));
+        $sectionMap = [
+            'pendahuluan' => 'PENDAHULUAN',
+            'metode' => 'METODE',
+            'hasil' => 'HASIL',
+            'pembahasan' => 'PEMBAHASAN',
+            'kesimpulan_saran' => 'KESIMPULAN DAN SARAN',
+        ];
+        $onlyIntroPopulated = empty($badanBlocks)
+            && !empty($data['sections']['pendahuluan'])
+            && empty($data['sections']['metode'])
+            && empty($data['sections']['hasil'])
+            && empty($data['sections']['pembahasan'])
+            && empty($data['sections']['kesimpulan_saran']);
+
+        foreach ($sectionMap as $secKey => $secTitle) {
+            $blocks = $data['sections'][$secKey] ?? [];
+            if (empty($blocks)) {
+                continue;
+            }
+            if (!($noAbstract && $onlyIntroPopulated && $secKey === 'pendahuluan')) {
+                $body->insertBefore(self::createHeading1Para($dom, $secTitle), $publisherNoteNode);
+            }
+            $emitBlocks($blocks);
         }
 
         // Insert SUMBER PUSTAKA

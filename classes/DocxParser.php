@@ -2,9 +2,9 @@
 /**
  * @file plugins/generic/kisiTypesetter/classes/DocxParser.php
  *
- * Parses an existing Word (.docx) manuscript (legacy Issues 1-3 or template format)
- * into structured JSON blocks (metadata, bilingual abstracts, sections, subheadings,
- * tables with colspan/rowspan, and references).
+ * Parses an existing Word (.docx) manuscript (current running issues or back-issues)
+ * into structured JSON blocks (metadata, optional bilingual abstracts, direct body or IMRaD sections,
+ * subheadings, tables with colspan/rowspan, and references).
  */
 
 namespace APP\plugins\generic\kisiTypesetter\classes;
@@ -54,6 +54,7 @@ class DocxParser
             ],
             'keywords_en' => '',
             'sections' => [
+                'badan_artikel' => [],
                 'pendahuluan' => [],
                 'metode' => [],
                 'hasil' => [],
@@ -99,16 +100,19 @@ class DocxParser
         }
 
         $startIndex = 0;
+        $hasFrontMatterTable = false;
 
-        // Check if child 0 is a front-matter layout table (like Kisi 2026 template)
+        // Check if child 0 is a front-matter layout table (like Kisi 2026 / Letter / Data Report template)
         if (count($children) > 0 && $children[0]->localName === 'tbl') {
             $firstTblText = self::getElementText($children[0], $xpath);
-            if (stripos($firstTblText, 'ABSTRAK') !== false || stripos($firstTblText, 'OPEN ACCESS') !== false) {
+            if (stripos($firstTblText, 'ABSTRAK') !== false || stripos($firstTblText, 'OPEN ACCESS') !== false || stripos($firstTblText, 'Citation:') !== false) {
                 self::parseFrontMatterTable($children[0], $xpath, $result);
                 $startIndex = 1;
+                $hasFrontMatterTable = true;
             }
         }
 
+        $noAbstractType = LanguageAuditor::isNoAbstractArticleType((string) ($result['article_type'] ?? ''));
         $currentSection = '';
         $pendingTableCaption = '';
         $lastTableRef = null;
@@ -150,10 +154,22 @@ class DocxParser
                     continue;
                 }
 
-                // If we haven't entered PENDAHULUAN yet (legacy unstructured .docx without front-matter table)
+                // If we haven't entered an explicit Heading1 section yet:
+                //  - For LETTER / DATA REPORT or template documents that already have the front-matter table,
+                //    direct body paragraphs belong straight to 'badan_artikel' (no forced PENDAHULUAN heading).
+                //  - Only fall back to pre-intro metadata extraction for legacy raw files without a front-matter table.
                 if ($currentSection === '') {
-                    self::parsePreIntroParagraph($text, $node, $xpath, $result);
-                    continue;
+                    if ($hasFrontMatterTable || $noAbstractType) {
+                        $currentSection = 'badan_artikel';
+                    } else {
+                        if (preg_match('/^(DATA\s*REPORT|LETTER)$/iu', $text)) {
+                            $result['article_type'] = mb_strtoupper(trim($text), 'UTF-8');
+                            $noAbstractType = true;
+                            continue;
+                        }
+                        self::parsePreIntroParagraph($text, $node, $xpath, $result);
+                        continue;
+                    }
                 }
 
                 // Inside SUMBER PUSTAKA / DAFTAR PUSTAKA
@@ -181,11 +197,12 @@ class DocxParser
                     continue;
                 }
 
-                // Check if this paragraph is a Subheading (Heading2/3 or bold short line without ending period)
+                // Check if this paragraph is a Subheading (Heading2/3 or bold short line without ending period; exclude figure/table captions)
                 $pStyle = (string) ($xpath->query('./w:pPr/w:pStyle/@w:val', $node)->item(0)?->nodeValue ?? '');
                 $isBold = self::isParagraphBold($node, $xpath);
+                $isMediaCaption = (bool) preg_match('/^(Gambar|Figure|Fig\.?|Tabel|Table|Sumber|Keterangan|Catatan)\b/iu', $text);
                 $wordCount = count(preg_split('/\s+/u', $text, -1, PREG_SPLIT_NO_EMPTY));
-                if ((preg_match('/^Heading[23]$/i', $pStyle) || ($isBold && $wordCount <= 12 && !preg_match('/[\.\?\!]$/u', $text)))) {
+                if (!$isMediaCaption && (preg_match('/^Heading[23]$/i', $pStyle) || ($isBold && $wordCount <= 12 && !preg_match('/[\.\?\!]$/u', $text)))) {
                     if ($pendingTableCaption !== '') {
                         $result['sections'][$currentSection][] = [
                             'type' => 'paragraph',
@@ -214,7 +231,7 @@ class DocxParser
             } elseif ($node->localName === 'tbl' && $currentSection !== 'end') {
                 $targetSec = ($currentSection !== '' && isset($result['sections'][$currentSection]))
                     ? $currentSection
-                    : 'hasil';
+                    : (($hasFrontMatterTable || $noAbstractType) ? 'badan_artikel' : 'hasil');
 
                 $parsedTable = self::parseDataTable($node, $xpath, $pendingTableCaption, $tableCounter);
                 $pendingTableCaption = '';

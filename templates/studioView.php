@@ -2,7 +2,7 @@
 /**
  * @file plugins/generic/kisiTypesetter/templates/studioView.php
  *
- * Interactive Re-Layout & AmeliCA JATS XML Studio UI for OJS 3.5
+ * Kisi Berkelanjutan Typesetter — Studio & AmeliCA JATS XML UI for OJS 3.5
  */
 $defaultArticle = $activeArticleData ?: [
     'submission_id' => 76,
@@ -47,6 +47,7 @@ $defaultArticle = $activeArticleData ?: [
     ],
     'keywords_en' => '',
     'sections' => [
+        'badan_artikel' => [],
         'pendahuluan' => [],
         'metode' => [],
         'hasil' => [],
@@ -61,7 +62,7 @@ $defaultArticle = $activeArticleData ?: [
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Studio Re-Layout &amp; AmeliCA JATS XML — Kisi Berkelanjutan (OJS 3.5)</title>
+    <title>Kisi Berkelanjutan Typesetter — OJS 3.5</title>
     <style>
         :root {
             --kisi-navy: #0a1d30;
@@ -512,8 +513,8 @@ $defaultArticle = $activeArticleData ?: [
 
 <div class="topbar">
     <div class="topbar-title">
-        <h1>⚡ Kisi Berkelanjutan — Studio Re-Layout 2026 &amp; AmeliCA JATS XML</h1>
-        <span class="badge">OJS 3.5 Integrated Plugin</span>
+        <h1>⚡ Kisi Berkelanjutan Typesetter</h1>
+        <span class="badge">OJS 3.5 Official Plugin</span>
     </div>
     <div style="display:flex;gap:10px;">
         <button type="button" class="btn btn-outline btn-sm" onclick="toggleSettingsDrawer()" style="background:rgba(255,255,255,0.12);color:#fff;border-color:rgba(255,255,255,0.25);">
@@ -565,7 +566,7 @@ $defaultArticle = $activeArticleData ?: [
             </div>
         </div>
         <div class="field-group">
-            <label>Teks Kotak Catatan Re-Typeset 2026 (Publisher's Note Box)</label>
+            <label>Teks Kotak Catatan Publisher's Note Box <span class="hint">(Opsional — kosongkan bila tidak diperlukan)</span></label>
             <input type="text" id="cfg_retypesetNote" value="<?php echo htmlspecialchars($settings['retypesetNote'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
         </div>
         <div class="row-2">
@@ -589,14 +590,14 @@ $defaultArticle = $activeArticleData ?: [
     <!-- Step 1: Select OJS Issue & Article + Load DOCX -->
     <div class="card">
         <div class="card-header">
-            <h2>1️⃣ Pilih Artikel Edisi 1–3 dari Database OJS &amp; Muat File Naskah (.docx)</h2>
+            <h2>1️⃣ Pilih Artikel dari Database OJS &amp; Muat File Naskah (.docx)</h2>
             <span id="statusToast" class="status-toast"></span>
         </div>
         <form method="get" action="<?php echo htmlspecialchars($baseUrl . '/studio', ENT_QUOTES, 'UTF-8'); ?>" class="grid-selector">
             <div>
                 <label>Filter Edisi (Issue OJS)</label>
                 <select name="issueId" onchange="this.form.submit()">
-                    <option value="0">— Semua Edisi (Edisi 1–3, dst.) —</option>
+                    <option value="0">— Semua Edisi (Edisi Berjalan &amp; Arsip) —</option>
                     <?php foreach ($issuesList as $iss): ?>
                         <option value="<?php echo (int) $iss['id']; ?>" <?php echo ($selectedIssueId === (int) $iss['id']) ? 'selected' : ''; ?>>
                             <?php echo htmlspecialchars($iss['label'], ENT_QUOTES, 'UTF-8'); ?>
@@ -665,12 +666,21 @@ $defaultArticle = $activeArticleData ?: [
 
             <div class="row-2">
                 <div class="field-group">
-                    <label>Kategori Artikel</label>
-                    <input type="text" id="f_article_type" oninput="syncStateFromInputs()">
+                    <label>Kategori Artikel <span class="hint">(DATA REPORT &amp; LETTER tanpa abstrak)</span></label>
+                    <select id="f_article_type_preset" onchange="onArticleTypePresetChange()">
+                        <option value="ORIGINAL ARTICLE">ORIGINAL ARTICLE (Dengan Abstrak)</option>
+                        <option value="REVIEW ARTICLE">REVIEW ARTICLE (Dengan Abstrak)</option>
+                        <option value="DATA REPORT">DATA REPORT (Tanpa Abstrak — Langsung Isi)</option>
+                        <option value="LETTER">LETTER (Tanpa Abstrak — Langsung Isi)</option>
+                        <option value="CASE REPORT">CASE REPORT</option>
+                        <option value="SHORT COMMUNICATION">SHORT COMMUNICATION</option>
+                        <option value="CUSTOM">Lainnya (Ketik Manual)...</option>
+                    </select>
+                    <input type="text" id="f_article_type" style="margin-top:6px;display:none;" placeholder="Ketik kategori kustom..." oninput="syncStateFromInputs(); applyArticleTypeLayoutMode();">
                 </div>
                 <div class="field-group">
                     <label>Nomor Artikel (e-ID)</label>
-                    <input type="text" id="f_elocation_id" placeholder="e76" oninput="syncStateFromInputs()">
+                    <input type="text" id="f_elocation_id" placeholder="e32 / e76" oninput="syncStateFromInputs()">
                 </div>
             </div>
 
@@ -731,7 +741,7 @@ $defaultArticle = $activeArticleData ?: [
             </div>
 
             <div class="field-group">
-                <label>Catatan Re-Typeset 2026 <span class="hint">(Kotak Bawah Artikel)</span></label>
+                <label>Catatan Kotak Bawah (Publisher's Note Box) <span class="hint">(Opsional)</span></label>
                 <textarea id="f_retypeset_note" rows="2" oninput="syncStateFromInputs()"></textarea>
             </div>
         </div>
@@ -739,7 +749,7 @@ $defaultArticle = $activeArticleData ?: [
         <!-- Right Column: Main Article Content -->
         <div class="card">
             <div class="card-header">
-                <h2>📝 Pratinjau &amp; Editor Konten Artikel (Template 2026 + JATS XML)</h2>
+                <h2>📝 Pratinjau &amp; Editor Konten Artikel (DOCX + JATS XML)</h2>
             </div>
 
             <!-- Bilingual Titles -->
@@ -776,7 +786,7 @@ $defaultArticle = $activeArticleData ?: [
             <!-- Content Tabs -->
             <div class="tabs" style="margin-top:16px;flex-wrap:wrap;">
                 <button type="button" class="tab-btn active" data-tab="tab-abstracts" onclick="switchTab('tab-abstracts', this)">
-                    1. ABSTRAK &amp; ABSTRACT (Terstruktur 2 Bahasa)
+                    1. ABSTRAK &amp; ABSTRACT <span id="absTabStatusBadge" style="font-weight:500;">(Terstruktur 2 Bahasa)</span>
                 </button>
                 <button type="button" class="tab-btn" data-tab="tab-body" onclick="switchTab('tab-body', this)">
                     2. ISI ARTIKEL &amp; TABEL (Geser Blok &amp; Tabel Kesehatan)
@@ -794,7 +804,11 @@ $defaultArticle = $activeArticleData ?: [
 
             <!-- TAB 1: Bilingual Structured Abstracts -->
             <div id="tab-abstracts" class="tab-pane active">
-                <div class="row-2">
+                <div id="noAbstractNotice" style="display:none;background:#eff6ff;border:1px solid #93c5fd;color:#1e3a8a;padding:12px 14px;border-radius:8px;margin-bottom:12px;font-size:13px;">
+                    📄 <strong>Mode Tanpa Abstrak Aktif (<span id="noAbstractCatLabel">DATA REPORT / LETTER</span>):</strong>
+                    Sesuai template resmi, kategori ini tidak menampilkan kolom <em>ABSTRAK</em>, <em>ABSTRACT</em>, maupun <em>Kata Kunci / Keywords</em> pada DOCX maupun JATS XML. Silakan langsung sunting isi naskah di <strong>Tab 2 (ISI ARTIKEL &amp; TABEL)</strong>.
+                </div>
+                <div id="abstractInputsGrid" class="row-2">
                     <!-- Indonesian Abstract -->
                     <div style="background:#f8fafc;padding:14px;border-radius:8px;border:1px solid #e2e8f0;">
                         <h3 style="margin:0 0 10px 0;font-size:14px;color:var(--kisi-navy);">🇮🇩 ABSTRAK (Bahasa Indonesia)</h3>
@@ -846,6 +860,12 @@ $defaultArticle = $activeArticleData ?: [
                         💡 <strong>Atur Urutan &amp; Level Manual:</strong> Seret ikon <strong>⋮⋮</strong> atau klik tombol <strong>▲ / ▼</strong> untuk menggeser blok naik-turun maupun lintas bab (<em>PENDAHULUAN ↔ METODE ↔ HASIL ↔ PEMBAHASAN ↔ KESIMPULAN</em>). Gunakan dropdown <strong>Level Blok</strong> untuk ubah <em>Paragraf ↔ Sub-Judul</em>.
                     </div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button type="button" id="btnMergeImradToBody" class="btn btn-outline btn-sm" style="display:none;" onclick="mergeImradSectionsIntoDirectBody()">
+                            📥 Gabungkan IMRaD ke Badan Artikel Langsung
+                        </button>
+                        <button type="button" id="btnToggleOptionalImrad" class="btn btn-outline btn-sm" style="display:none;" onclick="toggleOptionalImradSections()">
+                            ➕ Bagian IMRaD Opsional
+                        </button>
                         <button type="button" class="btn btn-outline btn-sm" onclick="normalizeAllArticleSpacing(true)">
                             ✂️ Rapikan Spasi (&le; 1 Spasi)
                         </button>
@@ -951,7 +971,16 @@ $defaultArticle = $activeArticleData ?: [
 const BASE_URL = <?php echo json_encode($baseUrl, JSON_UNESCAPED_UNICODE); ?>;
 let articleState = <?php echo json_encode($defaultArticle, JSON_UNESCAPED_UNICODE); ?>;
 
+const ARTICLE_TYPE_PRESETS = ['ORIGINAL ARTICLE', 'REVIEW ARTICLE', 'DATA REPORT', 'LETTER', 'CASE REPORT', 'SHORT COMMUNICATION'];
+let showOptionalImradForNoAbs = false;
+
+function isNoAbstractType(artType) {
+    const u = String(artType || '').toUpperCase().trim();
+    return /\b(DATA\s*REPORT|LETTER|LETTERS?\s+TO\s+(?:THE\s+)?EDITOR|LAPORAN\s*DATA|SURAT\s+(?:KE\s+)?REDAKSI)\b/.test(u);
+}
+
 const SECTION_LABELS = {
+    badan_artikel: 'BADAN ARTIKEL LANGSUNG (Tanpa Heading IMRaD — Standar Data Report / Letter)',
     pendahuluan: 'PENDAHULUAN',
     metode: 'METODE',
     hasil: 'HASIL (Paragraf & Tabel Penelitian)',
@@ -977,8 +1006,87 @@ function switchTab(tabId, btnEl) {
     btnEl.classList.add('active');
 }
 
+function syncArticleTypeControlFromState() {
+    const val = String(articleState.article_type || 'ORIGINAL ARTICLE').toUpperCase().trim();
+    const sel = document.getElementById('f_article_type_preset');
+    const customInput = document.getElementById('f_article_type');
+    customInput.value = val;
+    if (ARTICLE_TYPE_PRESETS.includes(val)) {
+        sel.value = val;
+        customInput.style.display = 'none';
+    } else {
+        sel.value = 'CUSTOM';
+        customInput.style.display = 'block';
+    }
+    applyArticleTypeLayoutMode();
+}
+
+function onArticleTypePresetChange() {
+    const sel = document.getElementById('f_article_type_preset');
+    const customInput = document.getElementById('f_article_type');
+    if (sel.value === 'CUSTOM') {
+        customInput.style.display = 'block';
+        customInput.focus();
+    } else {
+        customInput.style.display = 'none';
+        customInput.value = sel.value;
+    }
+    syncStateFromInputs();
+    applyArticleTypeLayoutMode(true);
+}
+
+function applyArticleTypeLayoutMode(userInitiated = false) {
+    const noAbs = isNoAbstractType(articleState.article_type);
+    const notice = document.getElementById('noAbstractNotice');
+    const catLbl = document.getElementById('noAbstractCatLabel');
+    const absGrid = document.getElementById('abstractInputsGrid');
+    const absBadge = document.getElementById('absTabStatusBadge');
+
+    if (notice) notice.style.display = noAbs ? 'block' : 'none';
+    if (catLbl) catLbl.textContent = String(articleState.article_type || 'DATA REPORT / LETTER').toUpperCase();
+    if (absGrid) {
+        absGrid.style.opacity = noAbs ? '0.45' : '1';
+        absGrid.style.pointerEvents = noAbs ? 'none' : 'auto';
+    }
+    if (absBadge) {
+        absBadge.textContent = noAbs ? '(Tidak Dipakai — Langsung Badan Artikel)' : '(Terstruktur 2 Bahasa)';
+    }
+
+    if (userInitiated && noAbs) {
+        // Automatically jump to Tab 2 when user picks DATA REPORT / LETTER while viewing Tab 1
+        const tab1Active = document.getElementById('tab-abstracts').classList.contains('active');
+        if (tab1Active) {
+            const tab2Btn = document.querySelector('.tab-btn[data-tab="tab-body"]');
+            if (tab2Btn) switchTab('tab-body', tab2Btn);
+        }
+        showToast(`Mode ${articleState.article_type}: Abstrak dihilangkan & langsung ke Badan Artikel.`, 'info');
+    }
+    renderBodySectionsEditor();
+}
+
+function toggleOptionalImradSections() {
+    showOptionalImradForNoAbs = !showOptionalImradForNoAbs;
+    renderBodySectionsEditor();
+}
+
+function mergeImradSectionsIntoDirectBody() {
+    if (!articleState.sections) articleState.sections = {};
+    if (!Array.isArray(articleState.sections.badan_artikel)) articleState.sections.badan_artikel = [];
+    const imradKeys = ['pendahuluan', 'metode', 'hasil', 'pembahasan', 'kesimpulan_saran'];
+    let moved = 0;
+    imradKeys.forEach(k => {
+        const blocks = articleState.sections[k] || [];
+        while (blocks.length > 0) {
+            articleState.sections.badan_artikel.push(blocks.shift());
+            moved++;
+        }
+    });
+    renderBodySectionsEditor({ sec: 'badan_artikel', idx: Math.max(0, articleState.sections.badan_artikel.length - 1) });
+    showToast(`📥 ${moved} blok dari bagian IMRaD digabungkan ke Badan Artikel Langsung.`, 'success');
+}
+
 function populateFormFromState() {
-    document.getElementById('f_article_type').value = articleState.article_type || 'ORIGINAL ARTICLE';
+    syncArticleTypeControlFromState();
     document.getElementById('f_elocation_id').value = articleState.elocation_id || ('e' + (articleState.submission_id || '76'));
     document.getElementById('f_volume').value = articleState.volume || '1';
     document.getElementById('f_issue_number').value = articleState.issue_number || '1';
@@ -1058,7 +1166,7 @@ function syncReferencesFromInput() {
     document.getElementById('refCountBadge').textContent = articleState.referensi.length;
 }
 
-const SECTION_KEYS = ['pendahuluan', 'metode', 'hasil', 'pembahasan', 'kesimpulan_saran'];
+const SECTION_KEYS = ['badan_artikel', 'pendahuluan', 'metode', 'hasil', 'pembahasan', 'kesimpulan_saran'];
 
 function renderAuthorsEditor() {
     const container = document.getElementById('authorsContainer');
@@ -1144,18 +1252,48 @@ function updateAffDeduplicationPreview() {
 
 let dragBlockState = { srcSec: null, srcIdx: null };
 
+function getActiveSectionKeys() {
+    if (!articleState.sections) articleState.sections = {};
+    const noAbs = isNoAbstractType(articleState.article_type);
+    return SECTION_KEYS.filter(secKey => {
+        const blocks = Array.isArray(articleState.sections[secKey]) ? articleState.sections[secKey] : [];
+        if (noAbs) {
+            if (secKey === 'badan_artikel') return true;
+            return showOptionalImradForNoAbs || blocks.length > 0;
+        }
+        return secKey !== 'badan_artikel' || blocks.length > 0;
+    });
+}
+
 function renderBodySectionsEditor(flashTarget = null) {
     const container = document.getElementById('bodySectionsContainer');
     container.innerHTML = '';
     if (!articleState.sections) articleState.sections = {};
 
-    SECTION_KEYS.forEach((secKey, secPos) => {
+    const noAbs = isNoAbstractType(articleState.article_type);
+    const imradKeys = ['pendahuluan', 'metode', 'hasil', 'pembahasan', 'kesimpulan_saran'];
+    const hasAnyImradBlocks = imradKeys.some(k => Array.isArray(articleState.sections[k]) && articleState.sections[k].length > 0);
+    const btnMerge = document.getElementById('btnMergeImradToBody');
+    const btnToggleOpt = document.getElementById('btnToggleOptionalImrad');
+    if (btnMerge) btnMerge.style.display = (noAbs && hasAnyImradBlocks) ? 'inline-flex' : 'none';
+    if (btnToggleOpt) {
+        btnToggleOpt.style.display = noAbs ? 'inline-flex' : 'none';
+        btnToggleOpt.textContent = showOptionalImradForNoAbs ? '➖ Sembunyikan IMRaD Kosong' : '➕ Bagian IMRaD Opsional';
+    }
+
+    const activeSectionKeys = getActiveSectionKeys();
+
+    activeSectionKeys.forEach((secKey, secPos) => {
         if (!Array.isArray(articleState.sections[secKey])) {
             articleState.sections[secKey] = [];
         }
         const blocks = articleState.sections[secKey];
         const secCard = document.createElement('div');
         secCard.className = 'section-card';
+        if (secKey === 'badan_artikel') {
+            secCard.style.borderColor = '#93c5fd';
+            secCard.style.background = '#f8fbff';
+        }
         secCard.dataset.secKey = secKey;
 
         secCard.addEventListener('dragover', (ev) => {
@@ -1207,11 +1345,12 @@ function renderBodySectionsEditor(flashTarget = null) {
             item.dataset.bIdx = String(bIdx);
 
             const canMoveUp = !(secPos === 0 && bIdx === 0);
-            const canMoveDown = !(secPos === SECTION_KEYS.length - 1 && bIdx === blocks.length - 1);
+            const canMoveDown = !(secPos === activeSectionKeys.length - 1 && bIdx === blocks.length - 1);
 
-            const moveSecOptions = SECTION_KEYS.map(k =>
-                `<option value="${k}" ${k === secKey ? 'selected' : ''}>Bab: ${escapeHtml(k.replace('_', ' ').toUpperCase())}</option>`
-            ).join('');
+            const moveSecOptions = SECTION_KEYS.map(k => {
+                const lbl = (k === 'badan_artikel') ? 'BADAN LANGSUNG' : k.replace('_', ' ').toUpperCase();
+                return `<option value="${k}" ${k === secKey ? 'selected' : ''}>Bab: ${escapeHtml(lbl)}</option>`;
+            }).join('');
 
             const isTextBlock = (blk.type !== 'table');
             const levelSelectHtml = isTextBlock ? `
@@ -1336,7 +1475,8 @@ function performBlockRelocation(srcSec, srcIdx, targetSec, rawTargetIdx) {
 
 function moveBlockVertical(secKey, bIdx, delta) {
     const blocks = articleState.sections[secKey] || [];
-    const secPos = SECTION_KEYS.indexOf(secKey);
+    const activeKeys = getActiveSectionKeys();
+    const secPos = activeKeys.indexOf(secKey);
 
     if (delta < 0) {
         if (bIdx > 0) {
@@ -1345,11 +1485,12 @@ function moveBlockVertical(secKey, bIdx, delta) {
             blocks[bIdx] = tmp;
             renderBodySectionsEditor({ sec: secKey, idx: bIdx - 1 });
         } else if (secPos > 0) {
-            const prevSec = SECTION_KEYS[secPos - 1];
+            const prevSec = activeKeys[secPos - 1];
             const [moved] = blocks.splice(bIdx, 1);
+            if (!Array.isArray(articleState.sections[prevSec])) articleState.sections[prevSec] = [];
             articleState.sections[prevSec].push(moved);
             renderBodySectionsEditor({ sec: prevSec, idx: articleState.sections[prevSec].length - 1 });
-            showToast('Blok dipindahkan naik ke akhir bab ' + prevSec.toUpperCase(), 'info');
+            showToast('Blok dipindahkan naik ke akhir bab ' + prevSec.replace('_', ' ').toUpperCase(), 'info');
         }
     } else if (delta > 0) {
         if (bIdx < blocks.length - 1) {
@@ -1357,12 +1498,13 @@ function moveBlockVertical(secKey, bIdx, delta) {
             blocks[bIdx + 1] = blocks[bIdx];
             blocks[bIdx] = tmp;
             renderBodySectionsEditor({ sec: secKey, idx: bIdx + 1 });
-        } else if (secPos < SECTION_KEYS.length - 1) {
-            const nextSec = SECTION_KEYS[secPos + 1];
+        } else if (secPos >= 0 && secPos < activeKeys.length - 1) {
+            const nextSec = activeKeys[secPos + 1];
             const [moved] = blocks.splice(bIdx, 1);
+            if (!Array.isArray(articleState.sections[nextSec])) articleState.sections[nextSec] = [];
             articleState.sections[nextSec].unshift(moved);
             renderBodySectionsEditor({ sec: nextSec, idx: 0 });
-            showToast('Blok dipindahkan turun ke awal bab ' + nextSec.toUpperCase(), 'info');
+            showToast('Blok dipindahkan turun ke awal bab ' + nextSec.replace('_', ' ').toUpperCase(), 'info');
         }
     }
 }

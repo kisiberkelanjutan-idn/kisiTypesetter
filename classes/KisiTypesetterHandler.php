@@ -2,7 +2,7 @@
 /**
  * @file plugins/generic/kisiTypesetter/classes/KisiTypesetterHandler.php
  *
- * Page Handler for Jurnal Kisi Berkelanjutan Automated Typesetter & AmeliCA JATS XML Studio (OJS 3.5).
+ * Page Handler for Kisi Berkelanjutan Typesetter & AmeliCA JATS XML Generator (OJS 3.5).
  */
 
 namespace APP\plugins\generic\kisiTypesetter\classes;
@@ -77,7 +77,7 @@ class KisiTypesetterHandler extends Handler
     }
 
     /**
-     * Main interactive Studio UI for Re-Layouting Issues 1-3 & Generating JATS XML
+     * Main interactive UI for Kisi Berkelanjutan Typesetter (all current and archival issues)
      */
     public function studio($args, $request)
     {
@@ -941,6 +941,7 @@ class KisiTypesetterHandler extends Handler
             ],
             'keywords_en' => $kwEn,
             'sections' => [
+                'badan_artikel' => [],
                 'pendahuluan' => [],
                 'metode' => [],
                 'hasil' => [],
@@ -979,14 +980,19 @@ class KisiTypesetterHandler extends Handler
             $ojsData['keywords_en'] = $docxData['keywords_en'];
         }
 
-        // If DOCX has structured abstract, prefer DOCX's structured abstract
-        if (!empty($docxData['abstract_id']['hasil']) || $ojsData['abstract_id']['pendahuluan_metode'] === '') {
-            $ojsData['abstract_id'] = $docxData['abstract_id'];
-        }
-        if (!empty($docxData['abstract_en']['results']) || $ojsData['abstract_en']['intro_methods'] === '') {
-            $ojsData['abstract_en'] = $docxData['abstract_en'];
+        if (!LanguageAuditor::isNoAbstractArticleType((string) ($ojsData['article_type'] ?? ''))) {
+            // If DOCX has structured abstract, prefer DOCX's structured abstract
+            if (!empty($docxData['abstract_id']['hasil']) || $ojsData['abstract_id']['pendahuluan_metode'] === '') {
+                $ojsData['abstract_id'] = $docxData['abstract_id'];
+            }
+            if (!empty($docxData['abstract_en']['results']) || $ojsData['abstract_en']['intro_methods'] === '') {
+                $ojsData['abstract_en'] = $docxData['abstract_en'];
+            }
         }
 
+        if (!isset($docxData['sections']['badan_artikel'])) {
+            $docxData['sections']['badan_artikel'] = [];
+        }
         $ojsData['sections'] = $docxData['sections'];
         $ojsData['referensi'] = $docxData['referensi'];
 
@@ -994,7 +1000,7 @@ class KisiTypesetterHandler extends Handler
     }
 
     /**
-     * List all Issues in the journal (to filter Issues 1-3 easily)
+     * List all Issues in the journal (current running issues and archives)
      */
     protected function getJournalIssues(int $contextId): array
     {

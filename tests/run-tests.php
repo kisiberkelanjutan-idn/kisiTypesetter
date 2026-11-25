@@ -203,6 +203,100 @@ $introParaText = (string) ($parsed['sections']['pendahuluan'][0]['text'] ?? '');
 assertTrue($introParaText === 'Paragraf pendahuluan dengan spasi berlebih.', 'DOCX round-trip enforces strictly 1 space inside paragraphs');
 @unlink($tmpDocx);
 
+// 5. Test Abstract-Exempt Categories (DATA REPORT & LETTER)
+assertTrue(LanguageAuditor::isNoAbstractArticleType('LETTER') === true, 'Recognizes LETTER as abstract-exempt category');
+assertTrue(LanguageAuditor::isNoAbstractArticleType('DATA REPORT') === true, 'Recognizes DATA REPORT as abstract-exempt category');
+assertTrue(LanguageAuditor::isNoAbstractArticleType('ORIGINAL ARTICLE') === false, 'Keeps ORIGINAL ARTICLE with structured abstract');
+
+$letterData = [
+    'submission_id' => 32,
+    'elocation_id' => 'e32',
+    'article_type' => 'LETTER',
+    'title_id' => 'Sosialisasi Dampak dan Pencegahan TB dan HIV pada Remaja',
+    'title_en' => 'Health Education on the Impacts and Prevention of Tuberculosis and HIV Infections',
+    'authors' => [
+        ['name' => 'Lena Atoy', 'affiliation' => 'Poltekkes Kemenkes Kendari', 'email' => '', 'is_corresponding' => false],
+        ['name' => 'Hikmawati', 'affiliation' => 'Poltekkes Kemenkes Kendari', 'email' => 'hikma2714@gmail.com', 'is_corresponding' => true],
+    ],
+    'corresponding_name' => 'Hikmawati',
+    'corresponding_email' => 'hikma2714@gmail.com',
+    'citation' => 'Atoy et al., (2024). Health Education...',
+    'doi' => '10.5281/zenodo.23914666',
+    'review_editor' => 'Ainul Rafiq',
+    'published_date' => 'December 18, 2024',
+    'copyright_year' => '2024',
+    'volume' => '1',
+    'issue_number' => '4',
+    'funding' => 'Poltekkes Kemenkes Kendari',
+    'competing_interests' => 'The authors have declared that no competing interests exist.',
+    'abstract_id' => ['pendahuluan_metode' => 'Seharusnya diabaikan untuk Letter.', 'hasil' => '', 'kesimpulan_saran' => ''],
+    'keywords_id' => 'Tuberkulosis; HIV',
+    'abstract_en' => ['intro_methods' => 'Should be omitted.', 'results' => '', 'conclusions_recommendations' => ''],
+    'keywords_en' => 'Tuberculosis; HIV',
+    'sections' => [
+        'badan_artikel' => [
+            ['type' => 'paragraph', 'text' => 'Gambar 1. Dokumentasi Pelaksanaan Sosialisasi'],
+            ['type' => 'paragraph', 'text' => 'Penyakit infeksi seperti tuberkulosis dan HIV masih menjadi analisa masalah kesehatan.'],
+        ],
+        'pendahuluan' => [],
+        'metode' => [],
+        'hasil' => [],
+        'pembahasan' => [],
+        'kesimpulan_saran' => [],
+    ],
+    'referensi' => ['Tim Riskesdas 2018. Laporan Nasional Riskesdas 2018. Jakarta: LPB; 2019.'],
+];
+
+$letterAudit = LanguageAuditor::audit($letterData, ['body_lang' => 'id']);
+$letterTokens = array_map(fn ($i) => strtolower((string) $i['found']), $letterAudit['issues']);
+assertTrue(in_array('analisa', $letterTokens, true), 'LanguageAuditor audits direct body (badan_artikel) of LETTER articles');
+
+$letterXml = JatsXmlGenerator::generate($letterData);
+$letterDom = new DOMDocument();
+assertTrue($letterDom->loadXML($letterXml) !== false, 'JatsXmlGenerator generates well-formed XML for LETTER');
+assertTrue(strpos($letterXml, 'article-type="letter"') !== false, 'JATS root sets article-type="letter"');
+assertTrue(strpos($letterXml, '<abstract') === false && strpos($letterXml, '<trans-abstract') === false && strpos($letterXml, '<kwd-group') === false, 'JATS XML omits abstract and keywords for LETTER');
+assertTrue(strpos($letterXml, 'PENDAHULUAN') === false, 'JATS XML emits direct body without forced PENDAHULUAN heading for LETTER');
+
+$letterHtml = JatsHtmlRenderer::renderFullTextHtml($letterXml, ['include_abstract' => true]);
+assertTrue(strpos($letterHtml, 'kisi-sec-abstract') === false, 'JatsHtmlRenderer omits abstract block for LETTER');
+assertTrue(strpos($letterHtml, 'kisi-sec-body') !== false && strpos($letterHtml, 'Dokumentasi Pelaksanaan Sosialisasi') !== false, 'JatsHtmlRenderer renders direct body paragraphs of LETTER');
+
+$dataReportData = array_merge($letterData, [
+    'article_type' => 'DATA REPORT',
+    'sections' => [
+        'badan_artikel' => [
+            ['type' => 'paragraph', 'text' => 'Laporan data penelitian surveilans kesehatan masyarakat di wilayah pesisir.'],
+            $formattedTbl,
+        ],
+        'pendahuluan' => [],
+        'metode' => [],
+        'hasil' => [],
+        'pembahasan' => [],
+        'kesimpulan_saran' => [],
+    ],
+]);
+$drXml = JatsXmlGenerator::generate($dataReportData);
+assertTrue(strpos($drXml, 'article-type="data-report"') !== false, 'JATS root sets article-type="data-report" for DATA REPORT');
+assertTrue(strpos($drXml, '<abstract') === false, 'JATS XML omits abstract for DATA REPORT');
+
+$tmpDrDocx = tempnam(sys_get_temp_dir(), 'kisi_dr_') . '.docx';
+$drOk = DocxGenerator::generate($dataReportData, $masterDocx, $tmpDrDocx);
+assertTrue($drOk && file_exists($tmpDrDocx), 'DocxGenerator generates DATA REPORT DOCX without abstract rows');
+
+$drZip = new ZipArchive();
+$drDocXml = ($drZip->open($tmpDrDocx) === true) ? (string) $drZip->getFromName('word/document.xml') : '';
+if ($drZip->numFiles > 0) {
+    $drZip->close();
+}
+assertTrue($drDocXml !== '' && strpos($drDocXml, 'ABSTRAK') === false && strpos($drDocXml, 'ABSTRACT') === false, 'DATA REPORT DOCX removes ABSTRAK/ABSTRACT rows from front-matter table');
+assertTrue(strpos($drDocXml, 'DATA REPORT') !== false && strpos($drDocXml, 'PENDAHULUAN') === false, 'DATA REPORT DOCX labels category DATA REPORT and goes straight into body prose');
+
+$drParsed = DocxParser::parse($tmpDrDocx);
+assertTrue(mb_strtoupper((string) ($drParsed['article_type'] ?? ''), 'UTF-8') === 'DATA REPORT', 'DocxParser detects DATA REPORT article_type');
+assertTrue(!empty($drParsed['sections']['badan_artikel']), 'DocxParser restores direct body content into sections[badan_artikel] without PENDAHULUAN');
+@unlink($tmpDrDocx);
+
 if ($failures > 0) {
     fwrite(STDERR, "\nTotal test failures: {$failures}\n");
     exit(1);

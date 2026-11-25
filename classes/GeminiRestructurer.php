@@ -3,9 +3,9 @@
  * @file plugins/generic/kisiTypesetter/classes/GeminiRestructurer.php
  *
  * Uses Google Gemini API (with automatic local heuristic fallback) to restructure
- * legacy unstructured abstracts (Issues 1-3) into Kisi Berkelanjutan 2026
+ * unstructured abstracts into Kisi Berkelanjutan 2026
  * 3-part bilingual format ('Pendahuluan dan Metode', 'Hasil', 'Kesimpulan dan Saran')
- * and standardize body sections without altering scientific substance.
+ * and standardize body sections across current and archival issues without altering scientific substance.
  */
 
 namespace APP\plugins\generic\kisiTypesetter\classes;
@@ -19,6 +19,13 @@ class GeminiRestructurer
      */
     public static function restructure(array $articleData, string $apiKey, string $model = 'gemini-2.5-flash'): array
     {
+        $articleType = (string) ($articleData['article_type'] ?? 'ORIGINAL ARTICLE');
+        if (LanguageAuditor::isNoAbstractArticleType($articleType)) {
+            $articleData = LanguageAuditor::normalizeArticleParagraphSpaces($articleData);
+            $articleData['_ai_status'] = "Kategori {$articleType} tidak menggunakan abstrak/kata kunci (langsung ke badan artikel).";
+            return $articleData;
+        }
+
         $apiKey = trim($apiKey);
         if ($apiKey === '') {
             return self::restructureLocally($articleData, 'Mode Lokal (Tanpa API Key Gemini): Abstrak dipecah otomatis menggunakan pemisah kalimat ilmiah.');
@@ -39,7 +46,7 @@ class GeminiRestructurer
 
         $prompt = <<<PROMPT
 Anda adalah editor tata letak ilmiah untuk jurnal "Kisi Berkelanjutan: Sains Medis dan Kesehatan".
-Tugas Anda adalah merapikan metadata & memecah abstrak artikel lama (Edisi 1-3) ke dalam struktur template baru tahun 2026 TANPA mengubah substansi ilmiah, angka statistik, atau data penelitian.
+Tugas Anda adalah merapikan metadata & memecah abstrak menjadi struktur template Kisi Berkelanjutan (3 bagian terstruktur) TANPA mengubah substansi ilmiah, angka statistik, atau data penelitian.
 
 Aturan ketat:
 1. Pecah abstrak Bahasa Indonesia menjadi 3 bagian:
@@ -151,6 +158,13 @@ PROMPT;
      */
     public static function restructureLocally(array $articleData, string $statusMessage = ''): array
     {
+        $articleType = (string) ($articleData['article_type'] ?? 'ORIGINAL ARTICLE');
+        if (LanguageAuditor::isNoAbstractArticleType($articleType)) {
+            $articleData = LanguageAuditor::normalizeArticleParagraphSpaces($articleData);
+            $articleData['_ai_status'] = $statusMessage !== '' ? $statusMessage : "Kategori {$articleType}: langsung badan artikel (tanpa abstrak).";
+            return $articleData;
+        }
+
         // Split Indonesian Abstract if hasil & kesimpulan_saran are empty
         $rawId = trim($articleData['abstract_id']['raw'] ?? $articleData['abstract_id']['pendahuluan_metode'] ?? '');
         if ($rawId !== '' && trim($articleData['abstract_id']['hasil'] ?? '') === '') {

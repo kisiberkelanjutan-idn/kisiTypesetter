@@ -75,21 +75,44 @@ class JatsHtmlRenderer
             }
         }
 
-        // Parse <body>/<sec> elements
-        $topSections = $xpath->query('//body/sec');
-        $secIndex = 1;
-        foreach ($topSections as $secNode) {
-            if (!($secNode instanceof DOMElement)) {
-                continue;
-            }
-            $secId = $secNode->getAttribute('id') ?: ('kisi-sec-' . $secIndex);
-            $secId = 'kisi-' . preg_replace('/[^a-zA-Z0-9_-]/', '', $secId);
-            $titleNode = $xpath->query('./title', $secNode)->item(0);
-            $secTitle = $titleNode ? trim($titleNode->textContent) : ('Bagian ' . $secIndex);
+        // Parse <body> children: direct paragraphs/tables (e.g., DATA REPORT / LETTER) and <sec> elements
+        $bodyNode = $xpath->query('//body')->item(0);
+        if ($bodyNode instanceof DOMElement) {
+            $directBodyBuffer = '';
+            $secIndex = 1;
 
-            $tocItems[] = ['id' => $secId, 'title' => $secTitle];
-            $bodyHtmlParts[] = self::renderSectionElement($secNode, $xpath, $secId, 2);
-            $secIndex++;
+            foreach ($bodyNode->childNodes as $child) {
+                if (!($child instanceof DOMElement)) {
+                    continue;
+                }
+                if ($child->localName === 'p') {
+                    $pHtml = self::renderInlineContent($child);
+                    if (trim($pHtml) !== '') {
+                        $directBodyBuffer .= '<p class="kisi-jats-p">' . $pHtml . '</p>';
+                    }
+                } elseif ($child->localName === 'table-wrap') {
+                    $directBodyBuffer .= self::renderTableWrap($child, $xpath);
+                } elseif ($child->localName === 'sec') {
+                    if ($directBodyBuffer !== '') {
+                        $tocItems[] = ['id' => 'kisi-sec-body', 'title' => 'Isi Artikel'];
+                        $bodyHtmlParts[] = '<section id="kisi-sec-body" class="kisi-jats-section">' . $directBodyBuffer . '</section>';
+                        $directBodyBuffer = '';
+                    }
+                    $secId = $child->getAttribute('id') ?: ('kisi-sec-' . $secIndex);
+                    $secId = 'kisi-' . preg_replace('/[^a-zA-Z0-9_-]/', '', $secId);
+                    $titleNode = $xpath->query('./title', $child)->item(0);
+                    $secTitle = $titleNode ? trim($titleNode->textContent) : ('Bagian ' . $secIndex);
+
+                    $tocItems[] = ['id' => $secId, 'title' => $secTitle];
+                    $bodyHtmlParts[] = self::renderSectionElement($child, $xpath, $secId, 2);
+                    $secIndex++;
+                }
+            }
+
+            if ($directBodyBuffer !== '') {
+                $tocItems[] = ['id' => 'kisi-sec-body', 'title' => 'Isi Artikel'];
+                $bodyHtmlParts[] = '<section id="kisi-sec-body" class="kisi-jats-section">' . $directBodyBuffer . '</section>';
+            }
         }
 
         // Parse <back>/<ref-list> (SUMBER PUSTAKA)

@@ -36,6 +36,18 @@ class LanguageAuditor
     private static ?array $enBuckets = null;
 
     /**
+     * Determine whether an article category omits Abstract & Keywords and flows directly into body prose.
+     */
+    public static function isNoAbstractArticleType(string $articleType): bool
+    {
+        $norm = mb_strtoupper(trim($articleType), 'UTF-8');
+        if ($norm === '') {
+            return false;
+        }
+        return (bool) preg_match('/\b(DATA\s*REPORT|LETTER|LETTERS?\s+TO\s+(?:THE\s+)?EDITOR|LAPORAN\s*DATA|SURAT\s+(?:KE\s+)?REDAKSI)\b/iu', $norm);
+    }
+
+    /**
      * Audit all article fields for typos, non-standard words, and academic orthography issues.
      *
      * @param array $articleData Studio article state array
@@ -50,6 +62,7 @@ class LanguageAuditor
         $ignoreSet = self::buildDynamicIgnoreSet($articleData);
         $issues = [];
         $seenKeys = [];
+        $noAbstract = self::isNoAbstractArticleType((string) ($articleData['article_type'] ?? 'ORIGINAL ARTICLE'));
 
         $addIssue = static function (array $issue) use (&$issues, &$seenKeys): void {
             $dedupKey = ($issue['field_path'] ?? '') . '|' . mb_strtolower((string) ($issue['found'] ?? ''), 'UTF-8') . '|' . ($issue['category'] ?? '');
@@ -61,19 +74,23 @@ class LanguageAuditor
             $issues[] = $issue;
         };
 
-        // 1. Fixed-language front-matter fields
+        // 1. Fixed-language front-matter fields (omit abstracts/keywords for DATA REPORT & LETTER)
         $fixedFields = [
             ['path' => 'title_id', 'label' => 'Judul Artikel (ID)', 'lang' => 'id', 'text' => (string) ($articleData['title_id'] ?? '')],
             ['path' => 'title_en', 'label' => 'Judul Artikel (EN)', 'lang' => 'en', 'text' => (string) ($articleData['title_en'] ?? '')],
-            ['path' => 'abstract_id.pendahuluan_metode', 'label' => 'Abstrak ID · Pendahuluan & Metode', 'lang' => 'id', 'text' => (string) ($articleData['abstract_id']['pendahuluan_metode'] ?? '')],
-            ['path' => 'abstract_id.hasil', 'label' => 'Abstrak ID · Hasil', 'lang' => 'id', 'text' => (string) ($articleData['abstract_id']['hasil'] ?? '')],
-            ['path' => 'abstract_id.kesimpulan_saran', 'label' => 'Abstrak ID · Kesimpulan & Saran', 'lang' => 'id', 'text' => (string) ($articleData['abstract_id']['kesimpulan_saran'] ?? '')],
-            ['path' => 'keywords_id', 'label' => 'Kata Kunci (ID)', 'lang' => 'id', 'text' => (string) ($articleData['keywords_id'] ?? '')],
-            ['path' => 'abstract_en.intro_methods', 'label' => 'Abstract EN · Introduction & Methods', 'lang' => 'en', 'text' => (string) ($articleData['abstract_en']['intro_methods'] ?? '')],
-            ['path' => 'abstract_en.results', 'label' => 'Abstract EN · Results', 'lang' => 'en', 'text' => (string) ($articleData['abstract_en']['results'] ?? '')],
-            ['path' => 'abstract_en.conclusions_recommendations', 'label' => 'Abstract EN · Conclusions & Recommendations', 'lang' => 'en', 'text' => (string) ($articleData['abstract_en']['conclusions_recommendations'] ?? '')],
-            ['path' => 'keywords_en', 'label' => 'Keywords (EN)', 'lang' => 'en', 'text' => (string) ($articleData['keywords_en'] ?? '')],
         ];
+        if (!$noAbstract) {
+            $fixedFields = array_merge($fixedFields, [
+                ['path' => 'abstract_id.pendahuluan_metode', 'label' => 'Abstrak ID · Pendahuluan & Metode', 'lang' => 'id', 'text' => (string) ($articleData['abstract_id']['pendahuluan_metode'] ?? '')],
+                ['path' => 'abstract_id.hasil', 'label' => 'Abstrak ID · Hasil', 'lang' => 'id', 'text' => (string) ($articleData['abstract_id']['hasil'] ?? '')],
+                ['path' => 'abstract_id.kesimpulan_saran', 'label' => 'Abstrak ID · Kesimpulan & Saran', 'lang' => 'id', 'text' => (string) ($articleData['abstract_id']['kesimpulan_saran'] ?? '')],
+                ['path' => 'keywords_id', 'label' => 'Kata Kunci (ID)', 'lang' => 'id', 'text' => (string) ($articleData['keywords_id'] ?? '')],
+                ['path' => 'abstract_en.intro_methods', 'label' => 'Abstract EN · Introduction & Methods', 'lang' => 'en', 'text' => (string) ($articleData['abstract_en']['intro_methods'] ?? '')],
+                ['path' => 'abstract_en.results', 'label' => 'Abstract EN · Results', 'lang' => 'en', 'text' => (string) ($articleData['abstract_en']['results'] ?? '')],
+                ['path' => 'abstract_en.conclusions_recommendations', 'label' => 'Abstract EN · Conclusions & Recommendations', 'lang' => 'en', 'text' => (string) ($articleData['abstract_en']['conclusions_recommendations'] ?? '')],
+                ['path' => 'keywords_en', 'label' => 'Keywords (EN)', 'lang' => 'en', 'text' => (string) ($articleData['keywords_en'] ?? '')],
+            ]);
+        }
 
         $enSegmentsForLt = [];
         foreach ($fixedFields as $f) {
@@ -93,6 +110,7 @@ class LanguageAuditor
         $bodyLangPref = $options['body_lang'] ?? 'auto';
         $allBodySample = '';
         $sectionNames = [
+            'badan_artikel' => 'BADAN ARTIKEL',
             'pendahuluan' => 'PENDAHULUAN',
             'metode' => 'METODE',
             'hasil' => 'HASIL',

@@ -39,7 +39,7 @@ class JatsXmlGenerator
         $dom->formatOutput = true;
 
         $article = $dom->createElement('article');
-        $article->setAttribute('article-type', 'research-article');
+        $article->setAttribute('article-type', self::mapJatsArticleType((string) ($data['article_type'] ?? 'ORIGINAL ARTICLE')));
         $article->setAttribute('dtd-version', '1.2');
         $article->setAttribute('xml:lang', 'id');
         $article->setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns:xlink', self::NS_XLINK);
@@ -293,68 +293,82 @@ class JatsXmlGenerator
             $am->appendChild($selfUri);
         }
 
-        // Structured Abstract (Indonesian)
-        $absId = $dom->createElement('abstract');
-        $absId->setAttribute('xml:lang', 'id');
-        $idParts = [
-            'Pendahuluan dan Metode' => trim($data['abstract_id']['pendahuluan_metode'] ?? ''),
-            'Hasil' => trim($data['abstract_id']['hasil'] ?? ''),
-            'Kesimpulan dan Saran' => trim($data['abstract_id']['kesimpulan_saran'] ?? ''),
-        ];
-        foreach ($idParts as $secTitle => $secBody) {
-            if ($secBody === '') {
-                continue;
-            }
-            $sec = $dom->createElement('sec');
-            $sec->appendChild($dom->createElement('title', $secTitle));
-            $sec->appendChild($dom->createElement('p', $secBody));
-            $absId->appendChild($sec);
-        }
-        $am->appendChild($absId);
+        $noAbstract = LanguageAuditor::isNoAbstractArticleType((string) ($data['article_type'] ?? 'ORIGINAL ARTICLE'));
 
-        // Structured Translated Abstract (English)
-        $enParts = [
-            'Introduction and Methods' => trim($data['abstract_en']['intro_methods'] ?? ''),
-            'Results' => trim($data['abstract_en']['results'] ?? ''),
-            'Conclusions and Recommendations' => trim($data['abstract_en']['conclusions_recommendations'] ?? ''),
-        ];
-        if ($enParts['Introduction and Methods'] !== '' || $enParts['Results'] !== '') {
-            $absEn = $dom->createElement('trans-abstract');
-            $absEn->setAttribute('xml:lang', 'en');
-            foreach ($enParts as $secTitle => $secBody) {
-                if ($secBody === '') {
-                    continue;
+        // Structured Abstract & Keywords (Omitted for DATA REPORT, LETTER, Editorial)
+        if (!$noAbstract) {
+            // Structured Abstract (Indonesian)
+            $idParts = [
+                'Pendahuluan dan Metode' => trim($data['abstract_id']['pendahuluan_metode'] ?? ''),
+                'Hasil' => trim($data['abstract_id']['hasil'] ?? ''),
+                'Kesimpulan dan Saran' => trim($data['abstract_id']['kesimpulan_saran'] ?? ''),
+            ];
+            $hasIdAbs = false;
+            foreach ($idParts as $v) {
+                if ($v !== '') {
+                    $hasIdAbs = true;
+                    break;
                 }
-                $sec = $dom->createElement('sec');
-                $sec->appendChild($dom->createElement('title', $secTitle));
-                $sec->appendChild($dom->createElement('p', $secBody));
-                $absEn->appendChild($sec);
             }
-            $am->appendChild($absEn);
-        }
+            if ($hasIdAbs) {
+                $absId = $dom->createElement('abstract');
+                $absId->setAttribute('xml:lang', 'id');
+                foreach ($idParts as $secTitle => $secBody) {
+                    if ($secBody === '') {
+                        continue;
+                    }
+                    $sec = $dom->createElement('sec');
+                    $sec->appendChild($dom->createElement('title', $secTitle));
+                    $sec->appendChild($dom->createElement('p', $secBody));
+                    $absId->appendChild($sec);
+                }
+                $am->appendChild($absId);
+            }
 
-        // Keywords ID
-        $kwIdList = array_filter(array_map('trim', preg_split('/[;,]/u', (string) ($data['keywords_id'] ?? ''))));
-        if (!empty($kwIdList)) {
-            $kwgId = $dom->createElement('kwd-group');
-            $kwgId->setAttribute('xml:lang', 'id');
-            $kwgId->appendChild($dom->createElement('title', 'Kata Kunci'));
-            foreach ($kwIdList as $kw) {
-                $kwgId->appendChild($dom->createElement('kwd', rtrim($kw, '.')));
+            // Structured Translated Abstract (English)
+            $enParts = [
+                'Introduction and Methods' => trim($data['abstract_en']['intro_methods'] ?? ''),
+                'Results' => trim($data['abstract_en']['results'] ?? ''),
+                'Conclusions and Recommendations' => trim($data['abstract_en']['conclusions_recommendations'] ?? ''),
+            ];
+            if ($enParts['Introduction and Methods'] !== '' || $enParts['Results'] !== '' || $enParts['Conclusions and Recommendations'] !== '') {
+                $absEn = $dom->createElement('trans-abstract');
+                $absEn->setAttribute('xml:lang', 'en');
+                foreach ($enParts as $secTitle => $secBody) {
+                    if ($secBody === '') {
+                        continue;
+                    }
+                    $sec = $dom->createElement('sec');
+                    $sec->appendChild($dom->createElement('title', $secTitle));
+                    $sec->appendChild($dom->createElement('p', $secBody));
+                    $absEn->appendChild($sec);
+                }
+                $am->appendChild($absEn);
             }
-            $am->appendChild($kwgId);
-        }
 
-        // Keywords EN
-        $kwEnList = array_filter(array_map('trim', preg_split('/[;,]/u', (string) ($data['keywords_en'] ?? ''))));
-        if (!empty($kwEnList)) {
-            $kwgEn = $dom->createElement('kwd-group');
-            $kwgEn->setAttribute('xml:lang', 'en');
-            $kwgEn->appendChild($dom->createElement('title', 'Keywords'));
-            foreach ($kwEnList as $kw) {
-                $kwgEn->appendChild($dom->createElement('kwd', rtrim($kw, '.')));
+            // Keywords ID
+            $kwIdList = array_filter(array_map('trim', preg_split('/[;,]/u', (string) ($data['keywords_id'] ?? ''))));
+            if (!empty($kwIdList)) {
+                $kwgId = $dom->createElement('kwd-group');
+                $kwgId->setAttribute('xml:lang', 'id');
+                $kwgId->appendChild($dom->createElement('title', 'Kata Kunci'));
+                foreach ($kwIdList as $kw) {
+                    $kwgId->appendChild($dom->createElement('kwd', rtrim($kw, '.')));
+                }
+                $am->appendChild($kwgId);
             }
-            $am->appendChild($kwgEn);
+
+            // Keywords EN
+            $kwEnList = array_filter(array_map('trim', preg_split('/[;,]/u', (string) ($data['keywords_en'] ?? ''))));
+            if (!empty($kwEnList)) {
+                $kwgEn = $dom->createElement('kwd-group');
+                $kwgEn->setAttribute('xml:lang', 'en');
+                $kwgEn->appendChild($dom->createElement('title', 'Keywords'));
+                foreach ($kwEnList as $kw) {
+                    $kwgEn->appendChild($dom->createElement('kwd', rtrim($kw, '.')));
+                }
+                $am->appendChild($kwgEn);
+            }
         }
 
         // Funding
@@ -365,31 +379,37 @@ class JatsXmlGenerator
     }
 
     /**
-     * Build <body> sections, nested subheadings, and JATS tables
+     * Map journal section category to standard JATS <article article-type="..."> value
+     */
+    public static function mapJatsArticleType(string $articleType): string
+    {
+        $u = mb_strtoupper(trim($articleType), 'UTF-8');
+        if (preg_match('/\bLETTER\b/u', $u)) {
+            return 'letter';
+        }
+        if (preg_match('/\bDATA\s*REPORT\b/u', $u)) {
+            return 'data-report';
+        }
+        if (preg_match('/\bREVIEW\b/u', $u)) {
+            return 'review-article';
+        }
+        if (preg_match('/\bCASE\s*REPORT\b/u', $u)) {
+            return 'case-report';
+        }
+        if (preg_match('/\b(SHORT\s*COMMUNICATION|BRIEF\s*REPORT)\b/u', $u)) {
+            return 'brief-report';
+        }
+        return 'research-article';
+    }
+
+    /**
+     * Build <body> sections, direct body blocks (DATA REPORT / LETTER), nested subheadings, and JATS tables
      */
     private static function buildBody(DOMDocument $dom, DOMElement $body, array $data): void
     {
-        $sectionSpecs = [
-            'pendahuluan' => ['id' => 'sec-intro', 'type' => 'intro', 'title' => 'PENDAHULUAN'],
-            'metode' => ['id' => 'sec-methods', 'type' => 'methods', 'title' => 'METODE'],
-            'hasil' => ['id' => 'sec-results', 'type' => 'results', 'title' => 'HASIL'],
-            'pembahasan' => ['id' => 'sec-discussion', 'type' => 'discussion', 'title' => 'PEMBAHASAN'],
-            'kesimpulan_saran' => ['id' => 'sec-conclusions', 'type' => 'conclusions', 'title' => 'KESIMPULAN DAN SARAN'],
-        ];
-
         $tableCounter = 1;
 
-        foreach ($sectionSpecs as $secKey => $spec) {
-            $blocks = $data['sections'][$secKey] ?? [];
-            if (empty($blocks)) {
-                continue;
-            }
-
-            $sec = $dom->createElement('sec');
-            $sec->setAttribute('id', $spec['id']);
-            $sec->setAttribute('sec-type', $spec['type']);
-            $sec->appendChild($dom->createElement('title', $spec['title']));
-
+        $appendBlocksInto = static function (DOMElement $rootSec, string $baseId, array $blocks) use ($dom, &$tableCounter): void {
             $currentSubSec = null;
             $currentSubSecL3 = null;
             $subCounter = 1;
@@ -405,35 +425,73 @@ class JatsXmlGenerator
                     $subTitle = trim($block['text'] ?? '');
                     if ($subTitle !== '') {
                         $currentSubSec = $dom->createElement('sec');
-                        $currentSubSec->setAttribute('id', $spec['id'] . '-' . $subCounter++);
+                        $currentSubSec->setAttribute('id', $baseId . '-' . $subCounter++);
                         $currentSubSec->appendChild($dom->createElement('title', $subTitle));
-                        $sec->appendChild($currentSubSec);
+                        $rootSec->appendChild($currentSubSec);
                         $currentSubSecL3 = null;
                         $subL3Counter = 1;
                     }
                 } elseif ($bType === 'subheading_l3') {
                     $subTitle = trim($block['text'] ?? '');
                     if ($subTitle !== '') {
-                        $parentSec = $currentSubSec ?? $sec;
-                        $parentId = $parentSec->getAttribute('id');
+                        $parentSec = $currentSubSec ?? $rootSec;
+                        $parentId = $parentSec->getAttribute('id') ?: $baseId;
                         $currentSubSecL3 = $dom->createElement('sec');
                         $currentSubSecL3->setAttribute('id', $parentId . '-' . $subL3Counter++);
                         $currentSubSecL3->appendChild($dom->createElement('title', $subTitle));
                         $parentSec->appendChild($currentSubSecL3);
                     }
                 } elseif ($bType === 'table') {
-                    $targetContainer = $currentSubSecL3 ?? $currentSubSec ?? $sec;
+                    $targetContainer = $currentSubSecL3 ?? $currentSubSec ?? $rootSec;
                     $tw = self::buildJatsTableWrap($dom, $block, $tableCounter++);
                     $targetContainer->appendChild($tw);
                 } else {
-                    $targetContainer = $currentSubSecL3 ?? $currentSubSec ?? $sec;
+                    $targetContainer = $currentSubSecL3 ?? $currentSubSec ?? $rootSec;
                     $pText = trim($block['text'] ?? '');
                     if ($pText !== '') {
                         $targetContainer->appendChild($dom->createElement('p', $pText));
                     }
                 }
             }
+        };
 
+        $badanBlocks = $data['sections']['badan_artikel'] ?? [];
+        if (!empty($badanBlocks)) {
+            $appendBlocksInto($body, 'sec-body', $badanBlocks);
+        }
+
+        $noAbstract = LanguageAuditor::isNoAbstractArticleType((string) ($data['article_type'] ?? 'ORIGINAL ARTICLE'));
+        $onlyIntroPopulated = empty($badanBlocks)
+            && !empty($data['sections']['pendahuluan'])
+            && empty($data['sections']['metode'])
+            && empty($data['sections']['hasil'])
+            && empty($data['sections']['pembahasan'])
+            && empty($data['sections']['kesimpulan_saran']);
+
+        $sectionSpecs = [
+            'pendahuluan' => ['id' => 'sec-intro', 'type' => 'intro', 'title' => 'PENDAHULUAN'],
+            'metode' => ['id' => 'sec-methods', 'type' => 'methods', 'title' => 'METODE'],
+            'hasil' => ['id' => 'sec-results', 'type' => 'results', 'title' => 'HASIL'],
+            'pembahasan' => ['id' => 'sec-discussion', 'type' => 'discussion', 'title' => 'PEMBAHASAN'],
+            'kesimpulan_saran' => ['id' => 'sec-conclusions', 'type' => 'conclusions', 'title' => 'KESIMPULAN DAN SARAN'],
+        ];
+
+        foreach ($sectionSpecs as $secKey => $spec) {
+            $blocks = $data['sections'][$secKey] ?? [];
+            if (empty($blocks)) {
+                continue;
+            }
+
+            if ($noAbstract && $onlyIntroPopulated && $secKey === 'pendahuluan') {
+                $appendBlocksInto($body, 'sec-body', $blocks);
+                continue;
+            }
+
+            $sec = $dom->createElement('sec');
+            $sec->setAttribute('id', $spec['id']);
+            $sec->setAttribute('sec-type', $spec['type']);
+            $sec->appendChild($dom->createElement('title', $spec['title']));
+            $appendBlocksInto($sec, $spec['id'], $blocks);
             $body->appendChild($sec);
         }
     }
