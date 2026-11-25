@@ -11,6 +11,7 @@ namespace APP\plugins\generic\kisiTypesetter\classes;
 require_once __DIR__ . '/DocxParser.php';
 require_once __DIR__ . '/HealthTableFormatter.php';
 require_once __DIR__ . '/LanguageAuditor.php';
+require_once __DIR__ . '/VancouverFormatter.php';
 
 use DOMDocument;
 use DOMElement;
@@ -615,18 +616,24 @@ class DocxGenerator
             $emitBlocks($blocks);
         }
 
-        // Insert SUMBER PUSTAKA
+        // Insert SUMBER PUSTAKA in synchronized Vancouver numbered style (1. ..., 2. ..., 3. ...)
         $refs = $data['referensi'] ?? [];
         if (!empty($refs)) {
-            $body->insertBefore(self::createHeading1Para($dom, 'SUMBER PUSTAKA'), $publisherNoteNode);
-            foreach ($refs as $idx => $refText) {
-                $refText = trim((string) $refText);
-                if ($refText === '') {
-                    continue;
+            $cleanRefs = [];
+            foreach ($refs as $rItem) {
+                $rTrim = trim((string) $rItem);
+                if ($rTrim !== '') {
+                    $cleanRefs[] = $rTrim;
                 }
-                $body->insertBefore(self::createReferencePara($dom, $refText), $publisherNoteNode);
-                if ($idx < count($refs) - 1) {
-                    $body->insertBefore(self::createReferenceEmptyPara($dom), $publisherNoteNode);
+            }
+            if (!empty($cleanRefs)) {
+                $body->insertBefore(self::createHeading1Para($dom, 'SUMBER PUSTAKA'), $publisherNoteNode);
+                foreach ($cleanRefs as $idx => $refText) {
+                    $vanLine = VancouverFormatter::formatDocxReferenceLine($idx + 1, $refText);
+                    if ($vanLine === '') {
+                        continue;
+                    }
+                    $body->insertBefore(self::createReferencePara($dom, $vanLine), $publisherNoteNode);
                 }
             }
         }
@@ -991,8 +998,8 @@ class DocxGenerator
         $pPr->appendChild($sp);
 
         $ind = $dom->createElementNS(self::NS_W, 'w:ind');
-        $ind->setAttribute('w:left', '384');
-        $ind->setAttribute('w:hanging', '384');
+        $ind->setAttribute('w:left', '426');
+        $ind->setAttribute('w:hanging', '426');
         $pPr->appendChild($ind);
 
         $jc = $dom->createElementNS(self::NS_W, 'w:jc');
@@ -1012,8 +1019,8 @@ class DocxGenerator
         $sp->setAttribute('w:after', '0');
         $pPr->appendChild($sp);
         $ind = $dom->createElementNS(self::NS_W, 'w:ind');
-        $ind->setAttribute('w:left', '384');
-        $ind->setAttribute('w:hanging', '384');
+        $ind->setAttribute('w:left', '426');
+        $ind->setAttribute('w:hanging', '426');
         $pPr->appendChild($ind);
         $jc = $dom->createElementNS(self::NS_W, 'w:jc');
         $jc->setAttribute('w:val', 'both');

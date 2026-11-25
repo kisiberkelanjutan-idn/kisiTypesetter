@@ -11,6 +11,7 @@
 namespace APP\plugins\generic\kisiTypesetter\classes;
 
 require_once __DIR__ . '/LanguageAuditor.php';
+require_once __DIR__ . '/VancouverFormatter.php';
 
 class GeminiRestructurer
 {
@@ -21,6 +22,7 @@ class GeminiRestructurer
     {
         $articleType = (string) ($articleData['article_type'] ?? 'ORIGINAL ARTICLE');
         if (LanguageAuditor::isNoAbstractArticleType($articleType)) {
+            $articleData = VancouverFormatter::convertAllReferences($articleData);
             $articleData = LanguageAuditor::normalizeArticleParagraphSpaces($articleData);
             $articleData['_ai_status'] = "Kategori {$articleType} tidak menggunakan abstrak/kata kunci (langsung ke badan artikel).";
             return $articleData;
@@ -42,11 +44,12 @@ class GeminiRestructurer
             'abstract_en_raw' => $articleData['abstract_en']['raw'] ?? ($articleData['abstract_en']['intro_methods'] ?? ''),
             'abstract_id_current' => $articleData['abstract_id'] ?? [],
             'abstract_en_current' => $articleData['abstract_en'] ?? [],
+            'referensi' => $articleData['referensi'] ?? [],
         ];
 
         $prompt = <<<PROMPT
 Anda adalah editor tata letak ilmiah untuk jurnal "Kisi Berkelanjutan: Sains Medis dan Kesehatan".
-Tugas Anda adalah merapikan metadata & memecah abstrak menjadi struktur template Kisi Berkelanjutan (3 bagian terstruktur) TANPA mengubah substansi ilmiah, angka statistik, atau data penelitian.
+Tugas Anda adalah merapikan metadata, daftar pustaka Vancouver, & memecah abstrak menjadi struktur template Kisi Berkelanjutan (3 bagian terstruktur) TANPA mengubah substansi ilmiah, angka statistik, atau data penelitian.
 
 Aturan ketat:
 1. Pecah abstrak Bahasa Indonesia menjadi 3 bagian:
@@ -60,6 +63,7 @@ Aturan ketat:
 3. Jika "title_en" kosong, berikan terjemahan judul Bahasa Inggris ilmiah yang akurat dari "title_id". Jika "title_id" kosong, terjemahkan dari "title_en".
 4. Rapikan "keywords_id" dan "keywords_en" agar dipisahkan dengan titik koma (; ) tanpa titik di akhir. Jika "keywords_en" kosong, terjemahkan dari "keywords_id" dan urutkan secara alfabetis.
 5. Terapkan aturan baku spasi tunggal: dilarang ada spasi ganda (>= 2 spasi berturut-turut) di dalam paragraf maupun abstrak.
+6. Format seluruh entri array "referensi" ke gaya Vancouver (ICMJE) secara konsisten (tanpa nomor awalan `1.`, misalnya: "NamaBelakang Inisial, ... Judul. NamaJurnal. Tahun;Vol(No):Hal. doi:...").
 
 Data input artikel (JSON):
 PROMPT;
@@ -148,6 +152,11 @@ PROMPT;
             $articleData['abstract_en']['conclusions_recommendations'] = trim((string) $abEn['conclusions_recommendations']);
         }
 
+        if (!empty($aiJson['referensi']) && is_array($aiJson['referensi'])) {
+            $articleData['referensi'] = array_values(array_filter(array_map('strval', $aiJson['referensi']), static fn ($r) => trim($r) !== ''));
+        }
+
+        $articleData = VancouverFormatter::convertAllReferences($articleData);
         $articleData = LanguageAuditor::normalizeArticleParagraphSpaces($articleData);
         $articleData['_ai_status'] = 'Berhasil dirapikan dengan Google Gemini AI (' . $model . ').';
         return $articleData;
@@ -160,6 +169,7 @@ PROMPT;
     {
         $articleType = (string) ($articleData['article_type'] ?? 'ORIGINAL ARTICLE');
         if (LanguageAuditor::isNoAbstractArticleType($articleType)) {
+            $articleData = VancouverFormatter::convertAllReferences($articleData);
             $articleData = LanguageAuditor::normalizeArticleParagraphSpaces($articleData);
             $articleData['_ai_status'] = $statusMessage !== '' ? $statusMessage : "Kategori {$articleType}: langsung badan artikel (tanpa abstrak).";
             return $articleData;
@@ -183,8 +193,9 @@ PROMPT;
             $articleData['abstract_en']['conclusions_recommendations'] = $splitEn[2];
         }
 
+        $articleData = VancouverFormatter::convertAllReferences($articleData);
         $articleData = LanguageAuditor::normalizeArticleParagraphSpaces($articleData);
-        $articleData['_ai_status'] = $statusMessage !== '' ? $statusMessage : 'Berhasil dirapikan dengan pemisah kalimat otomatis.';
+        $articleData['_ai_status'] = $statusMessage !== '' ? $statusMessage : 'Berhasil dirapikan dengan pemisah kalimat otomatis & daftar pustaka gaya Vancouver.';
         return $articleData;
     }
 

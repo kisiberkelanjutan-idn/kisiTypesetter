@@ -597,7 +597,7 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
         </div>
         <div class="row-3">
             <div class="field-group">
-                <label>Nama Jurnal Lengkap (Untuk Sitasi APA &amp; JATS XML)</label>
+                <label>Nama Jurnal Lengkap (Untuk Sitasi Artikel &amp; JATS XML)</label>
                 <input type="text" id="cfg_journalTitle" value="<?php echo htmlspecialchars($settings['journalTitle'] ?? 'Kisi Berkelanjutan: Sains Medis Dan Kesehatan', ENT_QUOTES, 'UTF-8'); ?>">
             </div>
             <div class="field-group">
@@ -796,7 +796,7 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
 
                     <div class="field-group">
                         <label>
-                            <span>Citation (APA)</span>
+                            <span>Sitasi Artikel <span class="hint">(Sidebar Metadata)</span></span>
                             <button type="button" class="btn btn-outline btn-xs" onclick="rebuildApaCitation()">↻ Auto</button>
                         </label>
                         <textarea id="f_citation" rows="2" oninput="syncStateFromInputs()"></textarea>
@@ -977,11 +977,20 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
                 <div id="bodySectionsContainer"></div>
             </div>
 
-            <!-- TAB 3: References -->
+            <!-- TAB 3: References (Vancouver Style Synchronized) -->
             <div id="tab-references" class="tab-pane">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px;background:#f8fafc;border:1px solid #cbd5e1;padding:10px 14px;border-radius:8px;">
+                    <div style="font-size:12.5px;color:#334155;">
+                        📚 <strong>Daftar Sumber Pustaka (Gaya Vancouver):</strong> Sinkron otomatis dengan sitasi angka di naskah <code>(1)</code> / <code>[1]</code>. Otomatis diberi nomor urut <code>1. ...</code> pada DOCX dan ditautkan <code>&lt;xref&gt;</code> ↔ <code>&lt;ref id="B#"&gt;</code> di JATS XML.
+                    </div>
+                    <button type="button" class="btn btn-teal btn-sm" onclick="formatVancouverReferencesAjax()">
+                        📚 Konversi &amp; Sinkronkan Gaya Vancouver
+                    </button>
+                </div>
+                <div id="vancouverSyncStatusBox" style="font-size:12px;padding:7px 12px;border-radius:7px;margin-bottom:10px;background:#f1f5f9;color:#334155;border:1px solid #e2e8f0;"></div>
                 <div class="field-group">
-                    <label>Daftar Sumber Pustaka <span class="hint">(Satu referensi per baris — otomatis diformat hanging indent di DOCX dan &lt;mixed-citation&gt; di JATS XML)</span></label>
-                    <textarea id="f_referensi" rows="16" oninput="syncReferencesFromInput()" placeholder="Depkes RI. (2013). Profil Kesehatan Indonesia. Jakarta, Departemen Kesehatan Republik Indonesia."></textarea>
+                    <label>Daftar Sumber Pustaka — 1 Entri Per Baris <span class="hint">(Gaya Vancouver: Penulis Inisial. Judul. Jurnal. Tahun;Vol(No):Hal. doi:...)</span></label>
+                    <textarea id="f_referensi" rows="16" oninput="syncReferencesFromInput()" placeholder="1. Ahmed SOM, Ashgar RI, Abdelgader AAM, Hamid HIA, Mathkor DM, Ali MAA, et al. Exclusive breastfeeding: Impact on infant health. Clin Nutr Open Sci. 2023;51:44–51. doi:10.1016/j.nutos.2023.08.003"></textarea>
                 </div>
             </div>
 
@@ -1354,13 +1363,16 @@ function populateFormFromState() {
     document.getElementById('f_sdgs_en').value = articleState.sdgs_en || '';
 
     const refs = Array.isArray(articleState.referensi) ? articleState.referensi : [];
-    document.getElementById('f_referensi').value = refs.join('\n');
-    document.getElementById('refCountBadge').textContent = refs.length;
+    const cleanRefs = refs.map(r => stripRefPrefixJs(r)).filter(Boolean);
+    articleState.referensi = cleanRefs;
+    document.getElementById('f_referensi').value = cleanRefs.map((r, i) => `${i + 1}. ${r}`).join('\n');
+    document.getElementById('refCountBadge').textContent = cleanRefs.length;
 
     applyVolumeTemplateMode();
     renderAuthorsEditor();
     renderBodySectionsEditor();
     updateAbstractWordCounts();
+    refreshVancouverSyncBannerJs();
 }
 
 function syncStateFromInputs() {
@@ -1424,10 +1436,93 @@ function updateAbstractWordCounts() {
     }
 }
 
+function stripRefPrefixJs(line) {
+    let s = String(line || '').trim();
+    s = s.replace(/^\s*(?:\[\s*\d+\s*\]|\(\s*\d+\s*\)|\d+\s*[\.\)])\s*/, '');
+    s = s.replace(/^\s*(?:\[\s*\d+\s*\]|\(\s*\d+\s*\)|\d+\s*[\.\)])\s*/, '');
+    return s.trim();
+}
+
+function refreshVancouverSyncBannerJs() {
+    const box = document.getElementById('vancouverSyncStatusBox');
+    if (!box) return;
+    const refs = Array.isArray(articleState.referensi) ? articleState.referensi.filter(Boolean) : [];
+    const bodyTexts = [];
+    SECTION_KEYS.forEach(secKey => {
+        ((articleState.sections && articleState.sections[secKey]) || []).forEach(blk => {
+            const t = typeof blk === 'string' ? blk : (blk && blk.text ? blk.text : '');
+            if (t) bodyTexts.push(t);
+        });
+    });
+    const fullText = bodyTexts.join('\n');
+    const citedSet = new Set();
+    const citeRx = /(\(|\[)([1-9]\d{0,2}(?:\s*(?:,|[-–—])\s*[1-9]\d{0,2})*)(\)|\])/g;
+    let m;
+    while ((m = citeRx.exec(fullText)) !== null) {
+        if ((m[1] === '(' && m[3] !== ')') || (m[1] === '[' && m[3] !== ']')) continue;
+        const spec = m[2];
+        if (m[1] === '(' && !/[,–—-]/.test(spec)) {
+            const prev = m.index > 0 ? fullText.charAt(m.index - 1) : '';
+            if (!prev || /\s/.test(prev)) continue;
+        }
+        spec.split(',').forEach(part => {
+            const rm = part.trim().match(/^(\d+)\s*[-–—]\s*(\d+)$/);
+            if (rm) {
+                const a = parseInt(rm[1], 10), b = parseInt(rm[2], 10);
+                if (a >= 1 && b >= a && (b - a) <= 30) {
+                    for (let k = a; k <= b; k++) citedSet.add(k);
+                }
+            } else if (/^\d+$/.test(part.trim())) {
+                const n = parseInt(part.trim(), 10);
+                if (n >= 1 && n <= 250) citedSet.add(n);
+            }
+        });
+    }
+    const apaRefs = refs.filter(r => /^[^(\[\]]{2,160}\(\s*(?:19|20)\d{2}[a-z]?\s*\)\.?/.test(r) || /^[^.;]{2,80},\s*(?:19|20)\d{2}[a-z]?\.\s+\S/.test(r));
+    const overRange = Array.from(citedSet).filter(n => refs.length > 0 && n > refs.length).sort((a, b) => a - b);
+
+    if (apaRefs.length > 0 || overRange.length > 0) {
+        const warns = [];
+        if (apaRefs.length > 0) warns.push(`${apaRefs.length} referensi masih berpola APA (tahun kurung)`);
+        if (overRange.length > 0) warns.push(`nomor sitasi melebihi jumlah pustaka: (${overRange.join(', ')})`);
+        box.style.background = '#fef2f2';
+        box.style.color = '#991b1b';
+        box.style.borderColor = '#fecaca';
+        box.innerHTML = `⚠️ <strong>Perlu Sinkronisasi Vancouver:</strong> ${escapeHtml(warns.join(' · '))}. Klik tombol <em>"Konversi &amp; Sinkronkan Gaya Vancouver"</em> untuk merapikan otomatis.`;
+    } else {
+        box.style.background = '#ecfdf5';
+        box.style.color = '#065f46';
+        box.style.borderColor = '#a7f3d0';
+        box.innerHTML = `✅ <strong>Sinkron (Gaya Vancouver):</strong> ${refs.length} entri sumber pustaka bernomor urut · ${citedSet.size} nomor sitasi terdeteksi dalam naskah.`;
+    }
+}
+
+async function formatVancouverReferencesAjax() {
+    syncStateFromInputs();
+    syncReferencesFromInput();
+    showToast('Mengonversi & menyinkronkan Sumber Pustaka ke gaya Vancouver...', 'info');
+    const fd = new FormData();
+    fd.append('articleJson', JSON.stringify(articleState));
+    try {
+        const res = await fetch(BASE_URL + '/formatVancouverReferences', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.ok && data.article) {
+            articleState = data.article;
+            populateFormFromState();
+            showToast(data.message || 'Sumber pustaka disinkronkan ke gaya Vancouver.', 'success');
+        } else {
+            showToast(data.error || 'Gagal menyinkronkan referensi Vancouver.', 'error');
+        }
+    } catch (e) {
+        showToast('Error jaringan saat konversi Vancouver: ' + e.message, 'error');
+    }
+}
+
 function syncReferencesFromInput() {
     const raw = document.getElementById('f_referensi').value;
-    articleState.referensi = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    articleState.referensi = raw.split(/\r?\n/).map(s => stripRefPrefixJs(s)).filter(Boolean);
     document.getElementById('refCountBadge').textContent = articleState.referensi.length;
+    refreshVancouverSyncBannerJs();
 }
 
 const SECTION_KEYS = ['badan_artikel', 'pendahuluan', 'metode', 'hasil', 'pembahasan', 'kesimpulan_saran'];
@@ -2146,6 +2241,7 @@ function renderLanguageAuditResults() {
     const cntTypo = issues.filter(i => i.category === 'typo' || i.category === 'english_typo').length;
     const cntEyd = issues.filter(i => ['eyd_v', 'imbuhan_eyd', 'preposisi_eyd', 'pleonasme', 'spasi_ganda'].includes(i.category)).length;
     const cntEn = issues.filter(i => ['english_uk_us_ama', 'english_nonstandard', 'languagetool'].includes(i.category)).length;
+    const cntVan = issues.filter(i => ['vancouver_reference_style', 'vancouver_citation_sync'].includes(i.category)).length;
 
     const filtered = issues.filter(i => {
         if (auditState.filter === 'all') return true;
@@ -2153,6 +2249,7 @@ function renderLanguageAuditResults() {
         if (auditState.filter === 'typo') return i.category === 'typo' || i.category === 'english_typo';
         if (auditState.filter === 'eyd') return ['eyd_v', 'imbuhan_eyd', 'preposisi_eyd', 'pleonasme', 'spasi_ganda'].includes(i.category);
         if (auditState.filter === 'en') return ['english_uk_us_ama', 'english_nonstandard', 'languagetool'].includes(i.category);
+        if (auditState.filter === 'vancouver') return ['vancouver_reference_style', 'vancouver_citation_sync'].includes(i.category);
         return true;
     });
 
@@ -2162,7 +2259,7 @@ function renderLanguageAuditResults() {
             <div class="audit-stat-box"><div class="audit-stat-num">${cntTidakBaku}</div><div class="audit-stat-label">Kata Tidak Baku (KBBI)</div></div>
             <div class="audit-stat-box"><div class="audit-stat-num">${cntTypo}</div><div class="audit-stat-label">Dugaan Typo</div></div>
             <div class="audit-stat-box"><div class="audit-stat-num">${cntEyd}</div><div class="audit-stat-label">Kaidah EYD V</div></div>
-            <div class="audit-stat-box"><div class="audit-stat-num">${cntEn}</div><div class="audit-stat-label">English / AMA Style</div></div>
+            <div class="audit-stat-box"><div class="audit-stat-num">${cntVan}</div><div class="audit-stat-label">Sitasi &amp; Pustaka (Vancouver)</div></div>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
             <button type="button" class="btn btn-xs ${auditState.filter === 'all' ? 'btn-navy' : 'btn-outline'}" onclick="setAuditFilter('all')">Semua (${issues.length})</button>
@@ -2170,6 +2267,7 @@ function renderLanguageAuditResults() {
             <button type="button" class="btn btn-xs ${auditState.filter === 'typo' ? 'btn-navy' : 'btn-outline'}" onclick="setAuditFilter('typo')">Typo (${cntTypo})</button>
             <button type="button" class="btn btn-xs ${auditState.filter === 'eyd' ? 'btn-navy' : 'btn-outline'}" onclick="setAuditFilter('eyd')">EYD V (${cntEyd})</button>
             <button type="button" class="btn btn-xs ${auditState.filter === 'en' ? 'btn-navy' : 'btn-outline'}" onclick="setAuditFilter('en')">English / AMA (${cntEn})</button>
+            <button type="button" class="btn btn-xs ${auditState.filter === 'vancouver' ? 'btn-navy' : 'btn-outline'}" onclick="setAuditFilter('vancouver')">Vancouver (${cntVan})</button>
         </div>
     `;
 
@@ -2266,13 +2364,14 @@ function applyAuditFix(issueId) {
         return;
     }
 
-    const updatedText = replaceOccurrenceSafely(curText, iss.found, replacement);
+    const cleanRep = iss.field_path.startsWith('referensi.') ? stripRefPrefixJs(replacement) : replacement;
+    const updatedText = replaceOccurrenceSafely(curText, iss.found, cleanRep);
     setFieldPathValue(iss.field_path, updatedText);
     auditState.issues.splice(idx, 1);
 
     populateFormFromState();
     renderLanguageAuditResults();
-    showToast(`Diperbaiki: "${iss.found}" → "${replacement}"`, 'success');
+    showToast(`Diperbaiki: "${iss.found}" → "${cleanRep}"`, 'success');
 }
 
 function applyAllSafeAuditFixes() {
@@ -2510,7 +2609,7 @@ function normalizeAllArticleSpacing(showNotice = true) {
     });
 
     if (Array.isArray(articleState.referensi)) {
-        articleState.referensi = articleState.referensi.map(r => norm(r));
+        articleState.referensi = articleState.referensi.map(r => stripRefPrefixJs(norm(r))).filter(Boolean);
     }
 
     if (changes > 0) {

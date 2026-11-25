@@ -12,6 +12,8 @@
 
 namespace APP\plugins\generic\kisiTypesetter\classes;
 
+require_once __DIR__ . '/VancouverFormatter.php';
+
 class LanguageAuditor
 {
     /** @var array<string, int>|null */
@@ -336,7 +338,7 @@ class LanguageAuditor
             }
         }
 
-        // 3. References spacing audit (checks strict spacing without flagging foreign proper names)
+        // 3. References spacing audit + Vancouver citation <-> bibliography sync audit
         foreach ((array) ($articleData['referensi'] ?? []) as $rIdx => $refItem) {
             $refTxt = trim((string) $refItem);
             if ($refTxt === '') {
@@ -349,10 +351,16 @@ class LanguageAuditor
             }
         }
 
+        $vanSync = VancouverFormatter::auditSync($articleData);
+        foreach ((array) ($vanSync['issues'] ?? []) as $vIss) {
+            $addIssue($vIss);
+        }
+
         $sourcesUsed = [
             'KBBI VI & EYD V (Badan Pengembangan dan Pembinaan Bahasa, Kemendikbudristek)',
             'Hunspell ID & Referensi Kata Baku/Tidak Baku (KBBI / Ivan Lanin)',
             'SCOWL US English (en_US) & AMA Manual of Style / Merriam-Webster',
+            'ICMJE Recommendations (Sinkronisasi Sitasi & Daftar Pustaka Gaya Vancouver)',
         ];
 
         // 3. Optional LanguageTool API check for English segments
@@ -386,11 +394,14 @@ class LanguageAuditor
             'typo' => 0,
             'eyd_v' => 0,
             'english_ama' => 0,
+            'vancouver_sync' => 0,
             'auto_fixable' => 0,
         ];
         foreach ($issues as $iss) {
             $cat = $iss['category'] ?? 'typo';
-            if ($cat === 'kata_tidak_baku' || $cat === 'serapan_medis') {
+            if ($cat === 'vancouver_reference_style' || $cat === 'vancouver_citation_sync') {
+                $counts['vancouver_sync']++;
+            } elseif ($cat === 'kata_tidak_baku' || $cat === 'serapan_medis') {
                 $counts['kata_tidak_baku']++;
             } elseif ($cat === 'eyd_v' || $cat === 'imbuhan_eyd' || $cat === 'preposisi_eyd' || $cat === 'pleonasme' || $cat === 'spasi_ganda') {
                 $counts['eyd_v']++;
@@ -1541,6 +1552,8 @@ PROMPT;
             'english_uk_us_ama' => 'UK vs US English (AMA Style)',
             'english_nonstandard' => 'Non-Standard English',
             'english_typo' => 'English Typo',
+            'vancouver_reference_style' => 'Format Daftar Pustaka (Vancouver)',
+            'vancouver_citation_sync' => 'Sinkronisasi Sitasi Naskah (Vancouver)',
             'languagetool' => 'LanguageTool (EN)',
             default => 'Dugaan Typo',
         };

@@ -573,7 +573,10 @@ JS;
                     $out .= '<a href="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '" target="_blank" rel="noopener">' . $inner . '</a>';
                 } elseif ($ln === 'xref') {
                     $rid = $child->getAttribute('rid');
-                    $out .= '<a href="#kisi-' . htmlspecialchars($rid, ENT_QUOTES, 'UTF-8') . '">' . $inner . '</a>';
+                    $refType = $child->getAttribute('ref-type');
+                    $targetPrefix = ($refType === 'bibr' || strpos($rid, 'B') === 0) ? '#kisi-ref-' : '#kisi-';
+                    $clsAttr = ($refType === 'bibr' || strpos($rid, 'B') === 0) ? ' class="kisi-jats-cite"' : '';
+                    $out .= '<a href="' . $targetPrefix . htmlspecialchars($rid, ENT_QUOTES, 'UTF-8') . '"' . $clsAttr . '>' . $inner . '</a>';
                 } else {
                     $out .= $inner;
                 }
@@ -816,7 +819,16 @@ table.kisi-jats-table td.kisi-cell-total {
 }
 .kisi-jats-ref-list {
     margin: 0;
-    padding-left: 22px;
+    padding-left: 24px;
+    list-style-type: decimal;
+}
+.kisi-jats-cite {
+    color: #0369a1;
+    font-weight: 600;
+    text-decoration: none;
+}
+.kisi-jats-cite:hover {
+    text-decoration: underline;
 }
 .kisi-jats-ref-item {
     margin-bottom: 10px;

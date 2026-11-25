@@ -11,6 +11,7 @@ declare(strict_types=1);
 $root = dirname(__DIR__);
 require_once $root . '/classes/HealthTableFormatter.php';
 require_once $root . '/classes/LanguageAuditor.php';
+require_once $root . '/classes/VancouverFormatter.php';
 require_once $root . '/classes/DocxParser.php';
 require_once $root . '/classes/DocxGenerator.php';
 require_once $root . '/classes/JatsXmlGenerator.php';
@@ -22,6 +23,7 @@ use APP\plugins\generic\kisiTypesetter\classes\HealthTableFormatter;
 use APP\plugins\generic\kisiTypesetter\classes\JatsHtmlRenderer;
 use APP\plugins\generic\kisiTypesetter\classes\JatsXmlGenerator;
 use APP\plugins\generic\kisiTypesetter\classes\LanguageAuditor;
+use APP\plugins\generic\kisiTypesetter\classes\VancouverFormatter;
 
 $failures = 0;
 function assertTrue(bool $cond, string $msg): void
@@ -435,6 +437,98 @@ assertTrue(strpos($v3Xml, 're-typeset in 2026') === false, 'Vol 3+ JATS XML omit
 $v3Html = JatsHtmlRenderer::renderFullTextHtml($v3Xml, ['include_abstract' => true]);
 assertTrue(strpos($v3Html, 'Received:') !== false && strpos($v3Html, 'Accepted:') !== false && strpos($v3Html, 'ARAP (Conceptualization') !== false, 'JatsHtmlRenderer displays Vol 3+ history dates and contributor roles');
 assertTrue(strpos($v3Html, 'class="kisi-jats-retypeset-box"') === false && strpos($v3Html, 'TPB/SDGs') !== false, 'JatsHtmlRenderer omits retypeset box and renders TPB/SDGs for Vol 3+');
+
+// 9. Verify Vancouver Citation <-> Bibliography (SUMBER PUSTAKA) Synchronization
+assertTrue(
+    VancouverFormatter::stripLeadingNumber('1. 1. Ahmed SOM. Exclusive breastfeeding. Clin Nutr. 2023;51:44.') === 'Ahmed SOM. Exclusive breastfeeding. Clin Nutr. 2023;51:44.',
+    'VancouverFormatter strips duplicate leading numbers cleanly'
+);
+
+$apaJournal = 'Smith, J. A., & Doe, B. C. (2023). Impact of exclusive breastfeeding on growth. J Nutr Health, 12(3), 44-51. https://doi.org/10.1016/j.jnh.2023.01';
+$vanJournal = VancouverFormatter::formatReferenceBody($apaJournal);
+assertTrue(
+    $vanJournal === 'Smith JA, Doe BC. Impact of exclusive breastfeeding on growth. J Nutr Health. 2023;12(3):44-51. doi:10.1016/j.jnh.2023.01',
+    'VancouverFormatter converts APA journal article with DOI URL into ICMJE Vancouver format'
+);
+
+$apaBook = 'Depkes RI. (2013). Profil Kesehatan Indonesia. Jakarta, Departemen Kesehatan Republik Indonesia.';
+$vanBook = VancouverFormatter::formatReferenceBody($apaBook);
+assertTrue(
+    $vanBook === 'Depkes RI. Profil Kesehatan Indonesia. Jakarta: Departemen Kesehatan Republik Indonesia; 2013.',
+    'VancouverFormatter converts APA institutional book entry into Vancouver format'
+);
+
+$existingVan = '1.Ahmed SOM, Ashgar RI, Abdelgader AAM. Exclusive breastfeeding. Clin Nutr Open Sci. 2023 Oct 1;51:44-51. doi:10.1016/j.nutos.2023.08.003';
+assertTrue(
+    VancouverFormatter::formatReferenceBody($existingVan) === 'Ahmed SOM, Ashgar RI, Abdelgader AAM. Exclusive breastfeeding. Clin Nutr Open Sci. 2023 Oct 1;51:44-51. doi:10.1016/j.nutos.2023.08.003',
+    'VancouverFormatter preserves existing valid Vancouver references intact'
+);
+
+$syncAuditInput = [
+    'article_type' => 'ORIGINAL ARTICLE',
+    'title_id' => 'Studi Nutrisi Bayi',
+    'title_en' => 'Infant Nutrition Study',
+    'sections' => [
+        'badan_artikel' => [],
+        'pendahuluan' => [
+            ['type' => 'paragraph', 'text' => 'Berat badan bayi dipengaruhi oleh asupan ASI(1). Namun laporan terdahulu (Notoatmodjo, 2012) juga mencatat kendala pada balita(9).'],
+        ],
+        'metode' => [],
+        'hasil' => [],
+        'pembahasan' => [],
+        'kesimpulan_saran' => [],
+    ],
+    'referensi' => [
+        '1. Ahmed SOM, Ashgar RI. Exclusive breastfeeding. Clin Nutr Open Sci. 2023;51:44-51.',
+        'Depkes RI. (2013). Profil Kesehatan Indonesia. Jakarta: Departemen Kesehatan Republik Indonesia.',
+    ],
+];
+$syncAudit = LanguageAuditor::audit($syncAuditInput, ['body_lang' => 'id']);
+$syncCats = array_map(fn ($i) => (string) ($i['category'] ?? ''), $syncAudit['issues']);
+assertTrue(in_array('vancouver_reference_style', $syncCats, true), 'LanguageAuditor flags APA-style reference entry in SUMBER PUSTAKA');
+assertTrue(in_array('vancouver_citation_sync', $syncCats, true), 'LanguageAuditor flags stray APA in-text citation and out-of-range Vancouver citation (9)');
+
+$vanDocData = array_merge($vol3Data, [
+    'sections' => [
+        'badan_artikel' => [],
+        'pendahuluan' => [
+            ['type' => 'paragraph', 'text' => 'Kekurangan zat gizi berdampak pada pertumbuhan(1) serta imunitas bayi(2). Penelitian lanjutan [1,2] menguatkan temuan tersebut.'],
+        ],
+        'metode' => [],
+        'hasil' => [],
+        'pembahasan' => [],
+        'kesimpulan_saran' => [],
+    ],
+    'referensi' => [
+        '1. Ahmed SOM, Ashgar RI. Exclusive breastfeeding. Clin Nutr Open Sci. 2023;51:44-51. doi:10.1016/j.nutos.2023.08.003',
+        $apaBook,
+    ],
+]);
+
+$tmpVanDocx = tempnam(sys_get_temp_dir(), 'kisi_van_') . '.docx';
+assertTrue(DocxGenerator::generate($vanDocData, $masterDocx, $tmpVanDocx), 'DocxGenerator generates Vancouver-synchronized DOCX');
+$vanZip = new ZipArchive();
+$vanDocXml = ($vanZip->open($tmpVanDocx) === true) ? (string) $vanZip->getFromName('word/document.xml') : '';
+if ($vanZip->numFiles > 0) {
+    $vanZip->close();
+}
+assertTrue(strpos($vanDocXml, '1. Ahmed SOM') !== false && strpos($vanDocXml, '1. 1.') === false, 'DOCX SUMBER PUSTAKA renders numbered Vancouver ref #1 without double prefix');
+assertTrue(strpos($vanDocXml, '2. Depkes RI. Profil Kesehatan Indonesia. Jakarta: Departemen Kesehatan Republik Indonesia; 2013.') !== false, 'DOCX SUMBER PUSTAKA auto-converts APA ref #2 to numbered Vancouver');
+
+$vanParsed = DocxParser::parse($tmpVanDocx);
+assertTrue(count($vanParsed['referensi']) === 2 && strpos($vanParsed['referensi'][1], '2013.') !== false && strpos($vanParsed['referensi'][0], '1.') !== 0, 'DocxParser round-trip preserves 2 references cleanly without duplicated number prefix');
+@unlink($tmpVanDocx);
+
+$vanXml = JatsXmlGenerator::generate($vanDocData);
+$vanDom = new DOMDocument();
+assertTrue($vanDom->loadXML($vanXml) !== false, 'JatsXmlGenerator generates well-formed XML with Vancouver xrefs');
+assertTrue(strpos($vanXml, '<xref ref-type="bibr" rid="B1">1</xref>') !== false && strpos($vanXml, '<xref ref-type="bibr" rid="B2">2</xref>') !== false, 'JATS XML links in-text Vancouver citations (1)/(2) via <xref ref-type="bibr">');
+assertTrue(strpos($vanXml, '<label>1.</label>') !== false && strpos($vanXml, '<label>2.</label>') !== false, 'JATS XML emits <label>1.</label> and <label>2.</label> in <ref-list>');
+assertTrue(strpos($vanXml, 'Jakarta: Departemen Kesehatan Republik Indonesia; 2013.') !== false, 'JATS XML converts <mixed-citation> to Vancouver style');
+
+$vanHtml = JatsHtmlRenderer::renderFullTextHtml($vanXml, ['include_abstract' => true]);
+assertTrue(strpos($vanHtml, 'href="#kisi-ref-B1"') !== false && strpos($vanHtml, 'href="#kisi-ref-B2"') !== false, 'JatsHtmlRenderer links in-text Vancouver citations directly to #kisi-ref-B1/#kisi-ref-B2');
+assertTrue(strpos($vanHtml, 'id="kisi-ref-B2"') !== false && strpos($vanHtml, '>1. Ahmed SOM') === false, 'JatsHtmlRenderer renders clean <ol> numbered bibliography without double 1. 1.');
 
 if ($failures > 0) {
     fwrite(STDERR, "\nTotal test failures: {$failures}\n");

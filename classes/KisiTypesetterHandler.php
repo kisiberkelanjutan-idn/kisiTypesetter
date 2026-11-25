@@ -18,6 +18,8 @@ use PKP\security\Role;
 use PKP\security\Validation;
 use PKP\submissionFile\SubmissionFile;
 
+require_once __DIR__ . '/VancouverFormatter.php';
+
 class KisiTypesetterHandler extends Handler
 {
     /** @var KisiTypesetterPlugin|null */
@@ -432,6 +434,39 @@ class KisiTypesetterHandler extends Handler
             'message' => $changes > 0
                 ? "Aturan baku spasi tunggal diterapkan pada {$changes} bidang/paragraf."
                 : 'Semua paragraf sudah mematuhi aturan maksimal 1 spasi tunggal.',
+        ], JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * AJAX POST: Convert and normalize bibliography entries into Vancouver style and check citation sync
+     */
+    public function formatVancouverReferences($args, $request)
+    {
+        if (!$this->ensureAuthorized($request)) {
+            return;
+        }
+        header('Content-Type: application/json; charset=UTF-8');
+
+        $rawPayload = (string) $request->getUserVar('articleJson');
+        $articleData = json_decode($rawPayload, true);
+        if (!is_array($articleData)) {
+            echo json_encode(['ok' => false, 'error' => 'Data artikel JSON tidak valid.']);
+            return;
+        }
+
+        $converted = 0;
+        $updated = VancouverFormatter::convertAllReferences($articleData, $converted);
+        $updated = LanguageAuditor::normalizeArticleParagraphSpaces($updated);
+        $syncReport = VancouverFormatter::auditSync($updated);
+
+        echo json_encode([
+            'ok' => true,
+            'article' => $updated,
+            'converted' => $converted,
+            'sync' => $syncReport,
+            'message' => $converted > 0
+                ? "Berhasil mengonversi & menyinkronkan {$converted} entri sumber pustaka ke gaya Vancouver bernomor."
+                : 'Seluruh sumber pustaka sudah sesuai gaya Vancouver dan dinomori berurutan.',
         ], JSON_UNESCAPED_UNICODE);
     }
 

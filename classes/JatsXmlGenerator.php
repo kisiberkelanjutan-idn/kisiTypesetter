@@ -11,6 +11,7 @@ namespace APP\plugins\generic\kisiTypesetter\classes;
 
 require_once __DIR__ . '/HealthTableFormatter.php';
 require_once __DIR__ . '/LanguageAuditor.php';
+require_once __DIR__ . '/VancouverFormatter.php';
 
 use DOMDocument;
 use DOMElement;
@@ -462,8 +463,12 @@ class JatsXmlGenerator
     private static function buildBody(DOMDocument $dom, DOMElement $body, array $data): void
     {
         $tableCounter = 1;
+        $maxRefCount = count(array_filter(
+            array_map(static fn ($r) => trim((string) $r), (array) ($data['referensi'] ?? [])),
+            static fn ($s) => $s !== ''
+        ));
 
-        $appendBlocksInto = static function (DOMElement $rootSec, string $baseId, array $blocks) use ($dom, &$tableCounter): void {
+        $appendBlocksInto = static function (DOMElement $rootSec, string $baseId, array $blocks) use ($dom, &$tableCounter, $maxRefCount): void {
             $currentSubSec = null;
             $currentSubSecL3 = null;
             $subCounter = 1;
@@ -503,7 +508,9 @@ class JatsXmlGenerator
                     $targetContainer = $currentSubSecL3 ?? $currentSubSec ?? $rootSec;
                     $pText = trim($block['text'] ?? '');
                     if ($pText !== '') {
-                        $targetContainer->appendChild($dom->createElement('p', $pText));
+                        $pEl = $dom->createElement('p');
+                        self::appendTextWithVancouverXrefs($dom, $pEl, $pText, $maxRefCount);
+                        $targetContainer->appendChild($pEl);
                     }
                 }
             }
@@ -724,43 +731,114 @@ class JatsXmlGenerator
         $fng->appendChild($fn);
         $back->appendChild($fng);
 
-        // References (<ref-list>)
+        // References (<ref-list>) synchronized in Vancouver style
         $refs = $data['referensi'] ?? [];
         if (!empty($refs)) {
             $refList = $dom->createElement('ref-list');
             $refList->appendChild($dom->createElement('title', 'SUMBER PUSTAKA'));
 
-            foreach ($refs as $idx => $refText) {
-                $refText = trim((string) $refText);
-                if ($refText === '') {
+            $refNum = 1;
+            foreach ($refs as $refText) {
+                $vanText = VancouverFormatter::formatReferenceBody((string) $refText);
+                if ($vanText === '') {
                     continue;
                 }
-                $refNum = $idx + 1;
                 $refEl = $dom->createElement('ref');
                 $refEl->setAttribute('id', 'B' . $refNum);
+                $refEl->appendChild($dom->createElement('label', $refNum . '.'));
 
                 $mc = $dom->createElement('mixed-citation');
-                // Automatically link URLs inside references
-                if (preg_match('#^(.*?)(https?://\S+)(.*)$#u', $refText, $m)) {
+                $mc->setAttribute('publication-type', VancouverFormatter::inferPublicationType($vanText));
+
+                // Automatically link URLs or doi: identifiers inside Vancouver references
+                if (preg_match('#^(.*?)(https?://\S+|doi:[^\s,;]+)(.*)$#iu', $vanText, $m)) {
                     if ($m[1] !== '') {
                         $mc->appendChild($dom->createTextNode($m[1]));
                     }
-                    $extLink = $dom->createElement('ext-link', $m[2]);
-                    $extLink->setAttribute('ext-link-type', 'uri');
-                    $extLink->setAttributeNS(self::NS_XLINK, 'xlink:href', $m[2]);
+                    $linkVal = $m[2];
+                    $href = stripos($linkVal, 'doi:') === 0
+                        ? ('https://doi.org/' . substr($linkVal, 4))
+                        : $linkVal;
+                    $extLink = $dom->createElement('ext-link', $linkVal);
+                    $extLink->setAttribute('ext-link-type', stripos($linkVal, 'doi:') === 0 ? 'doi' : 'uri');
+                    $extLink->setAttributeNS(self::NS_XLINK, 'xlink:href', $href);
                     $mc->appendChild($extLink);
                     if ($m[3] !== '') {
                         $mc->appendChild($dom->createTextNode($m[3]));
                     }
                 } else {
-                    $mc->appendChild($dom->createTextNode($refText));
+                    $mc->appendChild($dom->createTextNode($vanText));
                 }
 
                 $refEl->appendChild($mc);
                 $refList->appendChild($refEl);
+                $refNum++;
             }
 
-            $back->appendChild($refList);
+            if ($refNum > 1) {
+                $back->appendChild($refList);
+            }
+        }
+    }
+
+    /**
+     * Append paragraph prose while turning validated Vancouver numeric citations ((1), [1], (1,2), (1-3))
+     * into JATS <xref ref-type="bibr" rid="B#"> cross-links.
+     */
+    private static function appendTextWithVancouverXrefs(DOMDocument $dom, DOMElement $pEl, string $text, int $maxRefCount): void
+    {
+        if ($maxRefCount <= 0) {
+            $pEl->appendChild($dom->createTextNode($text));
+            return;
+        }
+
+        $matches = VancouverFormatter::extractInTextCitationMatches($text);
+        if (empty($matches)) {
+            $pEl->appendChild($dom->createTextNode($text));
+            return;
+        }
+
+        $cursor = 0;
+        foreach ($matches as $m) {
+            // Only rewrite matches where all cited indices map to existing references in SUMBER PUSTAKA
+            $allInRange = true;
+            foreach ($m['numbers'] as $num) {
+                if ($num < 1 || $num > $maxRefCount) {
+                    $allInRange = false;
+                    break;
+                }
+            }
+            if (!$allInRange) {
+                continue;
+            }
+
+            $offset = $m['offset'];
+            if ($offset > $cursor) {
+                $pEl->appendChild($dom->createTextNode(substr($text, $cursor, $offset - $cursor)));
+            }
+
+            $pEl->appendChild($dom->createTextNode($m['open']));
+            $innerSpec = substr($m['raw'], 1, -1);
+            $parts = preg_split('/(\s*(?:,|[-–—])\s*)/u', $innerSpec, -1, PREG_SPLIT_DELIM_CAPTURE);
+            if ($parts !== false) {
+                foreach ($parts as $part) {
+                    $trimmed = trim($part);
+                    if ($trimmed !== '' && ctype_digit($trimmed)) {
+                        $xref = $dom->createElement('xref', $trimmed);
+                        $xref->setAttribute('ref-type', 'bibr');
+                        $xref->setAttribute('rid', 'B' . (int) $trimmed);
+                        $pEl->appendChild($xref);
+                    } else {
+                        $pEl->appendChild($dom->createTextNode($part));
+                    }
+                }
+            }
+            $pEl->appendChild($dom->createTextNode($m['close']));
+            $cursor = $offset + $m['length'];
+        }
+
+        if ($cursor < strlen($text)) {
+            $pEl->appendChild($dom->createTextNode(substr($text, $cursor)));
         }
     }
 

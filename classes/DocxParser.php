@@ -11,6 +11,7 @@ namespace APP\plugins\generic\kisiTypesetter\classes;
 
 require_once __DIR__ . '/HealthTableFormatter.php';
 require_once __DIR__ . '/LanguageAuditor.php';
+require_once __DIR__ . '/VancouverFormatter.php';
 
 use DOMDocument;
 use DOMElement;
@@ -230,9 +231,9 @@ class DocxParser
                     }
                 }
 
-                // Inside SUMBER PUSTAKA / DAFTAR PUSTAKA
+                // Inside SUMBER PUSTAKA / DAFTAR PUSTAKA (normalize away list prefix while preserving original entry text)
                 if ($currentSection === 'referensi') {
-                    $cleanRef = trim(preg_replace('/^\s*\d+[\.\)]\s*/', '', $text));
+                    $cleanRef = VancouverFormatter::stripLeadingNumber($text);
                     if ($cleanRef !== '') {
                         $result['referensi'][] = $cleanRef;
                     }
