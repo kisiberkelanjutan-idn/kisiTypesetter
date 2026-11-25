@@ -759,7 +759,7 @@ class KisiTypesetterHandler extends Handler
             }
             @unlink($tmpDocx);
 
-            // 3. Parse & sync bibliography references directly into OJS Publication -> References menu
+            // 3. Parse & sync bibliography references + fill missing OJS Publication abstract metadata
             $syncRefsFlag = (string) $request->getUserVar('syncReferences');
             if ($syncRefsFlag !== '0' && !empty($articleData['referensi'])) {
                 $contextId = $context ? (int) $context->getId() : 0;
@@ -770,6 +770,7 @@ class KisiTypesetterHandler extends Handler
                     $createdItems[] = 'Menu References OJS (' . $refSync['count'] . ' ' . strtoupper($journalStyle) . ')';
                 }
             }
+            $this->syncMissingPublicationAbstracts($publication, $articleData);
 
             echo json_encode([
                 'ok' => true,
@@ -1402,6 +1403,68 @@ class KisiTypesetterHandler extends Handler
         }
         $articleData['referensi'] = $cleanList;
         return $articleData;
+    }
+
+    /**
+     * Populate OJS native Publication abstract locales when missing in OJS metadata so OJS themes
+     * and external JATS parsers always display an abstract alongside the XML galley.
+     */
+    protected function syncMissingPublicationAbstracts($publication, array $articleData): void
+    {
+        if (!$publication || LanguageAuditor::isNoAbstractArticleType((string) ($articleData['article_type'] ?? ''))) {
+            return;
+        }
+        try {
+            $existing = (array) $publication->getData('abstract');
+            $pubLocale = trim((string) ($publication->getData('locale') ?: 'id'));
+
+            $buildText = static function (array $parts): string {
+                $chunks = [];
+                foreach ($parts as $val) {
+                    $v = trim((string) $val);
+                    if ($v !== '') {
+                        $chunks[] = '<p>' . htmlspecialchars($v, ENT_QUOTES, 'UTF-8') . '</p>';
+                    }
+                }
+                return implode('', $chunks);
+            };
+
+            $idHtml = $buildText([
+                $articleData['abstract_id']['pendahuluan_metode'] ?? '',
+                $articleData['abstract_id']['hasil'] ?? '',
+                $articleData['abstract_id']['kesimpulan_saran'] ?? '',
+            ]);
+            $enHtml = $buildText([
+                $articleData['abstract_en']['intro_methods'] ?? '',
+                $articleData['abstract_en']['results'] ?? '',
+                $articleData['abstract_en']['conclusions_recommendations'] ?? '',
+            ]);
+
+            $changed = false;
+            $updated = $existing;
+            $idKeys = array_unique([$pubLocale, 'id', 'id_ID']);
+            foreach ($idKeys as $k) {
+                if (stripos($k, 'en') === 0) {
+                    continue;
+                }
+                if ($idHtml !== '' && trim(strip_tags((string) ($updated[$k] ?? ''))) === '') {
+                    $updated[$k] = $idHtml;
+                    $changed = true;
+                    break;
+                }
+            }
+            $enKey = array_key_exists('en_US', $existing) ? 'en_US' : 'en';
+            if ($enHtml !== '' && trim(strip_tags((string) ($updated[$enKey] ?? ''))) === '' && trim(strip_tags((string) ($updated['en'] ?? ''))) === '') {
+                $updated[$enKey] = $enHtml;
+                $changed = true;
+            }
+
+            if ($changed) {
+                Repo::publication()->edit($publication, ['abstract' => $updated]);
+            }
+        } catch (\Throwable $e) {
+            // Non-fatal fallback
+        }
     }
 
     /**

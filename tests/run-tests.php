@@ -565,6 +565,52 @@ assertTrue(
     'formatCitationsRawBlock converts Vancouver reference cleanly to APA when journal style is APA'
 );
 
+// 11. Verify JatsHtmlRenderer full-text abstract resilience across external JATS variants
+$namespacedXml = <<<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<article xmlns="https://jats.nlm.nih.gov/publishing/1.2/" xmlns:xlink="http://www.w3.org/1999/xlink" article-type="research-article">
+  <front>
+    <article-meta>
+      <title-group><article-title>Studi Lapangan</article-title></title-group>
+      <abstract xml:lang="id">
+        <sec><title>Pendahuluan</title><p>Paragraf satu.</p><p>Paragraf dua.</p></sec>
+      </abstract>
+      <abstract xml:lang="en">
+        <p>English standalone paragraph abstract.</p>
+      </abstract>
+    </article-meta>
+  </front>
+  <body><sec id="s1"><title>PENDAHULUAN</title><p>Isi naskah.</p></sec></body>
+</article>
+XML;
+$nsHtml = JatsHtmlRenderer::renderFullTextHtml($namespacedXml, ['include_abstract' => true]);
+assertTrue(
+    strpos($nsHtml, 'Paragraf satu.') !== false
+        && strpos($nsHtml, 'Paragraf dua.') !== false
+        && strpos($nsHtml, 'English standalone paragraph abstract.') !== false,
+    'JatsHtmlRenderer renders namespaced JATS XML abstracts, multi-paragraph <sec>, and second <abstract xml:lang="en">'
+);
+
+$englishOnlyXml = <<<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<article article-type="research-article">
+  <front>
+    <article-meta>
+      <abstract xml:lang="id"></abstract>
+      <trans-abstract xml:lang="en"><p>Visible English only abstract.</p></trans-abstract>
+    </article-meta>
+  </front>
+  <body><sec id="s1"><title>INTRODUCTION</title><p>Body text.</p></sec></body>
+</article>
+XML;
+$enOnlyHtml = JatsHtmlRenderer::renderFullTextHtml($englishOnlyXml, ['include_abstract' => true]);
+assertTrue(
+    strpos($enOnlyHtml, 'id="kisi-abs-pane-en"') !== false
+        && strpos($enOnlyHtml, 'style="display:block;">') !== false
+        && strpos($enOnlyHtml, 'Visible English only abstract.') !== false,
+    'JatsHtmlRenderer ensures English-only or empty-primary JATS abstract stays visibly displayed (never hidden)'
+);
+
 if ($failures > 0) {
     fwrite(STDERR, "\nTotal test failures: {$failures}\n");
     exit(1);

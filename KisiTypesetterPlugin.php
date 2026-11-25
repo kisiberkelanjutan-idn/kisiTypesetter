@@ -129,8 +129,9 @@ class KisiTypesetterPlugin extends GenericPlugin
         require_once($this->getPluginPath() . '/classes/JatsHtmlRenderer.php');
         $hideThemeAbstract = ($this->getSetting($context->getId(), 'replaceDefaultAbstract') !== '0');
 
+        // Always render structured <abstract>/<trans-abstract> inside Full-Text HTML when present in JATS XML
         $html = \APP\plugins\generic\kisiTypesetter\classes\JatsHtmlRenderer::renderFullTextHtml($xmlContent, [
-            'include_abstract' => $hideThemeAbstract,
+            'include_abstract' => true,
         ]);
 
         if ($html !== '') {
@@ -138,10 +139,11 @@ class KisiTypesetterPlugin extends GenericPlugin
                 $html .= <<<HTML
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    if (!document.getElementById('kisi-sec-abstract')) return;
+    var absSec = document.getElementById('kisi-sec-abstract');
+    if (!absSec || !absSec.textContent || absSec.textContent.replace(/\s+/g, '').length < 20) return;
     var defaultAbs = document.querySelectorAll('.obj_article_details .item.abstract, .article-details .article-abstract, section.item.abstract');
     defaultAbs.forEach(function(el) {
-        if (!el.contains(document.getElementById('kisi-jats-fulltext-container'))) {
+        if (!el.contains(absSec) && !el.contains(document.getElementById('kisi-jats-fulltext-container'))) {
             el.style.display = 'none';
         }
     });
@@ -187,13 +189,33 @@ HTML;
                     if ($xmlContent !== '') {
                         require_once($this->getPluginPath() . '/classes/JatsHtmlRenderer.php');
                         $hideThemeAbstract = ($this->getSetting($context->getId(), 'replaceDefaultAbstract') !== '0');
+                        $hideFlagJs = $hideThemeAbstract ? 'true' : 'false';
                         $html = \APP\plugins\generic\kisiTypesetter\classes\JatsHtmlRenderer::renderFullTextHtml($xmlContent, [
-                            'include_abstract' => $hideThemeAbstract,
+                            'include_abstract' => true,
                         ]);
                         if ($html !== '') {
                             $jsonHtml = json_encode($html, JSON_UNESCAPED_UNICODE);
                             $fallbackScript = <<<HTML
 <script>
+window.kisiSwitchAbsLang = window.kisiSwitchAbsLang || function(mode, btn) {
+    var container = btn.closest('.kisi-jats-abstract-box');
+    if (container) {
+        container.querySelectorAll('.kisi-abs-tab').forEach(function(b) { b.classList.remove('active'); });
+    }
+    btn.classList.add('active');
+    var pId = document.getElementById('kisi-abs-pane-id');
+    var pEn = document.getElementById('kisi-abs-pane-en');
+    if (mode === 'id') {
+        if (pId) pId.style.display = 'block';
+        if (pEn) pEn.style.display = 'none';
+    } else if (mode === 'en') {
+        if (pId) pId.style.display = 'none';
+        if (pEn) pEn.style.display = 'block';
+    } else {
+        if (pId) pId.style.display = 'block';
+        if (pEn) { pEn.style.display = 'block'; pEn.style.marginTop = '14px'; pEn.style.paddingTop = '14px'; pEn.style.borderTop = '1px dashed #cbd5e1'; }
+    }
+};
 document.addEventListener('DOMContentLoaded', function() {
     if (document.getElementById('kisi-jats-fulltext-container')) return;
     var target = document.querySelector('.obj_article_details .main_entry')
@@ -203,11 +225,18 @@ document.addEventListener('DOMContentLoaded', function() {
     if (target) {
         var wrapper = document.createElement('div');
         wrapper.innerHTML = {$jsonHtml};
+        var absSec = wrapper.querySelector('#kisi-sec-abstract');
+        var hasValidAbs = !!(absSec && absSec.textContent && absSec.textContent.replace(/\s+/g, '').length >= 20);
         if (target.classList.contains('abstract')) {
             target.parentNode.insertBefore(wrapper, target.nextSibling);
-            target.style.display = 'none';
+            if ({$hideFlagJs} && hasValidAbs) target.style.display = 'none';
         } else {
             target.appendChild(wrapper);
+            if ({$hideFlagJs} && hasValidAbs) {
+                document.querySelectorAll('.obj_article_details .item.abstract, .article-details .article-abstract, section.item.abstract').forEach(function(el) {
+                    if (!el.contains(wrapper)) el.style.display = 'none';
+                });
+            }
         }
     }
 });
@@ -365,11 +394,35 @@ HTML;
     }
 
     /**
-     * Find the JATS XML file content attached to an article's Galleys or Production Ready Files
+     * Find the best JATS XML file content attached to an article's Galleys or Production Ready Files
+     * (prefers Galleys, newer uploads, and complete XML containing <abstract>/<body>/<ref-list>).
      */
     public function findArticleJatsXmlContent(int $submissionId, $publication = null): string
     {
-        // 1. Check Publication Galleys first
+        $bestXml = '';
+        $bestScore = -1;
+
+        $scoreXml = static function (string $xml, int $sourceBoost = 0): int {
+            if (trim($xml) === '') {
+                return -1;
+            }
+            $s = $sourceBoost;
+            if (stripos($xml, '<article') !== false) {
+                $s += 10;
+            }
+            if (stripos($xml, '<abstract') !== false || stripos($xml, '<trans-abstract') !== false) {
+                $s += 25;
+            }
+            if (stripos($xml, '<body') !== false) {
+                $s += 20;
+            }
+            if (stripos($xml, '<ref-list') !== false) {
+                $s += 15;
+            }
+            return $s;
+        };
+
+        // 1. Check Publication Galleys first (highest priority, latest galley wins ties)
         if ($publication) {
             $galleys = $publication->getData('galleys');
             if (!$galleys) {
@@ -382,14 +435,20 @@ HTML;
                 }
             }
             if ($galleys) {
+                $galleyList = [];
                 foreach ($galleys as $galley) {
+                    $galleyList[] = $galley;
+                }
+                foreach (array_reverse($galleyList) as $galley) {
                     $sfId = (int) $galley->getData('submissionFileId');
                     if ($sfId > 0) {
                         $sf = Repo::submissionFile()->get($sfId);
                         if ($sf) {
                             $xml = $this->readXmlFromSubmissionFile($sf);
-                            if ($xml !== '') {
-                                return $xml;
+                            $sc = $scoreXml($xml, 100);
+                            if ($sc > $bestScore) {
+                                $bestScore = $sc;
+                                $bestXml = $xml;
                             }
                         }
                     }
@@ -397,22 +456,29 @@ HTML;
             }
         }
 
-        // 2. Fallback: Check Submission Files (Production Ready / Proof / JATS stages)
+        // 2. Fallback: Check Submission Files (Production Ready / Proof / JATS stages), latest file first
         try {
             $subFiles = Repo::submissionFile()->getCollector()
                 ->filterBySubmissionIds([$submissionId])
                 ->getMany();
+            $sfList = [];
             foreach ($subFiles as $sf) {
+                $sfList[] = $sf;
+            }
+            usort($sfList, static fn ($a, $b) => (int) $b->getId() <=> (int) $a->getId());
+            foreach ($sfList as $sf) {
                 $xml = $this->readXmlFromSubmissionFile($sf);
-                if ($xml !== '') {
-                    return $xml;
+                $sc = $scoreXml($xml, 10);
+                if ($sc > $bestScore) {
+                    $bestScore = $sc;
+                    $bestXml = $xml;
                 }
             }
         } catch (\Throwable $e) {
             // ignore
         }
 
-        return '';
+        return $bestXml;
     }
 
     /**

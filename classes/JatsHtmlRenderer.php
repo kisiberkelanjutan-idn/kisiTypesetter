@@ -29,8 +29,15 @@ class JatsHtmlRenderer
             return '';
         }
 
+        // Strip unprefixed default JATS/NLM XML namespace so standard XPath queries match external JATS/AmeliCA/SciELO files
+        $cleanXml = (string) preg_replace(
+            '/(<article\b[^>]*?)\s+xmlns=(["\'])https?:\/\/(?:jats\.nlm\.nih\.gov|www\.ncbi\.nlm\.nih\.gov\/JATS1)[^"\']*\2/iu',
+            '$1',
+            $xmlContent
+        );
+
         $dom = new DOMDocument('1.0', 'UTF-8');
-        if (!@$dom->loadXML($xmlContent, LIBXML_NOENT | LIBXML_NONET)) {
+        if (!@$dom->loadXML($cleanXml, LIBXML_NOENT | LIBXML_NONET)) {
             return '';
         }
 
@@ -210,116 +217,113 @@ class JatsHtmlRenderer
     }
 
     /**
-     * Render Bilingual Structured Abstracts (<abstract> & <trans-abstract>)
+     * Render Bilingual / Multilingual Structured & Unstructured Abstracts (<abstract> & <trans-abstract>)
      */
     private static function renderBilingualAbstracts(DOMXPath $xpath): string
     {
-        $absIdNode = $xpath->query('//article-meta/abstract')->item(0);
-        $absEnNode = $xpath->query('//article-meta/trans-abstract')->item(0);
-
-        if (!$absIdNode && !$absEnNode) {
+        $candidates = $xpath->query('//article-meta/abstract | //article-meta/trans-abstract');
+        if (!$candidates || $candidates->length === 0) {
+            $candidates = $xpath->query('//abstract | //trans-abstract');
+        }
+        if (!$candidates || $candidates->length === 0) {
             return '';
+        }
+
+        $absIdNode = null;
+        $absEnNode = null;
+        $unclassified = [];
+
+        foreach ($candidates as $node) {
+            if (!($node instanceof DOMElement)) {
+                continue;
+            }
+            if (trim($node->textContent) === '') {
+                continue;
+            }
+            $lang = strtolower(trim($node->getAttributeNS('http://www.w3.org/XML/1998/namespace', 'lang') ?: $node->getAttribute('xml:lang')));
+            if ($lang !== '' && (strpos($lang, 'en') === 0)) {
+                if (!$absEnNode) {
+                    $absEnNode = $node;
+                }
+            } elseif ($lang !== '' && (strpos($lang, 'id') === 0 || strpos($lang, 'in') === 0)) {
+                if (!$absIdNode) {
+                    $absIdNode = $node;
+                }
+            } elseif ($node->localName === 'trans-abstract') {
+                if (!$absEnNode) {
+                    $absEnNode = $node;
+                } else {
+                    $unclassified[] = $node;
+                }
+            } else {
+                $unclassified[] = $node;
+            }
+        }
+
+        foreach ($unclassified as $uNode) {
+            if (!$absIdNode) {
+                $absIdNode = $uNode;
+            } elseif (!$absEnNode) {
+                $absEnNode = $uNode;
+            }
         }
 
         $kwId = [];
         foreach ($xpath->query('//article-meta/kwd-group[@xml:lang="id"]/kwd') as $k) {
-            $kwId[] = trim($k->textContent);
+            if (trim($k->textContent) !== '') {
+                $kwId[] = trim($k->textContent);
+            }
         }
         $kwEn = [];
         foreach ($xpath->query('//article-meta/kwd-group[@xml:lang="en"]/kwd') as $k) {
-            $kwEn[] = trim($k->textContent);
+            if (trim($k->textContent) !== '') {
+                $kwEn[] = trim($k->textContent);
+            }
+        }
+        if (empty($kwId) && empty($kwEn)) {
+            foreach ($xpath->query('//article-meta/kwd-group[not(@xml:lang)]/kwd') as $k) {
+                if (trim($k->textContent) !== '') {
+                    $kwId[] = trim($k->textContent);
+                }
+            }
         }
 
+        $idInner = $absIdNode ? self::renderSingleAbstractBody($absIdNode, $xpath, $kwId, false) : '';
+        $enInner = $absEnNode ? self::renderSingleAbstractBody($absEnNode, $xpath, $kwEn, true) : '';
+
+        if ($idInner === '' && $enInner === '') {
+            return '';
+        }
+
+        $showIdFirst = ($idInner !== '');
         $html = '<section id="kisi-sec-abstract" class="kisi-jats-section kisi-jats-abstract-box">';
         $html .= '<div class="kisi-jats-abstract-tabs">';
-        $html .= '<button type="button" class="kisi-abs-tab active" onclick="kisiSwitchAbsLang(\'id\', this)">🇮🇩 ABSTRAK (Indonesia)</button>';
-        if ($absEnNode) {
-            $html .= '<button type="button" class="kisi-abs-tab" onclick="kisiSwitchAbsLang(\'en\', this)">🇬🇧 ABSTRACT (English)</button>';
+        if ($idInner !== '') {
+            $html .= '<button type="button" class="kisi-abs-tab ' . ($showIdFirst ? 'active' : '') . '" onclick="kisiSwitchAbsLang(\'id\', this)">🇮🇩 ABSTRAK' . ($enInner !== '' ? ' (Indonesia)' : '') . '</button>';
         }
-        $html .= '<button type="button" class="kisi-abs-tab" onclick="kisiSwitchAbsLang(\'both\', this)">🔀 Tampilkan Keduanya</button>';
+        if ($enInner !== '') {
+            $html .= '<button type="button" class="kisi-abs-tab ' . (!$showIdFirst ? 'active' : '') . '" onclick="kisiSwitchAbsLang(\'en\', this)">🇬🇧 ABSTRACT (English)</button>';
+        }
+        if ($idInner !== '' && $enInner !== '') {
+            $html .= '<button type="button" class="kisi-abs-tab" onclick="kisiSwitchAbsLang(\'both\', this)">🔀 Tampilkan Keduanya</button>';
+        }
         $html .= '</div>';
 
-        // Indonesian Abstract Pane
-        if ($absIdNode) {
-            $html .= '<div id="kisi-abs-pane-id" class="kisi-abs-pane">';
-            $secs = $xpath->query('./sec[not(@content-type="sdgs")]', $absIdNode);
-            if ($secs && $secs->length > 0) {
-                foreach ($secs as $s) {
-                    $st = self::getNodeText($xpath, './title', $s);
-                    $sp = self::getNodeText($xpath, './p', $s);
-                    if ($st !== '') {
-                        $html .= '<h4 class="kisi-abs-subhead">' . htmlspecialchars($st, ENT_QUOTES, 'UTF-8') . '</h4>';
-                    }
-                    if ($sp !== '') {
-                        $html .= '<p class="kisi-abs-p">' . htmlspecialchars($sp, ENT_QUOTES, 'UTF-8') . '</p>';
-                    }
-                }
-            } else {
-                foreach ($xpath->query('./p', $absIdNode) as $p) {
-                    $html .= '<p class="kisi-abs-p">' . htmlspecialchars(trim($p->textContent), ENT_QUOTES, 'UTF-8') . '</p>';
-                }
-            }
-            if (!empty($kwId)) {
-                $html .= '<p class="kisi-abs-keywords"><strong>Kata Kunci:</strong> ' . htmlspecialchars(implode('; ', $kwId) . '.', ENT_QUOTES, 'UTF-8') . '</p>';
-            }
-            $sdgIdSec = $xpath->query('./sec[@content-type="sdgs"]', $absIdNode)->item(0);
-            if ($sdgIdSec) {
-                $st = self::getNodeText($xpath, './title', $sdgIdSec);
-                $sp = self::getNodeText($xpath, './p', $sdgIdSec);
-                $html .= '<div style="margin-top:10px;padding:10px 12px;background:#eef2f7;border-radius:6px;">';
-                if ($st !== '') {
-                    $html .= '<h4 class="kisi-abs-subhead" style="margin-top:0;">' . htmlspecialchars($st, ENT_QUOTES, 'UTF-8') . '</h4>';
-                }
-                if ($sp !== '') {
-                    $html .= '<p class="kisi-abs-p" style="margin-bottom:0;">' . htmlspecialchars($sp, ENT_QUOTES, 'UTF-8') . '</p>';
-                }
-                $html .= '</div>';
-            }
-            $html .= '</div>';
+        if ($idInner !== '') {
+            $html .= '<div id="kisi-abs-pane-id" class="kisi-abs-pane" style="display:block;">' . $idInner . '</div>';
         }
-
-        // English Abstract Pane
-        if ($absEnNode) {
-            $html .= '<div id="kisi-abs-pane-en" class="kisi-abs-pane kisi-abs-en" style="display:none;">';
-            $secs = $xpath->query('./sec[not(@content-type="sdgs")]', $absEnNode);
-            if ($secs && $secs->length > 0) {
-                foreach ($secs as $s) {
-                    $st = self::getNodeText($xpath, './title', $s);
-                    $sp = self::getNodeText($xpath, './p', $s);
-                    if ($st !== '') {
-                        $html .= '<h4 class="kisi-abs-subhead"><em>' . htmlspecialchars($st, ENT_QUOTES, 'UTF-8') . '</em></h4>';
-                    }
-                    if ($sp !== '') {
-                        $html .= '<p class="kisi-abs-p"><em>' . htmlspecialchars($sp, ENT_QUOTES, 'UTF-8') . '</em></p>';
-                    }
-                }
-            } else {
-                foreach ($xpath->query('./p', $absEnNode) as $p) {
-                    $html .= '<p class="kisi-abs-p"><em>' . htmlspecialchars(trim($p->textContent), ENT_QUOTES, 'UTF-8') . '</em></p>';
-                }
-            }
-            if (!empty($kwEn)) {
-                $html .= '<p class="kisi-abs-keywords"><em><strong>Keywords:</strong> ' . htmlspecialchars(implode('; ', $kwEn) . '.', ENT_QUOTES, 'UTF-8') . '</em></p>';
-            }
-            $sdgEnSec = $xpath->query('./sec[@content-type="sdgs"]', $absEnNode)->item(0);
-            if ($sdgEnSec) {
-                $st = self::getNodeText($xpath, './title', $sdgEnSec);
-                $sp = self::getNodeText($xpath, './p', $sdgEnSec);
-                if ($st !== '') {
-                    $html .= '<h4 class="kisi-abs-subhead"><em>' . htmlspecialchars($st, ENT_QUOTES, 'UTF-8') . '</em></h4>';
-                }
-                if ($sp !== '') {
-                    $html .= '<p class="kisi-abs-p"><em>' . htmlspecialchars($sp, ENT_QUOTES, 'UTF-8') . '</em></p>';
-                }
-            }
-            $html .= '</div>';
+        if ($enInner !== '') {
+            $enDisplay = $showIdFirst ? 'none' : 'block';
+            $html .= '<div id="kisi-abs-pane-en" class="kisi-abs-pane kisi-abs-en" style="display:' . $enDisplay . ';">' . $enInner . '</div>';
         }
 
         $html .= <<<JS
 <script>
-function kisiSwitchAbsLang(mode, btn) {
+window.kisiSwitchAbsLang = function(mode, btn) {
     var container = btn.closest('.kisi-jats-abstract-box');
-    container.querySelectorAll('.kisi-abs-tab').forEach(function(b) { b.classList.remove('active'); });
+    if (container) {
+        container.querySelectorAll('.kisi-abs-tab').forEach(function(b) { b.classList.remove('active'); });
+    }
     btn.classList.add('active');
     var pId = document.getElementById('kisi-abs-pane-id');
     var pEn = document.getElementById('kisi-abs-pane-en');
@@ -333,11 +337,96 @@ function kisiSwitchAbsLang(mode, btn) {
         if (pId) pId.style.display = 'block';
         if (pEn) { pEn.style.display = 'block'; pEn.style.marginTop = '14px'; pEn.style.paddingTop = '14px'; pEn.style.borderTop = '1px dashed #cbd5e1'; }
     }
-}
+};
 </script>
 JS;
         $html .= '</section>';
         return $html;
+    }
+
+    /**
+     * Render paragraphs, structured <sec>, <list>, and SDGs inside one <abstract>/<trans-abstract> element.
+     */
+    private static function renderSingleAbstractBody(DOMElement $absNode, DOMXPath $xpath, array $keywords, bool $isEnglish): string
+    {
+        $out = '';
+        $wrap = static fn (string $txt): string => $isEnglish ? ('<em>' . $txt . '</em>') : $txt;
+
+        $secs = $xpath->query('./sec[not(@content-type="sdgs")]', $absNode);
+        if ($secs && $secs->length > 0) {
+            foreach ($secs as $s) {
+                $st = self::getNodeText($xpath, './title', $s);
+                if ($st !== '') {
+                    $out .= '<h4 class="kisi-abs-subhead">' . $wrap(htmlspecialchars($st, ENT_QUOTES, 'UTF-8')) . '</h4>';
+                }
+                foreach ($xpath->query('./p', $s) as $p) {
+                    $pHtml = self::renderInlineContent($p);
+                    if (trim(strip_tags($pHtml)) !== '') {
+                        $out .= '<p class="kisi-abs-p">' . $wrap($pHtml) . '</p>';
+                    }
+                }
+            }
+        }
+
+        // Also handle direct <p> elements directly inside <abstract> (even when alongside or without <sec>)
+        foreach ($xpath->query('./p', $absNode) as $p) {
+            $pHtml = self::renderInlineContent($p);
+            if (trim(strip_tags($pHtml)) !== '') {
+                $out .= '<p class="kisi-abs-p">' . $wrap($pHtml) . '</p>';
+            }
+        }
+
+        // Handle <list>/<list-item> or deeply nested paragraphs if no direct <sec>/<p> rendered yet
+        if ($out === '') {
+            foreach ($xpath->query('.//p', $absNode) as $p) {
+                if ($p->parentNode instanceof DOMElement && $p->parentNode->getAttribute('content-type') === 'sdgs') {
+                    continue;
+                }
+                $pHtml = self::renderInlineContent($p);
+                if (trim(strip_tags($pHtml)) !== '') {
+                    $out .= '<p class="kisi-abs-p">' . $wrap($pHtml) . '</p>';
+                }
+            }
+        }
+
+        if ($out === '') {
+            $plain = trim($absNode->textContent);
+            if ($plain !== '') {
+                $out .= '<p class="kisi-abs-p">' . $wrap(htmlspecialchars($plain, ENT_QUOTES, 'UTF-8')) . '</p>';
+            }
+        }
+
+        if (!empty($keywords)) {
+            $kwLabel = $isEnglish ? 'Keywords:' : 'Kata Kunci:';
+            $kwLine = '<strong>' . $kwLabel . '</strong> ' . htmlspecialchars(implode('; ', $keywords) . '.', ENT_QUOTES, 'UTF-8');
+            $out .= '<p class="kisi-abs-keywords">' . $wrap($kwLine) . '</p>';
+        }
+
+        $sdgSec = $xpath->query('./sec[@content-type="sdgs"]', $absNode)->item(0);
+        if ($sdgSec instanceof DOMElement) {
+            $st = self::getNodeText($xpath, './title', $sdgSec);
+            $sp = '';
+            foreach ($xpath->query('./p', $sdgSec) as $spNode) {
+                $sp .= self::renderInlineContent($spNode) . ' ';
+            }
+            $sp = trim($sp);
+            if ($st !== '' || $sp !== '') {
+                if (!$isEnglish) {
+                    $out .= '<div style="margin-top:10px;padding:10px 12px;background:#eef2f7;border-radius:6px;">';
+                }
+                if ($st !== '') {
+                    $out .= '<h4 class="kisi-abs-subhead"' . (!$isEnglish ? ' style="margin-top:0;"' : '') . '>' . $wrap(htmlspecialchars($st, ENT_QUOTES, 'UTF-8')) . '</h4>';
+                }
+                if ($sp !== '') {
+                    $out .= '<p class="kisi-abs-p"' . (!$isEnglish ? ' style="margin-bottom:0;"' : '') . '>' . $wrap($sp) . '</p>';
+                }
+                if (!$isEnglish) {
+                    $out .= '</div>';
+                }
+            }
+        }
+
+        return $out;
     }
 
     /**
