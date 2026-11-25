@@ -92,30 +92,32 @@ $articleAuditInput = [
     ],
     'abstract_id' => [
         'pendahuluan_metode' => 'Penelitian ini di lakukan diwilayah Puskesmas Asparaga menggunakan kuisioner dan mengkonsumsi cairan pranukleal.',
-        'hasil' => 'Terdapat peneltian dengan p-value = 0,03.',
+        'hasil' => "Terdapat peneltian   dengan\u{00A0}\u{00A0}skor p-value = 0,03.",
         'kesimpulan_saran' => 'Agar supaya praktik membaik.',
     ],
     'abstract_en' => [
         'intro_methods' => 'This study analysed datas from 30 mothers.',
-        'results' => 'There was a signficant difference.',
+        'results' => 'There was  a   signficant difference.',
         'conclusions_recommendations' => 'Further studies are needed.',
     ],
     'keywords_id' => 'Pemberian ASI; Sosial budaya',
     'keywords_en' => 'Breastfeeding; Socio-cultural',
     'sections' => [
         'pendahuluan' => [
-            ['type' => 'paragraph', 'text' => 'Penelitian di Puskesmas Asparaga Kabupaten Gorontalo dilakukan oleh Zakaria menggunakan kontak kulit ke kulit (skin-to-skin contact).'],
+            ['type' => 'paragraph', 'text' => 'Penelitian di Puskesmas Asparaga Kabupaten Gorontalo dilakukan   oleh Zakaria menggunakan kontak kulit ke kulit (skin-to-skin contact).'],
         ],
         'metode' => [],
         'hasil' => [$formattedTbl],
         'pembahasan' => [],
         'kesimpulan_saran' => [],
     ],
-    'referensi' => ['Notoatmodjo, 2012. Metodologi Penelitian Kesehatan. Jakarta: Rineka Cipta.'],
+    'referensi' => ['Notoatmodjo, 2012. Metodologi Penelitian Kesehatan. Jakarta:   Rineka Cipta.'],
 ];
 
 $audit = LanguageAuditor::audit($articleAuditInput, ['body_lang' => 'id']);
 $foundTokens = array_map(fn ($i) => strtolower((string) $i['found']), $audit['issues']);
+$categories = array_map(fn ($i) => (string) ($i['category'] ?? ''), $audit['issues']);
+$multiSpaceIssues = array_values(array_filter($audit['issues'], fn ($i) => ($i['category'] ?? '') === 'spasi_ganda'));
 
 assertTrue(in_array('analisa', $foundTokens, true), 'Detects Indonesian tidak baku: analisa -> analisis');
 assertTrue(in_array('resiko', $foundTokens, true), 'Detects Indonesian tidak baku: resiko -> risiko');
@@ -129,6 +131,9 @@ assertTrue(in_array('behaviour', $foundTokens, true), 'Detects UK vs US AMA Engl
 assertTrue(in_array('brestfeeding', $foundTokens, true), 'Detects English typo: brestfeeding -> breastfeeding');
 assertTrue(in_array('datas', $foundTokens, true), 'Detects English non-standard plural: datas -> data');
 assertTrue(in_array('signficant', $foundTokens, true), 'Detects English typo: signficant -> significant');
+assertTrue(in_array('spasi_ganda', $categories, true) && count($multiSpaceIssues) >= 4, 'Rejects >= 2 consecutive spaces / NBSP across paragraphs, EN abstract, and references');
+assertTrue(($multiSpaceIssues[0]['severity'] ?? '') === 'error', 'Marks >= 2 consecutive spaces rule as strict error severity');
+assertTrue(LanguageAuditor::normalizeParagraphSpacing("Kata   satu\t\u{00A0}dua    tiga.") === 'Kata satu dua tiga.', 'normalizeParagraphSpacing collapses tabs, NBSP, and multiple spaces into 1 space');
 assertTrue(!in_array('gorontalo', $foundTokens, true), 'Does NOT false-positive author affiliation city Gorontalo');
 assertTrue(!in_array('zakaria', $foundTokens, true), 'Does NOT false-positive author surname Zakaria');
 assertTrue(!in_array('puskesmas', $foundTokens, true), 'Does NOT false-positive medical/health term puskesmas');
@@ -149,7 +154,7 @@ $articleFull = array_merge($articleAuditInput, [
     'issue_number' => '1',
     'article_url' => 'https://kisiberkelanjutan.com/index.php/smk/article/view/76',
     'sections' => [
-        'pendahuluan' => [['type' => 'paragraph', 'text' => 'Paragraf pendahuluan.']],
+        'pendahuluan' => [['type' => 'paragraph', 'text' => "Paragraf   pendahuluan\u{00A0}\u{00A0}dengan   spasi berlebih."]],
         'metode' => [['type' => 'paragraph', 'text' => 'Paragraf metode.']],
         'hasil' => [$formattedTbl],
         'pembahasan' => [
@@ -166,6 +171,7 @@ $dom = new DOMDocument();
 assertTrue($dom->loadXML($xml) !== false, 'JatsXmlGenerator produces well-formed XML');
 assertTrue(strpos($xml, '<table-wrap-foot>') !== false, 'JATS XML contains <table-wrap-foot>');
 assertTrue(strpos($xml, 'frame="hsides" rules="groups"') !== false, 'JATS XML table uses three-line frame/rules');
+assertTrue(strpos($xml, 'Paragraf pendahuluan dengan spasi berlebih.') !== false, 'JatsXmlGenerator auto-normalizes multiple consecutive spaces in paragraphs to 1 space');
 
 $html = JatsHtmlRenderer::renderFullTextHtml($xml, ['include_abstract' => true]);
 assertTrue(strpos($html, 'kisi-jats-table-foot') !== false, 'JatsHtmlRenderer renders table footnotes');
@@ -193,6 +199,8 @@ foreach ($parsed['sections']['hasil'] as $blk) {
 }
 assertTrue($parsedHasTable, 'DocxParser extracts table from generated DOCX');
 assertTrue($parsedHasFootnote, 'DocxParser re-attaches table footnote below table');
+$introParaText = (string) ($parsed['sections']['pendahuluan'][0]['text'] ?? '');
+assertTrue($introParaText === 'Paragraf pendahuluan dengan spasi berlebih.', 'DOCX round-trip enforces strictly 1 space inside paragraphs');
 @unlink($tmpDocx);
 
 if ($failures > 0) {

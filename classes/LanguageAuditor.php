@@ -176,6 +176,19 @@ class LanguageAuditor
             }
         }
 
+        // 3. References spacing audit (checks strict spacing without flagging foreign proper names)
+        foreach ((array) ($articleData['referensi'] ?? []) as $rIdx => $refItem) {
+            $refTxt = trim((string) $refItem);
+            if ($refTxt === '') {
+                continue;
+            }
+            $fPath = "referensi.{$rIdx}";
+            $fLabel = 'SUMBER PUSTAKA · Baris #' . ($rIdx + 1);
+            foreach (self::checkSingleSpaceRule($refTxt, 'id', $fPath, $fLabel) as $iss) {
+                $addIssue($iss);
+            }
+        }
+
         $sourcesUsed = [
             'KBBI VI & EYD V (Badan Pengembangan dan Pembinaan Bahasa, Kemendikbudristek)',
             'Hunspell ID & Referensi Kata Baku/Tidak Baku (KBBI / Ivan Lanin)',
@@ -219,7 +232,7 @@ class LanguageAuditor
             $cat = $iss['category'] ?? 'typo';
             if ($cat === 'kata_tidak_baku' || $cat === 'serapan_medis') {
                 $counts['kata_tidak_baku']++;
-            } elseif ($cat === 'eyd_v' || $cat === 'imbuhan_eyd' || $cat === 'preposisi_eyd' || $cat === 'pleonasme') {
+            } elseif ($cat === 'eyd_v' || $cat === 'imbuhan_eyd' || $cat === 'preposisi_eyd' || $cat === 'pleonasme' || $cat === 'spasi_ganda') {
                 $counts['eyd_v']++;
             } elseif ($cat === 'english_uk_us_ama' || $cat === 'english_nonstandard' || $cat === 'languagetool') {
                 $counts['english_ama']++;
@@ -254,8 +267,11 @@ class LanguageAuditor
         $issues = [];
 
         if ($lang === 'id') {
-            // 1. Indonesian multi-word EYD V rules (prepositions, passive di-, pleonasms, punctuation)
+            // 1. Indonesian multi-word EYD V rules (prepositions, passive di-, pleonasms, punctuation, strict spacing)
             $issues = array_merge($issues, self::checkIndonesianPhrases($text, $fieldPath, $fieldLabel, $isTableCell));
+            if ($isTableCell) {
+                $issues = array_merge($issues, self::checkSingleSpaceRule($text, 'id', $fieldPath, $fieldLabel));
+            }
 
             // 2. Identify parenthetical spans (...) so English biomedical terms inside Indonesian text are checked against English!
             $parenRanges = [];
@@ -354,6 +370,8 @@ class LanguageAuditor
             // English audit (title_en, abstract_en, keywords_en, or English body)
             if (!$isTableCell) {
                 $issues = array_merge($issues, self::checkCommonPunctuation($text, 'en', $fieldPath, $fieldLabel));
+            } else {
+                $issues = array_merge($issues, self::checkSingleSpaceRule($text, 'en', $fieldPath, $fieldLabel));
             }
             if (preg_match_all('/[A-Za-z]+(?:[\-\'][A-Za-z]+)*/', $text, $matches, PREG_OFFSET_CAPTURE)) {
                 foreach ($matches[0] as $match) {
@@ -586,29 +604,149 @@ class LanguageAuditor
             }
         }
 
-        // Double spaces
-        if (preg_match_all('/[A-Za-z0-9,.;]\s{2,}[A-Za-z0-9]/u', $text, $dm, PREG_OFFSET_CAPTURE)) {
-            foreach ($dm[0] as $fm) {
-                $found = $fm[0];
-                $fixed = preg_replace('/\s{2,}/', ' ', $found);
+        $issues = array_merge($issues, self::checkSingleSpaceRule($text, $lang, $fieldPath, $fieldLabel));
+        return $issues;
+    }
+
+    /**
+     * Strictly reject >= 2 consecutive spaces, tabs, or non-breaking Unicode spaces in paragraphs.
+     */
+    public static function checkSingleSpaceRule(string $text, string $lang, string $fieldPath, string $fieldLabel): array
+    {
+        $issues = [];
+        $pattern = '/([^\s\x{00A0}]{1,18})([ \t\x{00A0}\x{1680}\x{2000}-\x{200B}\x{202F}\x{205F}\x{3000}]{2,}|\t+|[\x{00A0}\x{1680}\x{2000}-\x{200B}\x{202F}\x{205F}\x{3000}]+)(?=([^\s\x{00A0}]{1,18}))/u';
+        if (preg_match_all($pattern, $text, $dm, PREG_OFFSET_CAPTURE)) {
+            foreach ($dm[0] as $idx => $fm) {
+                $leftAnchor = $dm[1][$idx][0];
+                $spaceRun = $dm[2][$idx][0];
+                $rightAnchor = $dm[3][$idx][0];
+                $found = $leftAnchor . $spaceRun;
+                $fixed = $leftAnchor . ' ';
+                $normalizedRun = (string) preg_replace('/[\t\x{00A0}\x{1680}\x{2000}-\x{200B}\x{202F}\x{205F}\x{3000}]/u', ' ', $spaceRun);
+                $spaceCount = max(2, mb_strlen($normalizedRun, 'UTF-8'));
                 $issues[] = [
                     'field_path' => $fieldPath,
                     'location_label' => $fieldLabel,
                     'language' => $lang,
-                    'severity' => 'warning',
-                    'category' => 'eyd_v',
-                    'category_label' => 'Spasi Ganda',
+                    'severity' => 'error',
+                    'category' => 'spasi_ganda',
+                    'category_label' => 'Aturan Baku Spasi (>1 Spasi)',
                     'found' => $found,
                     'suggestions' => [$fixed],
-                    'context' => self::extractContext($text, $fm[1], strlen($found)),
-                    'reason' => 'Terdapat spasi berlebih (spasi ganda) di antara kata.',
-                    'source' => $lang === 'id' ? 'EYD V — Tata Tulis' : 'Editorial Spacing Standard',
+                    'context' => self::extractContext($text, $fm[1], strlen($found) + strlen($rightAnchor)),
+                    'reason' => "Aturan baku paragraf: ditemukan {$spaceCount} spasi/pemisah berurutan antara \"{$leftAnchor}\" dan \"{$rightAnchor}\". Maksimal hanya diperbolehkan 1 spasi tunggal.",
+                    'source' => $lang === 'id' ? 'Aturan Baku Paragraf KisiTypesetter & EYD V' : 'Aturan Baku Paragraf KisiTypesetter & AMA Style',
                     'auto_fixable' => true,
                 ];
             }
         }
-
         return $issues;
+    }
+
+    /**
+     * Strictly normalize paragraph text so no consecutive spaces (>= 2 spaces, tabs, NBSP, or newlines) remain.
+     */
+    public static function normalizeParagraphSpacing(string $text): string
+    {
+        if ($text === '') {
+            return '';
+        }
+        $clean = preg_replace('/[\t\r\n\x{00A0}\x{1680}\x{2000}-\x{200B}\x{202F}\x{205F}\x{3000}]+/u', ' ', $text);
+        $clean = preg_replace('/ {2,}/', ' ', (string) $clean);
+        return trim((string) $clean);
+    }
+
+    /**
+     * Normalize spacing across every article text field, abstract, section block, table caption/footnote, and reference.
+     */
+    public static function normalizeArticleParagraphSpaces(array $articleData, int &$changesCount = 0): array
+    {
+        $changesCount = 0;
+        $normField = static function (string $val) use (&$changesCount): string {
+            $cleaned = self::normalizeParagraphSpacing($val);
+            if ($cleaned !== trim($val) || $val !== $cleaned) {
+                $changesCount++;
+            }
+            return $cleaned;
+        };
+
+        $topKeys = [
+            'article_type', 'title_id', 'title_en', 'keywords_id', 'keywords_en',
+            'citation', 'review_editor', 'published_date', 'funding', 'competing_interests',
+            'corresponding_name', 'journal_short_footer', 'footer_issue_line', 'retypeset_note',
+        ];
+        foreach ($topKeys as $k) {
+            if (isset($articleData[$k]) && is_string($articleData[$k])) {
+                $articleData[$k] = $normField($articleData[$k]);
+            }
+        }
+
+        if (!empty($articleData['authors']) && is_array($articleData['authors'])) {
+            foreach ($articleData['authors'] as $idx => $author) {
+                if (!is_array($author)) {
+                    continue;
+                }
+                if (isset($author['name']) && is_string($author['name'])) {
+                    $articleData['authors'][$idx]['name'] = $normField($author['name']);
+                }
+                if (isset($author['affiliation']) && is_string($author['affiliation'])) {
+                    $articleData['authors'][$idx]['affiliation'] = $normField($author['affiliation']);
+                }
+            }
+        }
+
+        foreach (['abstract_id', 'abstract_en'] as $abKey) {
+            if (!empty($articleData[$abKey]) && is_array($articleData[$abKey])) {
+                foreach ($articleData[$abKey] as $subKey => $subVal) {
+                    if (is_string($subVal)) {
+                        $articleData[$abKey][$subKey] = $normField($subVal);
+                    }
+                }
+            }
+        }
+
+        if (!empty($articleData['sections']) && is_array($articleData['sections'])) {
+            foreach ($articleData['sections'] as $secKey => $blocks) {
+                if (!is_array($blocks)) {
+                    continue;
+                }
+                foreach ($blocks as $bIdx => $blk) {
+                    if (is_string($blk)) {
+                        $articleData['sections'][$secKey][$bIdx] = $normField($blk);
+                    } elseif (is_array($blk)) {
+                        foreach (['text', 'caption', 'footnote'] as $bk) {
+                            if (isset($blk[$bk]) && is_string($blk[$bk])) {
+                                $articleData['sections'][$secKey][$bIdx][$bk] = $normField($blk[$bk]);
+                            }
+                        }
+                        if (!empty($blk['rows']) && is_array($blk['rows'])) {
+                            foreach ($blk['rows'] as $rIdx => $row) {
+                                if (!is_array($row)) {
+                                    continue;
+                                }
+                                foreach ($row as $cIdx => $cell) {
+                                    if (is_array($cell) && isset($cell['text']) && is_string($cell['text'])) {
+                                        $articleData['sections'][$secKey][$bIdx]['rows'][$rIdx][$cIdx]['text'] = $normField($cell['text']);
+                                    } elseif (is_string($cell)) {
+                                        $articleData['sections'][$secKey][$bIdx]['rows'][$rIdx][$cIdx] = $normField($cell);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!empty($articleData['referensi']) && is_array($articleData['referensi'])) {
+            foreach ($articleData['referensi'] as $rIdx => $refVal) {
+                if (is_string($refVal)) {
+                    $articleData['referensi'][$rIdx] = $normField($refVal);
+                }
+            }
+        }
+
+        return $articleData;
     }
 
     /**

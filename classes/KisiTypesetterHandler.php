@@ -345,11 +345,41 @@ class KisiTypesetterHandler extends Handler
             'force_reclassify' => (string) $request->getUserVar('forceReclassify') === '1',
             'suggest_footnote' => (string) $request->getUserVar('suggestFootnote') !== '0',
         ]);
+        $formatted = LanguageAuditor::normalizeArticleParagraphSpaces($formatted);
 
         echo json_encode([
             'ok' => true,
             'article' => $formatted,
             'message' => 'Seluruh tabel berhasil diformat sesuai standar tabel ilmiah rumpun kesehatan (3 garis terbuka, perataan stub/numerik, hierarki variabel, & catatan kaki).',
+        ], JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * AJAX POST: Enforce single-space paragraph standard across all article fields
+     */
+    public function normalizeSpacing($args, $request)
+    {
+        if (!$this->ensureAuthorized($request)) {
+            return;
+        }
+        header('Content-Type: application/json; charset=UTF-8');
+
+        $rawPayload = (string) $request->getUserVar('articleJson');
+        $articleData = json_decode($rawPayload, true);
+        if (!is_array($articleData)) {
+            echo json_encode(['ok' => false, 'error' => 'Data artikel JSON tidak valid.']);
+            return;
+        }
+
+        $changes = 0;
+        $normalized = LanguageAuditor::normalizeArticleParagraphSpaces($articleData, $changes);
+        echo json_encode([
+            'ok' => true,
+            'article' => $normalized,
+            'changes' => $changes,
+            'message' => $changes > 0
+                ? "Aturan baku spasi tunggal diterapkan pada {$changes} bidang/paragraf."
+                : 'Semua paragraf sudah mematuhi aturan maksimal 1 spasi tunggal.',
         ], JSON_UNESCAPED_UNICODE);
     }
 
@@ -1434,9 +1464,7 @@ class KisiTypesetterHandler extends Handler
         $text = preg_replace('/<\s*(br\s*\/?|\/p|\/div|\/li)\s*>/i', ' ', $html);
         $text = strip_tags((string) $text);
         $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        $text = preg_replace('/\x{00A0}+/u', ' ', $text);
-        $text = preg_replace('/[ \t\r\n]+/', ' ', (string) $text);
-        return trim((string) $text);
+        return LanguageAuditor::normalizeParagraphSpacing($text);
     }
 
     private static function pickLocaleValue(array $localizedArray, array $preferredLocales, bool $fallbackAny = true): string

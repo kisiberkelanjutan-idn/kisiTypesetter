@@ -10,6 +10,8 @@
 
 namespace APP\plugins\generic\kisiTypesetter\classes;
 
+require_once __DIR__ . '/LanguageAuditor.php';
+
 class GeminiRestructurer
 {
     /**
@@ -50,6 +52,7 @@ Aturan ketat:
    - "conclusions_recommendations"
 3. Jika "title_en" kosong, berikan terjemahan judul Bahasa Inggris ilmiah yang akurat dari "title_id". Jika "title_id" kosong, terjemahkan dari "title_en".
 4. Rapikan "keywords_id" dan "keywords_en" agar dipisahkan dengan titik koma (; ) tanpa titik di akhir. Jika "keywords_en" kosong, terjemahkan dari "keywords_id" dan urutkan secara alfabetis.
+5. Terapkan aturan baku spasi tunggal: dilarang ada spasi ganda (>= 2 spasi berturut-turut) di dalam paragraf maupun abstrak.
 
 Data input artikel (JSON):
 PROMPT;
@@ -138,6 +141,7 @@ PROMPT;
             $articleData['abstract_en']['conclusions_recommendations'] = trim((string) $abEn['conclusions_recommendations']);
         }
 
+        $articleData = LanguageAuditor::normalizeArticleParagraphSpaces($articleData);
         $articleData['_ai_status'] = 'Berhasil dirapikan dengan Google Gemini AI (' . $model . ').';
         return $articleData;
     }
@@ -165,6 +169,7 @@ PROMPT;
             $articleData['abstract_en']['conclusions_recommendations'] = $splitEn[2];
         }
 
+        $articleData = LanguageAuditor::normalizeArticleParagraphSpaces($articleData);
         $articleData['_ai_status'] = $statusMessage !== '' ? $statusMessage : 'Berhasil dirapikan dengan pemisah kalimat otomatis.';
         return $articleData;
     }

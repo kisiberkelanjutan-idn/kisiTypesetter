@@ -742,11 +742,11 @@ $defaultArticle = $activeArticleData ?: [
             <!-- Bilingual Titles -->
             <div class="field-group">
                 <label>Judul Artikel (Bahasa Indonesia — Bold 14pt)</label>
-                <textarea id="f_title_id" rows="2" oninput="syncStateFromInputs()"></textarea>
+                <textarea id="f_title_id" rows="2" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
             </div>
             <div class="field-group">
                 <label>Judul Artikel (Bahasa Inggris — Italic 14pt)</label>
-                <textarea id="f_title_en" rows="2" oninput="syncStateFromInputs()"></textarea>
+                <textarea id="f_title_en" rows="2" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
             </div>
 
             <!-- Authors & Auto-Deduplicated Affiliations -->
@@ -797,19 +797,19 @@ $defaultArticle = $activeArticleData ?: [
                         <h3 style="margin:0 0 10px 0;font-size:14px;color:var(--kisi-navy);">🇮🇩 ABSTRAK (Bahasa Indonesia)</h3>
                         <div class="field-group">
                             <label>Pendahuluan dan Metode</label>
-                            <textarea id="f_ab_id_pm" rows="6" oninput="syncStateFromInputs()"></textarea>
+                            <textarea id="f_ab_id_pm" rows="6" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                         </div>
                         <div class="field-group">
                             <label>Hasil</label>
-                            <textarea id="f_ab_id_hasil" rows="4" oninput="syncStateFromInputs()"></textarea>
+                            <textarea id="f_ab_id_hasil" rows="4" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                         </div>
                         <div class="field-group">
                             <label>Kesimpulan dan Saran</label>
-                            <textarea id="f_ab_id_kes" rows="4" oninput="syncStateFromInputs()"></textarea>
+                            <textarea id="f_ab_id_kes" rows="4" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                         </div>
                         <div class="field-group">
                             <label>Kata Kunci <span class="hint">(Pisahkan dengan titik koma ;)</span></label>
-                            <input type="text" id="f_keywords_id" placeholder="Sosial budaya; Pemberian ASI; Pemberian ASI sejak dini" oninput="syncStateFromInputs()">
+                            <input type="text" id="f_keywords_id" placeholder="Sosial budaya; Pemberian ASI; Pemberian ASI sejak dini" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)">
                         </div>
                     </div>
 
@@ -818,19 +818,19 @@ $defaultArticle = $activeArticleData ?: [
                         <h3 style="margin:0 0 10px 0;font-size:14px;color:var(--kisi-navy);">🇬🇧 ABSTRACT (Bahasa Inggris — Otomatis Cetak Miring)</h3>
                         <div class="field-group">
                             <label>Introduction and Methods</label>
-                            <textarea id="f_ab_en_im" rows="6" oninput="syncStateFromInputs()"></textarea>
+                            <textarea id="f_ab_en_im" rows="6" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                         </div>
                         <div class="field-group">
                             <label>Results</label>
-                            <textarea id="f_ab_en_res" rows="4" oninput="syncStateFromInputs()"></textarea>
+                            <textarea id="f_ab_en_res" rows="4" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                         </div>
                         <div class="field-group">
                             <label>Conclusions and Recommendations</label>
-                            <textarea id="f_ab_en_conc" rows="4" oninput="syncStateFromInputs()"></textarea>
+                            <textarea id="f_ab_en_conc" rows="4" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                         </div>
                         <div class="field-group">
                             <label>Keywords <span class="hint">(Pisahkan dengan titik koma ;)</span></label>
-                            <input type="text" id="f_keywords_en" placeholder="Breastfeeding; Early initiation of breastfeeding; Socio-cultural" oninput="syncStateFromInputs()">
+                            <input type="text" id="f_keywords_en" placeholder="Breastfeeding; Early initiation of breastfeeding; Socio-cultural" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)">
                         </div>
                     </div>
                 </div>
@@ -842,9 +842,14 @@ $defaultArticle = $activeArticleData ?: [
                     <div style="font-size:12.5px;color:#334155;">
                         💡 <strong>Atur Urutan &amp; Level Manual:</strong> Seret ikon <strong>⋮⋮</strong> atau klik tombol <strong>▲ / ▼</strong> untuk menggeser blok naik-turun maupun lintas bab (<em>PENDAHULUAN ↔ METODE ↔ HASIL ↔ PEMBAHASAN ↔ KESIMPULAN</em>). Gunakan dropdown <strong>Level Blok</strong> untuk ubah <em>Paragraf ↔ Sub-Judul</em>.
                     </div>
-                    <button type="button" class="btn btn-teal btn-sm" onclick="formatAllTablesHealthStandard(true)">
-                        🏥 Format Semua Tabel (Standar Ilmiah Kesehatan)
-                    </button>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button type="button" class="btn btn-outline btn-sm" onclick="normalizeAllArticleSpacing(true)">
+                            ✂️ Rapikan Spasi (&le; 1 Spasi)
+                        </button>
+                        <button type="button" class="btn btn-teal btn-sm" onclick="formatAllTablesHealthStandard(true)">
+                            🏥 Format Semua Tabel (Standar Ilmiah Kesehatan)
+                        </button>
+                    </div>
                 </div>
                 <div id="bodySectionsContainer"></div>
             </div>
@@ -881,6 +886,7 @@ $defaultArticle = $activeArticleData ?: [
                             </div>
                         </div>
                         <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <button type="button" class="btn btn-outline btn-sm" onclick="normalizeAllArticleSpacing(true)">✂️ Rapikan Spasi (&le; 1 Spasi)</button>
                             <button type="button" class="btn btn-primary btn-sm" onclick="runLanguageAudit()">🔍 Jalankan Audit Bahasa</button>
                             <button type="button" class="btn btn-teal btn-sm" id="btnApplyAllSafeFixes" onclick="applyAllSafeAuditFixes()" style="display:none;">✨ Terapkan Semua Perbaikan Aman</button>
                         </div>
@@ -1239,21 +1245,21 @@ function renderBodySectionsEditor(flashTarget = null) {
                 item.innerHTML = blockHeaderHtml + `
                     <div class="field-group" style="margin-bottom:8px;">
                         <label>Judul Tabel (Caption — otomatis di atas tabel, bold pada "Tabel N.")</label>
-                        <input type="text" value="${escapeHtml(blk.caption || '')}" oninput="articleState.sections['${secKey}'][${bIdx}].caption = this.value">
+                        <input type="text" value="${escapeHtml(blk.caption || '')}" oninput="articleState.sections['${secKey}'][${bIdx}].caption = this.value" onblur="this.value = normalizeParagraphSpacingJs(this.value); articleState.sections['${secKey}'][${bIdx}].caption = this.value;">
                     </div>
                     ${renderTablePreviewHtml(secKey, bIdx, blk)}
                     <div class="field-group" style="margin-top:8px;margin-bottom:0;">
                         <label>Catatan Kaki Tabel (Footnote / Singkatan / Uji Statistik — otomatis di bawah garis penutup)</label>
-                        <textarea rows="2" placeholder="Contoh: Keterangan: F/n, frekuensi; χ², nilai uji Chi-square; p < 0,05 menunjukkan hubungan bermakna secara statistik." oninput="articleState.sections['${secKey}'][${bIdx}].footnote = this.value">${escapeHtml(blk.footnote || '')}</textarea>
+                        <textarea rows="2" placeholder="Contoh: Keterangan: F/n, frekuensi; χ², nilai uji Chi-square; p < 0,05 menunjukkan hubungan bermakna secara statistik." oninput="articleState.sections['${secKey}'][${bIdx}].footnote = this.value" onblur="this.value = normalizeParagraphSpacingJs(this.value); articleState.sections['${secKey}'][${bIdx}].footnote = this.value;">${escapeHtml(blk.footnote || '')}</textarea>
                     </div>
                 `;
             } else if (blk.type === 'subheading' || blk.type === 'subheading_l3') {
                 item.innerHTML = blockHeaderHtml + `
-                    <input type="text" style="font-weight:700;${blk.type === 'subheading_l3' ? 'font-style:italic;' : ''}" value="${escapeHtml(blk.text || '')}" oninput="articleState.sections['${secKey}'][${bIdx}].text = this.value">
+                    <input type="text" style="font-weight:700;${blk.type === 'subheading_l3' ? 'font-style:italic;' : ''}" value="${escapeHtml(blk.text || '')}" oninput="articleState.sections['${secKey}'][${bIdx}].text = this.value" onblur="this.value = normalizeParagraphSpacingJs(this.value); articleState.sections['${secKey}'][${bIdx}].text = this.value;">
                 `;
             } else {
                 item.innerHTML = blockHeaderHtml + `
-                    <textarea rows="3" oninput="articleState.sections['${secKey}'][${bIdx}].text = this.value">${escapeHtml(blk.text || '')}</textarea>
+                    <textarea rows="3" oninput="articleState.sections['${secKey}'][${bIdx}].text = this.value" onblur="this.value = normalizeParagraphSpacingJs(this.value); articleState.sections['${secKey}'][${bIdx}].text = this.value;">${escapeHtml(blk.text || '')}</textarea>
                 `;
             }
 
@@ -1728,14 +1734,14 @@ function renderLanguageAuditResults() {
 
     const cntTidakBaku = issues.filter(i => i.category === 'kata_tidak_baku' || i.category === 'serapan_medis').length;
     const cntTypo = issues.filter(i => i.category === 'typo' || i.category === 'english_typo').length;
-    const cntEyd = issues.filter(i => ['eyd_v', 'imbuhan_eyd', 'preposisi_eyd', 'pleonasme'].includes(i.category)).length;
+    const cntEyd = issues.filter(i => ['eyd_v', 'imbuhan_eyd', 'preposisi_eyd', 'pleonasme', 'spasi_ganda'].includes(i.category)).length;
     const cntEn = issues.filter(i => ['english_uk_us_ama', 'english_nonstandard', 'languagetool'].includes(i.category)).length;
 
     const filtered = issues.filter(i => {
         if (auditState.filter === 'all') return true;
         if (auditState.filter === 'baku') return i.category === 'kata_tidak_baku' || i.category === 'serapan_medis';
         if (auditState.filter === 'typo') return i.category === 'typo' || i.category === 'english_typo';
-        if (auditState.filter === 'eyd') return ['eyd_v', 'imbuhan_eyd', 'preposisi_eyd', 'pleonasme'].includes(i.category);
+        if (auditState.filter === 'eyd') return ['eyd_v', 'imbuhan_eyd', 'preposisi_eyd', 'pleonasme', 'spasi_ganda'].includes(i.category);
         if (auditState.filter === 'en') return ['english_uk_us_ama', 'english_nonstandard', 'languagetool'].includes(i.category);
         return true;
     });
@@ -1999,9 +2005,107 @@ async function runAiRestructure() {
     }
 }
 
-function downloadGeneratedFile(endpointOp) {
+function normalizeParagraphSpacingJs(str) {
+    if (typeof str !== 'string') return '';
+    return str
+        .replace(/[\t\r\n\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000]+/g, ' ')
+        .replace(/ {2,}/g, ' ')
+        .trim();
+}
+
+function autoNormalizeInputElement(el) {
+    if (!el || typeof el.value !== 'string') return;
+    const cleaned = normalizeParagraphSpacingJs(el.value);
+    if (cleaned !== el.value) {
+        el.value = cleaned;
+        syncStateFromInputs();
+    }
+}
+
+function normalizeAllArticleSpacing(showNotice = true) {
     syncStateFromInputs();
     syncReferencesFromInput();
+    let changes = 0;
+
+    const norm = (val) => {
+        if (typeof val !== 'string') return val;
+        const cleaned = normalizeParagraphSpacingJs(val);
+        if (cleaned !== val) changes++;
+        return cleaned;
+    };
+
+    ['article_type', 'title_id', 'title_en', 'keywords_id', 'keywords_en', 'citation',
+     'review_editor', 'published_date', 'funding', 'competing_interests',
+     'corresponding_name', 'journal_short_footer', 'footer_issue_line', 'retypeset_note'].forEach(k => {
+        if (typeof articleState[k] === 'string') articleState[k] = norm(articleState[k]);
+    });
+
+    if (Array.isArray(articleState.authors)) {
+        articleState.authors.forEach(a => {
+            if (a && typeof a.name === 'string') a.name = norm(a.name);
+            if (a && typeof a.affiliation === 'string') a.affiliation = norm(a.affiliation);
+        });
+    }
+
+    ['abstract_id', 'abstract_en'].forEach(abKey => {
+        if (articleState[abKey] && typeof articleState[abKey] === 'object') {
+            Object.keys(articleState[abKey]).forEach(sub => {
+                if (typeof articleState[abKey][sub] === 'string') {
+                    articleState[abKey][sub] = norm(articleState[abKey][sub]);
+                }
+            });
+        }
+    });
+
+    SECTION_KEYS.forEach(secKey => {
+        const blocks = (articleState.sections && articleState.sections[secKey]) || [];
+        blocks.forEach((blk, bIdx) => {
+            if (typeof blk === 'string') {
+                blocks[bIdx] = norm(blk);
+            } else if (blk && typeof blk === 'object') {
+                ['text', 'caption', 'footnote'].forEach(bk => {
+                    if (typeof blk[bk] === 'string') blk[bk] = norm(blk[bk]);
+                });
+                if (Array.isArray(blk.rows)) {
+                    blk.rows.forEach(row => {
+                        if (!Array.isArray(row)) return;
+                        row.forEach((cell, cIdx) => {
+                            if (cell && typeof cell === 'object' && typeof cell.text === 'string') {
+                                cell.text = norm(cell.text);
+                            } else if (typeof cell === 'string') {
+                                row[cIdx] = norm(cell);
+                            }
+                        });
+                    });
+                }
+            }
+        });
+    });
+
+    if (Array.isArray(articleState.referensi)) {
+        articleState.referensi = articleState.referensi.map(r => norm(r));
+    }
+
+    if (changes > 0) {
+        populateFormFromState();
+        if (Array.isArray(auditState.issues) && auditState.issues.length > 0) {
+            auditState.issues = auditState.issues.filter(i => i.category !== 'spasi_ganda');
+            renderLanguageAuditResults();
+        }
+    }
+    if (showNotice) {
+        showToast(
+            changes > 0
+                ? `✂️ ${changes} paragraf/bidang dirapikan sesuai aturan baku maksimal 1 spasi.`
+                : '✅ Seluruh paragraf sudah mematuhi aturan maksimal 1 spasi tunggal.',
+            'success'
+        );
+    }
+    return changes;
+}
+
+function downloadGeneratedFile(endpointOp) {
+    normalizeAllArticleSpacing(false);
     const form = document.getElementById('downloadForm');
     form.action = BASE_URL + '/' + endpointOp;
     document.getElementById('downloadArticleJson').value = JSON.stringify(articleState);
@@ -2010,8 +2114,7 @@ function downloadGeneratedFile(endpointOp) {
 }
 
 async function loadFullTextDigestPreview() {
-    syncStateFromInputs();
-    syncReferencesFromInput();
+    normalizeAllArticleSpacing(false);
     const box = document.getElementById('fullTextDigestPreviewBox');
     box.innerHTML = '<div style="padding:30px;text-align:center;color:#64748b;">⏳ Membangun JATS 1.2 XML &amp; me-render Full-Text HTML...</div>';
     const fd = new FormData();
@@ -2030,8 +2133,7 @@ async function loadFullTextDigestPreview() {
 }
 
 async function saveDirectlyToOjsGalley() {
-    syncStateFromInputs();
-    syncReferencesFromInput();
+    normalizeAllArticleSpacing(false);
     showToast('🚀 Menyimpan JATS XML & DOCX langsung ke Galley artikel OJS 3.5...', 'info');
     const fd = new FormData();
     fd.append('articleJson', JSON.stringify(articleState));

@@ -9,6 +9,9 @@
 
 namespace APP\plugins\generic\kisiTypesetter\classes;
 
+require_once __DIR__ . '/HealthTableFormatter.php';
+require_once __DIR__ . '/LanguageAuditor.php';
+
 use DOMDocument;
 use DOMElement;
 use DOMXPath;
@@ -229,7 +232,7 @@ class DocxParser
         }
 
         $result['raw_text_for_ai'] = implode("\n", $rawLines);
-        return $result;
+        return LanguageAuditor::normalizeArticleParagraphSpaces($result);
     }
 
     /**

@@ -9,6 +9,9 @@
 
 namespace APP\plugins\generic\kisiTypesetter\classes;
 
+require_once __DIR__ . '/HealthTableFormatter.php';
+require_once __DIR__ . '/LanguageAuditor.php';
+
 use DOMDocument;
 use DOMElement;
 
@@ -22,6 +25,8 @@ class JatsXmlGenerator
      */
     public static function generate(array $data): string
     {
+        $data = LanguageAuditor::normalizeArticleParagraphSpaces($data);
+
         $imp = new \DOMImplementation();
         $dtd = $imp->createDocumentType(
             'article',

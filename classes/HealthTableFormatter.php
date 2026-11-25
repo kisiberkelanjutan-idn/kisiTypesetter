@@ -305,9 +305,9 @@ class HealthTableFormatter
      */
     public static function cleanTableText(string $text, bool $isHeader = false): string
     {
-        // Remove UTF-8 non-breaking spaces (\xC2\xA0) that Word/DOM leaves behind
-        $clean = preg_replace('/\x{00A0}+/u', ' ', $text);
-        $clean = preg_replace('/[ \t\r\n]+/', ' ', (string) $clean);
+        // Remove UTF-8 non-breaking spaces, Unicode horizontal spaces, tabs & consecutive spaces
+        $clean = preg_replace('/[\t\r\n\x{00A0}\x{1680}\x{2000}-\x{200B}\x{202F}\x{205F}\x{3000}]+/u', ' ', $text);
+        $clean = preg_replace('/ {2,}/', ' ', (string) $clean);
         $clean = trim((string) $clean);
 
         if ($clean === '') {

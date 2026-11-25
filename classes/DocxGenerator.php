@@ -10,6 +10,7 @@ namespace APP\plugins\generic\kisiTypesetter\classes;
 
 require_once __DIR__ . '/DocxParser.php';
 require_once __DIR__ . '/HealthTableFormatter.php';
+require_once __DIR__ . '/LanguageAuditor.php';
 
 use DOMDocument;
 use DOMElement;
@@ -29,6 +30,8 @@ class DocxGenerator
         if (!file_exists($masterTemplatePath)) {
             return false;
         }
+
+        $data = LanguageAuditor::normalizeArticleParagraphSpaces($data);
 
         if (!copy($masterTemplatePath, $outputPath)) {
             return false;
