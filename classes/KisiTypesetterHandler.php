@@ -133,8 +133,60 @@ class KisiTypesetterHandler extends Handler
 
         $dispatcher = $request->getDispatcher();
         $baseUrl = $dispatcher->url($request, PKPApplication::ROUTE_PAGE, $context->getPath(), 'kisiTypesetter');
+        $journalFaviconUrl = $this->resolveJournalFaviconUrl($context, $request, $plugin);
+        $pluginFaviconUrl = rtrim((string) $request->getBaseUrl(), '/') . '/' . ltrim((string) $plugin->getPluginPath(), '/') . '/resources/kisi-favicon.png';
 
         require($plugin->getPluginPath() . '/templates/studioView.php');
+    }
+
+    /**
+     * Resolve the active journal favicon URL from OJS 3.5 context (fallback to bundled Kisi Berkelanjutan favicon).
+     */
+    protected function resolveJournalFaviconUrl($context, Request $request, ?KisiTypesetterPlugin $plugin): string
+    {
+        $baseUrl = rtrim((string) $request->getBaseUrl(), '/');
+        $fallbackUrl = $plugin
+            ? ($baseUrl . '/' . ltrim((string) $plugin->getPluginPath(), '/') . '/resources/kisi-favicon.png')
+            : '';
+
+        if (!$context) {
+            return $fallbackUrl;
+        }
+
+        try {
+            $fav = method_exists($context, 'getLocalizedFavicon') ? $context->getLocalizedFavicon() : null;
+            if (empty($fav) || empty($fav['uploadName'])) {
+                $favMap = (array) $context->getData('favicon');
+                foreach (['id', 'id_ID', 'en', 'en_US'] as $loc) {
+                    if (!empty($favMap[$loc]['uploadName'])) {
+                        $fav = $favMap[$loc];
+                        break;
+                    }
+                }
+                if ((empty($fav) || empty($fav['uploadName'])) && !empty($favMap)) {
+                    foreach ($favMap as $item) {
+                        if (is_array($item) && !empty($item['uploadName'])) {
+                            $fav = $item;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (!empty($fav['uploadName'])) {
+                $contextFilesDir = 'public/journals/' . (int) $context->getId();
+                if (class_exists('\APP\file\PublicFileManager')) {
+                    $pfm = new \APP\file\PublicFileManager();
+                    if (method_exists($pfm, 'getContextFilesPath')) {
+                        $contextFilesDir = trim((string) $pfm->getContextFilesPath((int) $context->getId()), '/');
+                    }
+                }
+                return $baseUrl . '/' . $contextFilesDir . '/' . rawurlencode((string) $fav['uploadName']);
+            }
+        } catch (\Throwable $e) {
+            // Fall through cleanly to bundled journal favicon
+        }
+
+        return $fallbackUrl;
     }
 
     /**

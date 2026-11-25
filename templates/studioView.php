@@ -56,6 +56,7 @@ $defaultArticle = $activeArticleData ?: [
     ],
     'referensi' => [],
 ];
+$studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (!empty($pluginFaviconUrl) ? (string) $pluginFaviconUrl : '');
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -63,258 +64,353 @@ $defaultArticle = $activeArticleData ?: [
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kisi Berkelanjutan Typesetter — OJS 3.5</title>
+    <?php if ($studioFaviconUrl !== ''): ?>
+        <link rel="icon" type="image/png" href="<?php echo htmlspecialchars($studioFaviconUrl, ENT_QUOTES, 'UTF-8'); ?>">
+        <link rel="shortcut icon" href="<?php echo htmlspecialchars($studioFaviconUrl, ENT_QUOTES, 'UTF-8'); ?>">
+    <?php endif; ?>
     <style>
         :root {
-            --kisi-navy: #0a1d30;
-            --kisi-blue: #1565c0;
-            --kisi-teal: #00796b;
-            --kisi-bg: #f4f6f9;
+            --kisi-navy: #0b1f33;
+            --kisi-navy-soft: #163756;
+            --kisi-blue: #1d4ed8;
+            --kisi-teal: #0f766e;
+            --kisi-bg: #f1f5f9;
             --kisi-card: #ffffff;
-            --kisi-border: #dce2ec;
-            --kisi-text: #1e293b;
+            --kisi-border: #e2e8f0;
+            --kisi-border-strong: #cbd5e1;
+            --kisi-text: #0f172a;
             --kisi-muted: #64748b;
+            --kisi-radius: 10px;
         }
         * { box-sizing: border-box; }
         body {
             margin: 0;
-            font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+            font-family: "Plus Jakarta Sans", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
             background: var(--kisi-bg);
             color: var(--kisi-text);
-            padding-bottom: 90px;
+            padding-bottom: 78px;
+            font-size: 13px;
+            -webkit-font-smoothing: antialiased;
         }
         .topbar {
-            background: linear-gradient(135deg, #0a1d30 0%, #133b5c 100%);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background: rgba(11, 31, 51, 0.96);
+            backdrop-filter: blur(8px);
             color: #fff;
-            padding: 14px 24px;
+            padding: 10px 20px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             flex-wrap: wrap;
-            gap: 12px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+            gap: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 2px 12px rgba(15, 23, 42, 0.16);
         }
         .topbar-title {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
+        }
+        .topbar-logo {
+            width: 28px;
+            height: 28px;
+            border-radius: 7px;
+            background: #fff;
+            padding: 2px;
+            object-fit: contain;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
         }
         .topbar-title h1 {
             margin: 0;
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 700;
+            letter-spacing: -0.01em;
         }
         .topbar-title span.badge {
-            background: rgba(255,255,255,0.16);
-            padding: 3px 10px;
+            background: rgba(56, 189, 248, 0.18);
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            color: #bae6fd;
+            padding: 2px 9px;
             border-radius: 999px;
-            font-size: 12px;
-            font-weight: 500;
+            font-size: 11px;
+            font-weight: 600;
         }
+        .topbar-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .btn-topbar {
+            background: rgba(255, 255, 255, 0.1);
+            color: #f8fafc;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 5px 11px;
+            font-size: 12px;
+            border-radius: 7px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            transition: background 0.15s ease;
+        }
+        .btn-topbar:hover { background: rgba(255, 255, 255, 0.18); }
         .container {
-            max-width: 1440px;
-            margin: 18px auto;
-            padding: 0 20px;
+            max-width: 1520px;
+            margin: 12px auto;
+            padding: 0 16px;
         }
         .card {
             background: var(--kisi-card);
             border: 1px solid var(--kisi-border);
-            border-radius: 10px;
-            padding: 18px;
-            margin-bottom: 16px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+            border-radius: 12px;
+            padding: 14px 16px;
+            margin-bottom: 12px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 10px rgba(15, 23, 42, 0.02);
         }
+        .card-compact { padding: 11px 14px; }
         .card-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 14px;
-            padding-bottom: 10px;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
             border-bottom: 1px solid var(--kisi-border);
         }
         .card-header h2 {
             margin: 0;
-            font-size: 15px;
+            font-size: 13.5px;
+            font-weight: 700;
             color: var(--kisi-navy);
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
         }
         .grid-selector {
             display: grid;
-            grid-template-columns: 280px 1fr auto;
-            gap: 12px;
+            grid-template-columns: 240px 1fr auto;
+            gap: 8px;
             align-items: end;
+        }
+        .source-strip {
+            margin-top: 9px;
+            padding-top: 9px;
+            border-top: 1px dashed var(--kisi-border-strong);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
         }
         .studio-layout {
             display: grid;
-            grid-template-columns: 380px 1fr;
-            gap: 18px;
+            grid-template-columns: 345px 1fr;
+            gap: 12px;
             align-items: start;
         }
-        @media (max-width: 1024px) {
-            .grid-selector, .studio-layout {
-                grid-template-columns: 1fr;
-            }
+        .sidebar-sticky {
+            position: sticky;
+            top: 62px;
+            max-height: calc(100vh - 134px);
+            overflow-y: auto;
+            scrollbar-width: thin;
+        }
+        @media (max-width: 1080px) {
+            .grid-selector, .studio-layout { grid-template-columns: 1fr; }
+            .sidebar-sticky { position: static; max-height: none; }
         }
         label {
-            display: block;
-            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            font-size: 11.5px;
             font-weight: 600;
-            color: var(--kisi-navy);
-            margin-bottom: 4px;
+            color: #334155;
+            margin-bottom: 3px;
         }
         label span.hint {
             font-weight: 400;
+            font-size: 11px;
             color: var(--kisi-muted);
         }
         input[type="text"], input[type="password"], select, textarea {
             width: 100%;
-            padding: 8px 10px;
-            border: 1px solid #cbd5e1;
-            border-radius: 6px;
-            font-size: 13px;
+            padding: 6px 9px;
+            border: 1px solid var(--kisi-border-strong);
+            border-radius: 7px;
+            font-size: 12.5px;
             font-family: inherit;
             color: var(--kisi-text);
-            background: #fff;
+            background: #ffffff;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        input[type="text"]:focus, input[type="password"]:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--kisi-blue);
+            box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.12);
         }
         textarea {
             resize: vertical;
-            line-height: 1.5;
+            line-height: 1.48;
         }
-        .field-group {
-            margin-bottom: 12px;
+        .field-group { margin-bottom: 8px; }
+        .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .row-65-35 { display: grid; grid-template-columns: 1.65fr 1fr; gap: 8px; }
+        .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+        @media (max-width: 720px) {
+            .row-2, .row-65-35, .row-3 { grid-template-columns: 1fr; }
         }
-        .row-2 {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
+        details.meta-group {
+            border: 1px solid var(--kisi-border);
+            border-radius: 9px;
+            background: #f8fafc;
+            margin-bottom: 8px;
+            overflow: hidden;
         }
-        .row-3 {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 12px;
+        details.meta-group > summary {
+            list-style: none;
+            cursor: pointer;
+            padding: 7px 10px;
+            font-size: 11.5px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+            color: var(--kisi-navy);
+            background: #f1f5f9;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            user-select: none;
         }
+        details.meta-group > summary::-webkit-details-marker { display: none; }
+        details.meta-group > summary::after {
+            content: '▾';
+            font-size: 12px;
+            color: var(--kisi-muted);
+            transition: transform 0.15s ease;
+        }
+        details.meta-group:not([open]) > summary::after { transform: rotate(-90deg); }
+        .meta-group-body { padding: 8px 10px 4px; background: #fff; }
         .btn {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            padding: 8px 14px;
-            border-radius: 6px;
-            font-size: 13px;
+            gap: 5px;
+            padding: 6px 12px;
+            border-radius: 7px;
+            font-size: 12.5px;
             font-weight: 600;
             cursor: pointer;
             border: 1px solid transparent;
             text-decoration: none;
             transition: all 0.15s ease;
         }
-        .btn-primary {
-            background: var(--kisi-blue);
-            color: #fff;
-        }
-        .btn-primary:hover { background: #0d47a1; }
-        .btn-navy {
-            background: var(--kisi-navy);
-            color: #fff;
-        }
-        .btn-navy:hover { background: #163654; }
-        .btn-teal {
-            background: var(--kisi-teal);
-            color: #fff;
-        }
-        .btn-teal:hover { background: #004d40; }
-        .btn-ai {
-            background: linear-gradient(135deg, #6d28d9, #2563eb);
-            color: #fff;
-        }
-        .btn-ai:hover { opacity: 0.93; }
-        .btn-outline {
-            background: #fff;
-            border-color: #cbd5e1;
-            color: var(--kisi-text);
-        }
-        .btn-outline:hover { background: #f8fafc; }
-        .btn-sm {
-            padding: 5px 10px;
-            font-size: 12px;
-        }
+        .btn-primary { background: var(--kisi-blue); color: #fff; }
+        .btn-primary:hover { background: #1e40af; }
+        .btn-navy { background: var(--kisi-navy); color: #fff; }
+        .btn-navy:hover { background: var(--kisi-navy-soft); }
+        .btn-teal { background: var(--kisi-teal); color: #fff; }
+        .btn-teal:hover { background: #115e59; }
+        .btn-ai { background: linear-gradient(135deg, #6d28d9, #2563eb); color: #fff; }
+        .btn-ai:hover { opacity: 0.92; }
+        .btn-outline { background: #fff; border-color: var(--kisi-border-strong); color: #334155; }
+        .btn-outline:hover { background: #f8fafc; border-color: #94a3b8; }
+        .btn-sm { padding: 5px 9px; font-size: 12px; }
+        .btn-xs { padding: 2px 7px; font-size: 11px; line-height: 1.3; border-radius: 5px; }
         .tabs {
             display: flex;
-            gap: 6px;
-            border-bottom: 2px solid var(--kisi-border);
-            margin-bottom: 16px;
+            gap: 4px;
+            background: #f1f5f9;
+            padding: 4px;
+            border-radius: 9px;
+            border: 1px solid var(--kisi-border);
+            margin-bottom: 12px;
         }
         .tab-btn {
-            padding: 9px 16px;
+            padding: 6px 12px;
             background: transparent;
             border: none;
-            border-bottom: 3px solid transparent;
-            margin-bottom: -2px;
-            font-size: 13px;
+            border-radius: 7px;
+            font-size: 12.5px;
             font-weight: 600;
             color: var(--kisi-muted);
             cursor: pointer;
+            transition: all 0.15s ease;
         }
+        .tab-btn:hover { color: var(--kisi-navy); background: rgba(255, 255, 255, 0.55); }
         .tab-btn.active {
+            background: #ffffff;
             color: var(--kisi-blue);
-            border-bottom-color: var(--kisi-blue);
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
         }
         .tab-pane { display: none; }
         .tab-pane.active { display: block; }
         .author-row {
             display: grid;
-            grid-template-columns: auto 1.1fr 1.7fr 1fr auto auto;
-            gap: 8px;
+            grid-template-columns: 48px 1.15fr 1.65fr 1fr auto 28px;
+            gap: 6px;
             align-items: center;
-            margin-bottom: 8px;
+            margin-bottom: 5px;
             background: #f8fafc;
-            padding: 8px;
-            border-radius: 6px;
-            border: 1px solid #e2e8f0;
+            padding: 5px 7px;
+            border-radius: 7px;
+            border: 1px solid var(--kisi-border);
+        }
+        @media (max-width: 900px) {
+            .author-row { grid-template-columns: 1fr; }
+        }
+        .word-badge {
+            font-size: 10.5px;
+            font-weight: 600;
+            padding: 1px 7px;
+            border-radius: 999px;
+            background: #e2e8f0;
+            color: #334155;
         }
         .section-card {
-            margin-bottom: 18px;
-            border: 1px solid #cbd5e1;
+            margin-bottom: 12px;
+            border: 1px solid var(--kisi-border-strong);
             border-radius: 10px;
-            padding: 14px;
+            padding: 11px 12px;
             background: #ffffff;
             transition: border-color 0.15s ease, background-color 0.15s ease;
         }
-        .section-card.section-drag-over {
-            border-color: #2563eb;
-            background: #eff6ff;
-        }
+        .section-card.section-drag-over { border-color: #2563eb; background: #eff6ff; }
         .section-dropzone-empty {
-            border: 1.5px dashed #cbd5e1;
+            border: 1.5px dashed var(--kisi-border-strong);
             border-radius: 8px;
-            padding: 16px;
+            padding: 12px;
             text-align: center;
             color: var(--kisi-muted);
             font-size: 12px;
             background: #f8fafc;
         }
         .block-item {
-            border: 1px solid #e2e8f0;
+            border: 1px solid var(--kisi-border);
+            border-left: 3px solid #94a3b8;
             background: #f8fafc;
             border-radius: 8px;
-            padding: 10px 12px;
-            margin-bottom: 10px;
-            transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+            padding: 8px 10px;
+            margin-bottom: 7px;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
         }
-        .block-item.is-dragging {
-            opacity: 0.45;
-            border-style: dashed;
-        }
-        .block-item.drop-above {
-            border-top: 3px solid #2563eb;
-        }
-        .block-item.drop-below {
-            border-bottom: 3px solid #2563eb;
-        }
-        .block-item.block-flash {
-            animation: kisiBlockFlash 1.1s ease;
-        }
+        .block-item[data-b-type="paragraph"] { border-left-color: #3b82f6; }
+        .block-item[data-b-type="subheading"],
+        .block-item[data-b-type="subheading_l3"] { border-left-color: #0b1f33; background: #f1f5f9; }
+        .block-item[data-b-type="table"] { border-left-color: #0f766e; background: #ffffff; }
+        .block-item:hover { border-color: #cbd5e1; box-shadow: 0 1px 4px rgba(15, 23, 42, 0.05); }
+        .block-item.is-dragging { opacity: 0.45; border-style: dashed; }
+        .block-item.drop-above { border-top: 3px solid #2563eb; }
+        .block-item.drop-below { border-bottom: 3px solid #2563eb; }
+        .block-item.block-flash { animation: kisiBlockFlash 1.1s ease; }
         @keyframes kisiBlockFlash {
-            0% { box-shadow: 0 0 0 3px rgba(37,99,235,0.45); background: #eff6ff; }
+            0% { box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.45); background: #eff6ff; }
             100% { box-shadow: none; background: #f8fafc; }
         }
         .block-item-header {
@@ -322,9 +418,9 @@ $defaultArticle = $activeArticleData ?: [
             justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
-            gap: 8px;
-            margin-bottom: 8px;
-            font-size: 11px;
+            gap: 6px;
+            margin-bottom: 6px;
+            font-size: 10.5px;
             font-weight: 700;
             text-transform: uppercase;
             color: var(--kisi-muted);
@@ -332,145 +428,87 @@ $defaultArticle = $activeArticleData ?: [
         .block-header-left, .block-header-controls {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 5px;
             flex-wrap: wrap;
         }
         .block-drag-handle {
             cursor: grab;
-            padding: 2px 7px;
+            padding: 2px 6px;
             border-radius: 4px;
             background: #e2e8f0;
             color: #334155;
-            font-size: 13px;
+            font-size: 12px;
             user-select: none;
             letter-spacing: -1px;
         }
-        .block-drag-handle:active {
-            cursor: grabbing;
-        }
+        .block-drag-handle:active { cursor: grabbing; }
         .block-select-mini {
             width: auto !important;
-            padding: 3px 6px !important;
-            font-size: 11.5px !important;
+            padding: 2px 6px !important;
+            font-size: 11px !important;
             font-weight: 600;
             border-radius: 5px;
             background: #ffffff;
             color: #0f172a;
         }
-        .btn-xs {
-            padding: 3px 7px;
-            font-size: 11.5px;
-            line-height: 1.2;
-        }
         table.preview-table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 6px;
+            margin-top: 5px;
             font-size: 12px;
             background: #fff;
-            border-top: 2px solid #0a1d30;
-            border-bottom: 2px solid #0a1d30;
+            border-top: 2px solid #0b1f33;
+            border-bottom: 2px solid #0b1f33;
             font-variant-numeric: tabular-nums;
         }
-        table.preview-table thead tr:last-child th {
-            border-bottom: 1.5px solid #0a1d30;
-        }
-        table.preview-table th, table.preview-table td {
-            border-left: none;
-            border-right: none;
-            padding: 5px 6px;
-            vertical-align: middle;
-        }
-        table.preview-table th {
-            font-weight: 700;
-            background: #f8fafc;
-            border-bottom: 1px solid #cbd5e1;
-        }
-        table.preview-table td {
-            border-bottom: 1px dashed #e2e8f0;
-        }
-        table.preview-table tr.row-type-group td {
-            background: #f1f5f9;
-            font-weight: 700;
-            color: #0a1d30;
-        }
-        table.preview-table tr.row-type-subitem td:first-child input {
-            padding-left: 18px;
-        }
-        table.preview-table tr.row-type-total td {
-            border-top: 1.5px solid #475569;
-            font-weight: 700;
-            background: #f8fafc;
-        }
+        table.preview-table thead tr:last-child th { border-bottom: 1.5px solid #0b1f33; }
+        table.preview-table th, table.preview-table td { border-left: none; border-right: none; padding: 4px 6px; vertical-align: middle; }
+        table.preview-table th { font-weight: 700; background: #f8fafc; border-bottom: 1px solid #cbd5e1; }
+        table.preview-table td { border-bottom: 1px dashed #e2e8f0; }
+        table.preview-table tr.row-type-group td { background: #f1f5f9; font-weight: 700; color: #0b1f33; }
+        table.preview-table tr.row-type-subitem td:first-child input { padding-left: 16px; }
+        table.preview-table tr.row-type-total td { border-top: 1.5px solid #475569; font-weight: 700; background: #f8fafc; }
         .table-toolbar {
             display: flex;
             justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
             gap: 6px;
-            margin-bottom: 8px;
-            padding: 6px 8px;
+            margin-bottom: 6px;
+            padding: 5px 8px;
             background: #f1f5f9;
             border-radius: 6px;
         }
-        .col-align-bar {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-top: 6px;
-            font-size: 11px;
-            color: #475569;
-        }
+        .col-align-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; font-size: 11px; color: #475569; }
         .audit-summary-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 10px;
-            margin-bottom: 14px;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 8px;
+            margin-bottom: 12px;
         }
-        .audit-stat-box {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            padding: 10px 12px;
-        }
-        .audit-stat-num {
-            font-size: 20px;
-            font-weight: 800;
-            color: var(--kisi-navy);
-        }
-        .audit-stat-label {
-            font-size: 11.5px;
-            color: var(--kisi-muted);
-            font-weight: 600;
-        }
+        .audit-stat-box { background: #f8fafc; border: 1px solid var(--kisi-border); border-radius: 8px; padding: 8px 10px; }
+        .audit-stat-num { font-size: 18px; font-weight: 800; color: var(--kisi-navy); }
+        .audit-stat-label { font-size: 11px; color: var(--kisi-muted); font-weight: 600; }
         .audit-issue-card {
-            border: 1px solid #e2e8f0;
+            border: 1px solid var(--kisi-border);
             border-left: 4px solid #f59e0b;
             border-radius: 8px;
-            padding: 12px 14px;
-            margin-bottom: 10px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
             background: #ffffff;
         }
-        .audit-issue-card.sev-error {
-            border-left-color: #dc2626;
-        }
-        .audit-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 999px;
-            font-size: 11px;
-            font-weight: 700;
-        }
+        .audit-issue-card.sev-error { border-left-color: #dc2626; }
+        .audit-badge { display: inline-block; padding: 2px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700; }
         .audit-badge-err { background: #fee2e2; color: #b91c1c; }
         .audit-badge-warn { background: #fef3c7; color: #92400e; }
         .audit-badge-lang { background: #e0f2fe; color: #0369a1; }
         .audit-badge-src { background: #f1f5f9; color: #334155; }
         .audit-context {
             background: #f8fafc;
-            padding: 6px 10px;
+            padding: 5px 9px;
             border-radius: 6px;
-            font-size: 12.5px;
-            margin: 6px 0;
+            font-size: 12px;
+            margin: 5px 0;
             color: #334155;
             font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
         }
@@ -479,33 +517,31 @@ $defaultArticle = $activeArticleData ?: [
             bottom: 0;
             left: 0;
             right: 0;
-            background: #fff;
+            background: rgba(255, 255, 255, 0.94);
+            backdrop-filter: blur(8px);
             border-top: 1px solid var(--kisi-border);
-            padding: 12px 24px;
+            padding: 9px 20px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            box-shadow: 0 -4px 16px rgba(0,0,0,0.06);
+            flex-wrap: wrap;
+            gap: 10px;
+            box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.06);
             z-index: 999;
         }
-        .status-toast {
-            padding: 8px 14px;
-            border-radius: 6px;
-            font-size: 13px;
-            font-weight: 500;
-            display: none;
-        }
+        .status-toast { padding: 5px 11px; border-radius: 6px; font-size: 12px; font-weight: 600; display: none; }
         .status-toast.info { display: inline-block; background: #e0f2fe; color: #0369a1; }
         .status-toast.success { display: inline-block; background: #dcfce7; color: #15803d; }
         .status-toast.error { display: inline-block; background: #fee2e2; color: #b91c1c; }
         .aff-preview-box {
             background: #f0fdf4;
             border: 1px solid #bbf7d0;
-            border-radius: 6px;
-            padding: 10px 12px;
-            font-size: 12px;
+            border-radius: 7px;
+            padding: 7px 10px;
+            font-size: 11.5px;
             color: #166534;
-            margin-top: 8px;
+            margin-top: 6px;
+            line-height: 1.45;
         }
     </style>
 </head>
@@ -513,18 +549,21 @@ $defaultArticle = $activeArticleData ?: [
 
 <div class="topbar">
     <div class="topbar-title">
-        <h1>⚡ Kisi Berkelanjutan Typesetter</h1>
-        <span class="badge">OJS 3.5 Official Plugin</span>
+        <?php if ($studioFaviconUrl !== ''): ?>
+            <img src="<?php echo htmlspecialchars($studioFaviconUrl, ENT_QUOTES, 'UTF-8'); ?>" alt="Kisi Berkelanjutan" class="topbar-logo">
+        <?php endif; ?>
+        <h1>Kisi Berkelanjutan Typesetter</h1>
+        <span class="badge">OJS 3.5 · JATS XML &amp; DOCX</span>
     </div>
-    <div style="display:flex;gap:10px;">
-        <button type="button" class="btn btn-outline btn-sm" onclick="toggleSettingsDrawer()" style="background:rgba(255,255,255,0.12);color:#fff;border-color:rgba(255,255,255,0.25);">
-            ⚙️ Pengaturan Gemini AI &amp; Default Jurnal
+    <div class="topbar-actions">
+        <button type="button" class="btn-topbar" onclick="toggleSettingsDrawer()">
+            ⚙️ Pengaturan AI &amp; Jurnal
         </button>
-        <a href="<?php echo htmlspecialchars($dispatcher->url($request, PKPApplication::ROUTE_PAGE, $context->getPath(), 'manageIssues'), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline btn-sm" style="background:rgba(255,255,255,0.12);color:#fff;border-color:rgba(255,255,255,0.25);">
-            📚 Kelola Terbitan (Issues)
+        <a href="<?php echo htmlspecialchars($dispatcher->url($request, PKPApplication::ROUTE_PAGE, $context->getPath(), 'manageIssues'), ENT_QUOTES, 'UTF-8'); ?>" class="btn-topbar">
+            📚 Terbitan (Issues)
         </a>
-        <a href="<?php echo htmlspecialchars($dispatcher->url($request, PKPApplication::ROUTE_PAGE, $context->getPath(), 'dashboard', 'editorial'), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline btn-sm" style="background:rgba(255,255,255,0.12);color:#fff;border-color:rgba(255,255,255,0.25);">
-            ← Kembali ke Dashboard OJS
+        <a href="<?php echo htmlspecialchars($dispatcher->url($request, PKPApplication::ROUTE_PAGE, $context->getPath(), 'dashboard', 'editorial'), ENT_QUOTES, 'UTF-8'); ?>" class="btn-topbar">
+            ← Dashboard OJS
         </a>
     </div>
 </div>
@@ -587,17 +626,17 @@ $defaultArticle = $activeArticleData ?: [
         </div>
     </div>
 
-    <!-- Step 1: Select OJS Issue & Article + Load DOCX -->
-    <div class="card">
-        <div class="card-header">
-            <h2>1️⃣ Pilih Artikel dari Database OJS &amp; Muat File Naskah (.docx)</h2>
+    <!-- Step 1: Compact Control Strip (Select Issue / Article & Load DOCX) -->
+    <div class="card card-compact">
+        <div class="card-header" style="margin-bottom:8px;padding-bottom:6px;">
+            <h2>1️⃣ Pilih Artikel OJS &amp; Sumber Naskah (.docx)</h2>
             <span id="statusToast" class="status-toast"></span>
         </div>
         <form method="get" action="<?php echo htmlspecialchars($baseUrl . '/studio', ENT_QUOTES, 'UTF-8'); ?>" class="grid-selector">
             <div>
-                <label>Filter Edisi (Issue OJS)</label>
+                <label>Filter Edisi</label>
                 <select name="issueId" onchange="this.form.submit()">
-                    <option value="0">— Semua Edisi (Edisi Berjalan &amp; Arsip) —</option>
+                    <option value="0">— Semua Edisi (Berjalan &amp; Arsip) —</option>
                     <?php foreach ($issuesList as $iss): ?>
                         <option value="<?php echo (int) $iss['id']; ?>" <?php echo ($selectedIssueId === (int) $iss['id']) ? 'selected' : ''; ?>>
                             <?php echo htmlspecialchars($iss['label'], ENT_QUOTES, 'UTF-8'); ?>
@@ -606,9 +645,9 @@ $defaultArticle = $activeArticleData ?: [
                 </select>
             </div>
             <div>
-                <label>Pilih Artikel di OJS <span class="hint">(Otomatis menarik Judul, Penulis, DOI, &amp; Review Editor dari Metadata &gt; Subject)</span></label>
+                <label>Artikel OJS <span class="hint">(Auto-tarik Judul, Penulis, DOI &amp; Review Editor)</span></label>
                 <select name="submissionId" onchange="this.form.submit()">
-                    <option value="0">— Pilih Artikel untuk Di-Layout Ulang —</option>
+                    <option value="0">— Pilih Artikel untuk Diformat —</option>
                     <?php foreach ($submissionsList as $sub): ?>
                         <option value="<?php echo (int) $sub['id']; ?>" <?php echo ($selectedSubmissionId === (int) $sub['id']) ? 'selected' : ''; ?>>
                             [#<?php echo (int) $sub['id']; ?> / <?php echo htmlspecialchars($sub['pages'], ENT_QUOTES, 'UTF-8'); ?>] <?php echo htmlspecialchars(mb_strimwidth($sub['title'], 0, 95, '...'), ENT_QUOTES, 'UTF-8'); ?> (<?php echo htmlspecialchars($sub['authors'], ENT_QUOTES, 'UTF-8'); ?>)
@@ -617,237 +656,262 @@ $defaultArticle = $activeArticleData ?: [
                 </select>
             </div>
             <div>
-                <button type="submit" class="btn btn-navy">🔄 Muat Metadata OJS</button>
+                <button type="submit" class="btn btn-navy btn-sm">🔄 Muat</button>
             </div>
         </form>
 
-        <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--kisi-border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
-            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                <strong style="font-size:13px;color:var(--kisi-navy);">📄 Sumber Isi Naskah (.docx):</strong>
+        <div class="source-strip">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <span style="font-size:12px;font-weight:700;color:var(--kisi-navy);">📄 Sumber Naskah:</span>
                 <?php if (!empty($attachedDocxFiles)): ?>
-                    <select id="ojsDocxFileSelect" style="width:auto;min-width:260px;">
+                    <select id="ojsDocxFileSelect" style="width:auto;max-width:340px;">
                         <?php foreach ($attachedDocxFiles as $df): ?>
                             <option value="<?php echo (int) $df['id']; ?>">
-                                [File OJS #<?php echo (int) $df['id']; ?>] <?php echo htmlspecialchars($df['name'], ENT_QUOTES, 'UTF-8'); ?>
+                                [#<?php echo (int) $df['id']; ?>] <?php echo htmlspecialchars($df['name'], ENT_QUOTES, 'UTF-8'); ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
-                    <button type="button" class="btn btn-outline btn-sm" onclick="parseOjsDocxFile()">📂 Ekstrak dari File OJS Ini</button>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="parseOjsDocxFile()">📂 Ekstrak OJS</button>
                 <?php else: ?>
-                    <span style="font-size:12px;color:var(--kisi-muted);">Tidak ada file .docx di tahapan OJS artikel ini, atau unggah langsung dari komputer:</span>
+                    <span style="font-size:11.5px;color:var(--kisi-muted);">Belum ada .docx di tahapan OJS, unggah lokal:</span>
                 <?php endif; ?>
 
                 <label class="btn btn-outline btn-sm" style="margin:0;cursor:pointer;">
-                    📤 Upload File .docx dari Komputer
+                    📤 Upload .docx
                     <input type="file" id="uploadDocxInput" accept=".docx" style="display:none;" onchange="uploadAndParseLocalDocx(this)">
                 </label>
             </div>
 
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
                 <button type="button" class="btn btn-outline btn-sm" onclick="quickOpenLanguageAudit()">
-                    🔍 Cek Typo &amp; Kata Baku (ID/EN)
+                    🔍 Audit Bahasa (ID/EN)
                 </button>
-                <button type="button" class="btn btn-ai" onclick="runAiRestructure()">
-                    ✨ Rapikan Abstrak Terstruktur &amp; Terjemahan dengan Gemini AI
+                <button type="button" class="btn btn-ai btn-sm" onclick="runAiRestructure()">
+                    ✨ AI Struktur &amp; Terjemahan
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- Step 2: Interactive Preview & Form Editor -->
+    <!-- Step 2: Interactive Workbench & Compact Editor -->
     <div class="studio-layout">
 
-        <!-- Left Column: Sidebar Metadata (Matches Template Left Sidebar) -->
-        <div class="card">
-            <div class="card-header">
-                <h2>📌 Sidebar Metadata &amp; Footer</h2>
-                <button type="button" class="btn btn-outline btn-sm" onclick="rebuildApaCitation()">🔄 Rakit Sitasi</button>
+        <!-- Left Column: Sticky Compact Metadata Sidebar -->
+        <div class="card card-compact sidebar-sticky">
+            <div class="card-header" style="margin-bottom:8px;padding-bottom:6px;">
+                <h2>📌 Metadata &amp; Sidebar</h2>
+                <button type="button" class="btn btn-outline btn-xs" onclick="rebuildApaCitation()" title="Susun ulang sitasi APA dari judul, penulis, volume &amp; URL">🔄 Rakit Sitasi</button>
             </div>
 
-            <div class="row-2">
-                <div class="field-group">
-                    <label>Kategori Artikel <span class="hint">(DATA REPORT &amp; LETTER tanpa abstrak)</span></label>
-                    <select id="f_article_type_preset" onchange="onArticleTypePresetChange()">
-                        <option value="ORIGINAL ARTICLE">ORIGINAL ARTICLE (Dengan Abstrak)</option>
-                        <option value="REVIEW ARTICLE">REVIEW ARTICLE (Dengan Abstrak)</option>
-                        <option value="DATA REPORT">DATA REPORT (Tanpa Abstrak — Langsung Isi)</option>
-                        <option value="LETTER">LETTER (Tanpa Abstrak — Langsung Isi)</option>
-                        <option value="CASE REPORT">CASE REPORT</option>
-                        <option value="SHORT COMMUNICATION">SHORT COMMUNICATION</option>
-                        <option value="CUSTOM">Lainnya (Ketik Manual)...</option>
-                    </select>
-                    <input type="text" id="f_article_type" style="margin-top:6px;display:none;" placeholder="Ketik kategori kustom..." oninput="syncStateFromInputs(); applyArticleTypeLayoutMode();">
+            <details class="meta-group" open>
+                <summary>1. Kategori, Edisi &amp; Tautan</summary>
+                <div class="meta-group-body">
+                    <div class="row-65-35">
+                        <div class="field-group">
+                            <label>Kategori Artikel</label>
+                            <select id="f_article_type_preset" onchange="onArticleTypePresetChange()">
+                                <option value="ORIGINAL ARTICLE">ORIGINAL ARTICLE</option>
+                                <option value="REVIEW ARTICLE">REVIEW ARTICLE</option>
+                                <option value="DATA REPORT">DATA REPORT (Tanpa Abstrak)</option>
+                                <option value="LETTER">LETTER (Tanpa Abstrak)</option>
+                                <option value="CASE REPORT">CASE REPORT</option>
+                                <option value="SHORT COMMUNICATION">SHORT COMMUNICATION</option>
+                                <option value="CUSTOM">Kustom (Manual)...</option>
+                            </select>
+                            <input type="text" id="f_article_type" style="margin-top:5px;display:none;" placeholder="Ketik kategori..." oninput="syncStateFromInputs(); applyArticleTypeLayoutMode();">
+                        </div>
+                        <div class="field-group">
+                            <label>ID (e-ID)</label>
+                            <input type="text" id="f_elocation_id" placeholder="e32" oninput="syncStateFromInputs()">
+                        </div>
+                    </div>
+
+                    <div class="row-3">
+                        <div class="field-group">
+                            <label>Volume</label>
+                            <input type="text" id="f_volume" oninput="syncStateFromInputs()">
+                        </div>
+                        <div class="field-group">
+                            <label>Nomor</label>
+                            <input type="text" id="f_issue_number" oninput="syncStateFromInputs()">
+                        </div>
+                        <div class="field-group">
+                            <label>Tahun</label>
+                            <input type="text" id="f_copyright_year" oninput="syncStateFromInputs()">
+                        </div>
+                    </div>
+
+                    <div class="row-2">
+                        <div class="field-group">
+                            <label>Published</label>
+                            <input type="text" id="f_published_date" placeholder="March 30, 2024" oninput="syncStateFromInputs()">
+                        </div>
+                        <div class="field-group">
+                            <label>Footer Edisi</label>
+                            <input type="text" id="f_footer_issue_line" placeholder="Vol 1 No 1, Jan-Mar 2024" oninput="syncStateFromInputs()">
+                        </div>
+                    </div>
+
+                    <div class="row-2">
+                        <div class="field-group">
+                            <label>DOI</label>
+                            <input type="text" id="f_doi" placeholder="10.5281/zenodo..." oninput="syncStateFromInputs()">
+                        </div>
+                        <div class="field-group">
+                            <label>URL Artikel</label>
+                            <input type="text" id="f_article_url" oninput="syncStateFromInputs()">
+                        </div>
+                    </div>
                 </div>
-                <div class="field-group">
-                    <label>Nomor Artikel (e-ID)</label>
-                    <input type="text" id="f_elocation_id" placeholder="e32 / e76" oninput="syncStateFromInputs()">
+            </details>
+
+            <details class="meta-group" open>
+                <summary>2. Editorial &amp; Sitasi</summary>
+                <div class="meta-group-body">
+                    <div class="field-group">
+                        <label>Review Editor <span class="hint">(OJS Subject)</span></label>
+                        <textarea id="f_review_editor" rows="2" placeholder="Nama Editor (Afiliasi)" oninput="syncStateFromInputs()"></textarea>
+                    </div>
+
+                    <div class="field-group">
+                        <label>
+                            <span>Citation (APA)</span>
+                            <button type="button" class="btn btn-outline btn-xs" onclick="rebuildApaCitation()">↻ Auto</button>
+                        </label>
+                        <textarea id="f_citation" rows="2" oninput="syncStateFromInputs()"></textarea>
+                    </div>
                 </div>
-            </div>
+            </details>
 
-            <div class="row-3">
-                <div class="field-group">
-                    <label>Volume</label>
-                    <input type="text" id="f_volume" oninput="syncStateFromInputs()">
+            <details class="meta-group">
+                <summary>3. Funding, Konflik &amp; Catatan Footer</summary>
+                <div class="meta-group-body">
+                    <div class="field-group">
+                        <label>Funding</label>
+                        <input type="text" id="f_funding" oninput="syncStateFromInputs()">
+                    </div>
+                    <div class="field-group">
+                        <label>Competing Interests</label>
+                        <input type="text" id="f_competing_interests" oninput="syncStateFromInputs()">
+                    </div>
+                    <div class="field-group">
+                        <label>Catatan Publisher's Note <span class="hint">(Opsional)</span></label>
+                        <textarea id="f_retypeset_note" rows="2" oninput="syncStateFromInputs()"></textarea>
+                    </div>
                 </div>
-                <div class="field-group">
-                    <label>Nomor Edisi</label>
-                    <input type="text" id="f_issue_number" oninput="syncStateFromInputs()">
-                </div>
-                <div class="field-group">
-                    <label>Tahun Copyright</label>
-                    <input type="text" id="f_copyright_year" oninput="syncStateFromInputs()">
-                </div>
-            </div>
-
-            <div class="field-group">
-                <label>Baris Edisi di Footer DOCX</label>
-                <input type="text" id="f_footer_issue_line" placeholder="Volume 1 Nomor 1, Januari-Maret 2024" oninput="syncStateFromInputs()">
-            </div>
-
-            <div class="field-group">
-                <label>URL Artikel OJS <span class="hint">(Untuk Sitasi &amp; Hyperlink Footer)</span></label>
-                <input type="text" id="f_article_url" oninput="syncStateFromInputs()">
-            </div>
-
-            <div class="field-group">
-                <label>Citation (Format APA Kisi Berkelanjutan)</label>
-                <textarea id="f_citation" rows="4" oninput="syncStateFromInputs()"></textarea>
-            </div>
-
-            <div class="field-group">
-                <label>Digital Object Identifier (DOI)</label>
-                <input type="text" id="f_doi" placeholder="10.5281/zenodo.21865626" oninput="syncStateFromInputs()">
-            </div>
-
-            <div class="field-group">
-                <label>Review Editor <span class="hint">(Otomatis dari OJS Metadata &gt; Subject)</span></label>
-                <textarea id="f_review_editor" rows="3" placeholder="Hikmawati, S.Kep., Ns., M.Kep (Nursing Department, Health Polytechnic Ministry of Health Kendari, Southeast Sulawesi, Indonesia)" oninput="syncStateFromInputs()"></textarea>
-            </div>
-
-            <div class="field-group">
-                <label>Published Date <span class="hint">(Format: March 30, 2024)</span></label>
-                <input type="text" id="f_published_date" oninput="syncStateFromInputs()">
-            </div>
-
-            <div class="row-2">
-                <div class="field-group">
-                    <label>Funding</label>
-                    <input type="text" id="f_funding" oninput="syncStateFromInputs()">
-                </div>
-                <div class="field-group">
-                    <label>Competing Interests</label>
-                    <input type="text" id="f_competing_interests" oninput="syncStateFromInputs()">
-                </div>
-            </div>
-
-            <div class="field-group">
-                <label>Catatan Kotak Bawah (Publisher's Note Box) <span class="hint">(Opsional)</span></label>
-                <textarea id="f_retypeset_note" rows="2" oninput="syncStateFromInputs()"></textarea>
-            </div>
+            </details>
         </div>
 
         <!-- Right Column: Main Article Content -->
-        <div class="card">
-            <div class="card-header">
-                <h2>📝 Pratinjau &amp; Editor Konten Artikel (DOCX + JATS XML)</h2>
+        <div class="card card-compact">
+            <div class="card-header" style="margin-bottom:8px;padding-bottom:6px;">
+                <h2>📝 Editor Naskah, Abstrak &amp; Struktur (DOCX + JATS XML)</h2>
             </div>
 
-            <!-- Bilingual Titles -->
-            <div class="field-group">
-                <label>Judul Artikel (Bahasa Indonesia — Bold 14pt)</label>
-                <textarea id="f_title_id" rows="2" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
-            </div>
-            <div class="field-group">
-                <label>Judul Artikel (Bahasa Inggris — Italic 14pt)</label>
-                <textarea id="f_title_en" rows="2" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
+            <!-- Bilingual Titles Side-by-Side (Compact) -->
+            <div class="row-2">
+                <div class="field-group">
+                    <label>Judul Artikel (Indonesia — Bold 14pt)</label>
+                    <textarea id="f_title_id" rows="2" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
+                </div>
+                <div class="field-group">
+                    <label>Judul Artikel (Inggris — Italic 14pt)</label>
+                    <textarea id="f_title_en" rows="2" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
+                </div>
             </div>
 
-            <!-- Authors & Auto-Deduplicated Affiliations -->
-            <div class="field-group" style="margin-top:14px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                    <label style="margin:0;">Daftar Penulis &amp; Afiliasi <span class="hint">(Afiliasi yang sama otomatis digabung menjadi 1 nomor urut!)</span></label>
-                    <button type="button" class="btn btn-outline btn-sm" onclick="addAuthorRow()">+ Tambah Penulis</button>
+            <!-- Authors & Corresponding Strip (Compact) -->
+            <div class="field-group" style="margin-top:4px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;gap:8px;flex-wrap:wrap;">
+                    <label style="margin:0;">Penulis &amp; Afiliasi <span class="hint">(Afiliasi identik otomatis digabung nomornya)</span></label>
+                    <button type="button" class="btn btn-outline btn-xs" onclick="addAuthorRow()">+ Penulis</button>
                 </div>
                 <div id="authorsContainer"></div>
                 <div id="affDeduplicationPreview" class="aff-preview-box"></div>
             </div>
 
-            <div class="row-2" style="margin-top:10px;">
-                <div class="field-group">
-                    <label>Nama Penulis Koresponden (*)</label>
-                    <input type="text" id="f_corresponding_name" oninput="syncStateFromInputs()">
+            <div class="row-2" style="margin-top:6px;background:#f8fafc;padding:7px 9px;border-radius:7px;border:1px solid var(--kisi-border);">
+                <div class="field-group" style="margin-bottom:0;">
+                    <label>Penulis Koresponden (*)</label>
+                    <input type="text" id="f_corresponding_name" placeholder="Nama lengkap..." oninput="syncStateFromInputs()">
                 </div>
-                <div class="field-group">
-                    <label>Email Penulis Koresponden</label>
-                    <input type="text" id="f_corresponding_email" oninput="syncStateFromInputs()">
+                <div class="field-group" style="margin-bottom:0;">
+                    <label>Email Koresponden</label>
+                    <input type="text" id="f_corresponding_email" placeholder="email@institusi.ac.id" oninput="syncStateFromInputs()">
                 </div>
             </div>
 
             <!-- Content Tabs -->
-            <div class="tabs" style="margin-top:16px;flex-wrap:wrap;">
+            <div class="tabs" style="margin-top:12px;flex-wrap:wrap;">
                 <button type="button" class="tab-btn active" data-tab="tab-abstracts" onclick="switchTab('tab-abstracts', this)">
-                    1. ABSTRAK &amp; ABSTRACT <span id="absTabStatusBadge" style="font-weight:500;">(Terstruktur 2 Bahasa)</span>
+                    1. Abstrak <span id="absTabStatusBadge" style="font-weight:500;">(ID &amp; EN)</span>
                 </button>
                 <button type="button" class="tab-btn" data-tab="tab-body" onclick="switchTab('tab-body', this)">
-                    2. ISI ARTIKEL &amp; TABEL (Geser Blok &amp; Tabel Kesehatan)
+                    2. Isi &amp; Tabel Kesehatan
                 </button>
                 <button type="button" class="tab-btn" data-tab="tab-references" onclick="switchTab('tab-references', this)">
-                    3. SUMBER PUSTAKA (<span id="refCountBadge">0</span>)
+                    3. Pustaka (<span id="refCountBadge">0</span>)
                 </button>
                 <button type="button" class="tab-btn" data-tab="tab-fulltext-preview" onclick="switchTab('tab-fulltext-preview', this); loadFullTextDigestPreview();">
-                    4. 👁️ PRATINJAU FULL-TEXT (XML DIGEST)
+                    4. 👁️ Pratinjau Full-Text
                 </button>
                 <button type="button" class="tab-btn" data-tab="tab-language-audit" onclick="switchTab('tab-language-audit', this)">
-                    5. 🔍 AUDIT TYPO &amp; KATA BAKU (<span id="auditCountBadge">0</span>)
+                    5. 🔍 Audit Bahasa (<span id="auditCountBadge">0</span>)
                 </button>
             </div>
 
             <!-- TAB 1: Bilingual Structured Abstracts -->
             <div id="tab-abstracts" class="tab-pane active">
-                <div id="noAbstractNotice" style="display:none;background:#eff6ff;border:1px solid #93c5fd;color:#1e3a8a;padding:12px 14px;border-radius:8px;margin-bottom:12px;font-size:13px;">
+                <div id="noAbstractNotice" style="display:none;background:#eff6ff;border:1px solid #93c5fd;color:#1e3a8a;padding:10px 12px;border-radius:8px;margin-bottom:10px;font-size:12.5px;">
                     📄 <strong>Mode Tanpa Abstrak Aktif (<span id="noAbstractCatLabel">DATA REPORT / LETTER</span>):</strong>
-                    Sesuai template resmi, kategori ini tidak menampilkan kolom <em>ABSTRAK</em>, <em>ABSTRACT</em>, maupun <em>Kata Kunci / Keywords</em> pada DOCX maupun JATS XML. Silakan langsung sunting isi naskah di <strong>Tab 2 (ISI ARTIKEL &amp; TABEL)</strong>.
+                    Sesuai template resmi, kategori ini tidak menampilkan kolom <em>ABSTRAK</em>, <em>ABSTRACT</em>, maupun <em>Kata Kunci / Keywords</em> pada DOCX maupun JATS XML. Silakan langsung sunting isi naskah di <strong>Tab 2 (Isi &amp; Tabel)</strong>.
                 </div>
                 <div id="abstractInputsGrid" class="row-2">
                     <!-- Indonesian Abstract -->
-                    <div style="background:#f8fafc;padding:14px;border-radius:8px;border:1px solid #e2e8f0;">
-                        <h3 style="margin:0 0 10px 0;font-size:14px;color:var(--kisi-navy);">🇮🇩 ABSTRAK (Bahasa Indonesia)</h3>
+                    <div style="background:#f8fafc;padding:10px 12px;border-radius:8px;border:1px solid var(--kisi-border);">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                            <h3 style="margin:0;font-size:13px;color:var(--kisi-navy);">🇮🇩 ABSTRAK (Indonesia)</h3>
+                            <span id="idAbsWordCount" class="word-badge">0 kata</span>
+                        </div>
                         <div class="field-group">
                             <label>Pendahuluan dan Metode</label>
-                            <textarea id="f_ab_id_pm" rows="6" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
+                            <textarea id="f_ab_id_pm" rows="4" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                         </div>
                         <div class="field-group">
                             <label>Hasil</label>
-                            <textarea id="f_ab_id_hasil" rows="4" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
+                            <textarea id="f_ab_id_hasil" rows="3" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                         </div>
                         <div class="field-group">
                             <label>Kesimpulan dan Saran</label>
-                            <textarea id="f_ab_id_kes" rows="4" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
+                            <textarea id="f_ab_id_kes" rows="3" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                         </div>
-                        <div class="field-group">
-                            <label>Kata Kunci <span class="hint">(Pisahkan dengan titik koma ;)</span></label>
-                            <input type="text" id="f_keywords_id" placeholder="Sosial budaya; Pemberian ASI; Pemberian ASI sejak dini" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)">
+                        <div class="field-group" style="margin-bottom:0;">
+                            <label>Kata Kunci <span class="hint">(Pisah titik koma ;)</span></label>
+                            <input type="text" id="f_keywords_id" placeholder="Sosial budaya; Pemberian ASI" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)">
                         </div>
                     </div>
 
                     <!-- English Abstract -->
-                    <div style="background:#f8fafc;padding:14px;border-radius:8px;border:1px solid #e2e8f0;">
-                        <h3 style="margin:0 0 10px 0;font-size:14px;color:var(--kisi-navy);">🇬🇧 ABSTRACT (Bahasa Inggris — Otomatis Cetak Miring)</h3>
+                    <div style="background:#f8fafc;padding:10px 12px;border-radius:8px;border:1px solid var(--kisi-border);">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                            <h3 style="margin:0;font-size:13px;color:var(--kisi-navy);">🇬🇧 ABSTRACT (English — Italic)</h3>
+                            <span id="enAbsWordCount" class="word-badge">0 words</span>
+                        </div>
                         <div class="field-group">
                             <label>Introduction and Methods</label>
-                            <textarea id="f_ab_en_im" rows="6" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
+                            <textarea id="f_ab_en_im" rows="4" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                         </div>
                         <div class="field-group">
                             <label>Results</label>
-                            <textarea id="f_ab_en_res" rows="4" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
+                            <textarea id="f_ab_en_res" rows="3" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                         </div>
                         <div class="field-group">
                             <label>Conclusions and Recommendations</label>
-                            <textarea id="f_ab_en_conc" rows="4" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
+                            <textarea id="f_ab_en_conc" rows="3" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                         </div>
-                        <div class="field-group">
-                            <label>Keywords <span class="hint">(Pisahkan dengan titik koma ;)</span></label>
-                            <input type="text" id="f_keywords_en" placeholder="Breastfeeding; Early initiation of breastfeeding; Socio-cultural" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)">
+                        <div class="field-group" style="margin-bottom:0;">
+                            <label>Keywords <span class="hint">(Separate with ;)</span></label>
+                            <input type="text" id="f_keywords_en" placeholder="Breastfeeding; Socio-cultural" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)">
                         </div>
                     </div>
                 </div>
@@ -949,15 +1013,15 @@ $defaultArticle = $activeArticleData ?: [
     <div style="font-size:13px;color:var(--kisi-muted);">
         💡 <strong>Tips:</strong> Pastikan bagian <em>Review Editor</em> dan <em>ABSTRAK 3 bagian</em> sudah sesuai di pratinjau sebelum mengunduh atau menyimpan ke Galley.
     </div>
-    <div style="display:flex;gap:10px;align-items:center;">
-        <button type="button" class="btn btn-navy" onclick="downloadGeneratedFile('generateDocx')">
-            📄 Download Layout Baru (.docx)
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <button type="button" class="btn btn-navy btn-sm" onclick="downloadGeneratedFile('generateDocx')">
+            📄 Download DOCX
         </button>
-        <button type="button" class="btn btn-teal" onclick="downloadGeneratedFile('generateJats')">
-            🧬 Download AmeliCA / JATS XML (.xml)
+        <button type="button" class="btn btn-teal btn-sm" onclick="downloadGeneratedFile('generateJats')">
+            🧬 Download JATS XML
         </button>
-        <button type="button" class="btn btn-primary" onclick="saveDirectlyToOjsGalley()">
-            🚀 Simpan Otomatis ke Galley OJS 3.5 (JATS XML + DOCX)
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveDirectlyToOjsGalley()">
+            🚀 Simpan ke Galley OJS 3.5
         </button>
     </div>
 </div>
@@ -1049,7 +1113,7 @@ function applyArticleTypeLayoutMode(userInitiated = false) {
         absGrid.style.pointerEvents = noAbs ? 'none' : 'auto';
     }
     if (absBadge) {
-        absBadge.textContent = noAbs ? '(Tidak Dipakai — Langsung Badan Artikel)' : '(Terstruktur 2 Bahasa)';
+        absBadge.textContent = noAbs ? '(Tanpa Abstrak)' : '(ID & EN)';
     }
 
     if (userInitiated && noAbs) {
@@ -1124,6 +1188,7 @@ function populateFormFromState() {
 
     renderAuthorsEditor();
     renderBodySectionsEditor();
+    updateAbstractWordCounts();
 }
 
 function syncStateFromInputs() {
@@ -1158,6 +1223,28 @@ function syncStateFromInputs() {
     articleState.abstract_en.results = document.getElementById('f_ab_en_res').value;
     articleState.abstract_en.conclusions_recommendations = document.getElementById('f_ab_en_conc').value;
     articleState.keywords_en = document.getElementById('f_keywords_en').value;
+
+    updateAbstractWordCounts();
+}
+
+function countWordsSafe(str) {
+    const clean = String(str || '').trim();
+    return clean ? clean.split(/\s+/).length : 0;
+}
+
+function updateAbstractWordCounts() {
+    const idEl = document.getElementById('idAbsWordCount');
+    const enEl = document.getElementById('enAbsWordCount');
+    const abId = articleState.abstract_id || {};
+    const abEn = articleState.abstract_en || {};
+    if (idEl) {
+        const wId = countWordsSafe(abId.pendahuluan_metode) + countWordsSafe(abId.hasil) + countWordsSafe(abId.kesimpulan_saran);
+        idEl.textContent = `${wId} kata`;
+    }
+    if (enEl) {
+        const wEn = countWordsSafe(abEn.intro_methods) + countWordsSafe(abEn.results) + countWordsSafe(abEn.conclusions_recommendations);
+        enEl.textContent = `${wEn} words`;
+    }
 }
 
 function syncReferencesFromInput() {
@@ -1179,17 +1266,17 @@ function renderAuthorsEditor() {
         const row = document.createElement('div');
         row.className = 'author-row';
         row.innerHTML = `
-            <div style="display:flex;flex-direction:column;gap:2px;">
-                <button type="button" class="btn btn-outline btn-xs" onclick="moveAuthorRow(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} title="Geser Penulis Naik">▲</button>
-                <button type="button" class="btn btn-outline btn-xs" onclick="moveAuthorRow(${idx}, 1)" ${idx === articleState.authors.length - 1 ? 'disabled' : ''} title="Geser Penulis Turun">▼</button>
+            <div style="display:flex;gap:3px;">
+                <button type="button" class="btn btn-outline btn-xs" onclick="moveAuthorRow(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} title="Naik">▲</button>
+                <button type="button" class="btn btn-outline btn-xs" onclick="moveAuthorRow(${idx}, 1)" ${idx === articleState.authors.length - 1 ? 'disabled' : ''} title="Turun">▼</button>
             </div>
             <input type="text" placeholder="Nama Penulis" value="${escapeHtml(au.name || '')}" oninput="updateAuthor(${idx}, 'name', this.value)">
-            <input type="text" placeholder="Afiliasi (Prodi, Fakultas, Universitas, Kota, Negara)" value="${escapeHtml(au.affiliation || '')}" oninput="updateAuthor(${idx}, 'affiliation', this.value)">
+            <input type="text" placeholder="Afiliasi (Prodi, Fakultas, Instansi, Negara)" value="${escapeHtml(au.affiliation || '')}" oninput="updateAuthor(${idx}, 'affiliation', this.value)">
             <input type="text" placeholder="Email" value="${escapeHtml(au.email || '')}" oninput="updateAuthor(${idx}, 'email', this.value)">
-            <label style="margin:0;display:flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap;">
-                <input type="checkbox" ${au.is_corresponding ? 'checked' : ''} onchange="updateAuthor(${idx}, 'is_corresponding', this.checked)"> * Koresponden
+            <label style="margin:0;display:flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap;font-size:11.5px;">
+                <input type="checkbox" ${au.is_corresponding ? 'checked' : ''} onchange="updateAuthor(${idx}, 'is_corresponding', this.checked)"> * Koresp
             </label>
-            <button type="button" class="btn btn-outline btn-sm" onclick="removeAuthorRow(${idx})" title="Hapus Penulis">✕</button>
+            <button type="button" class="btn btn-outline btn-xs" onclick="removeAuthorRow(${idx})" title="Hapus Penulis">✕</button>
         `;
         container.appendChild(row);
     });
@@ -1343,6 +1430,7 @@ function renderBodySectionsEditor(flashTarget = null) {
             item.className = 'block-item' + (shouldFlash ? ' block-flash' : '');
             item.dataset.secKey = secKey;
             item.dataset.bIdx = String(bIdx);
+            item.dataset.bType = blk.type || 'paragraph';
 
             const canMoveUp = !(secPos === 0 && bIdx === 0);
             const canMoveDown = !(secPos === activeSectionKeys.length - 1 && bIdx === blocks.length - 1);

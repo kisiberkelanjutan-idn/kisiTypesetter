@@ -297,6 +297,10 @@ assertTrue(mb_strtoupper((string) ($drParsed['article_type'] ?? ''), 'UTF-8') ==
 assertTrue(!empty($drParsed['sections']['badan_artikel']), 'DocxParser restores direct body content into sections[badan_artikel] without PENDAHULUAN');
 @unlink($tmpDrDocx);
 
+// 6. Verify bundled Kisi Berkelanjutan favicon resource exists and is valid PNG
+$favFile = $root . '/resources/kisi-favicon.png';
+assertTrue(file_exists($favFile) && filesize($favFile) > 1000, 'Bundled Kisi Berkelanjutan favicon PNG exists');
+
 if ($failures > 0) {
     fwrite(STDERR, "\nTotal test failures: {$failures}\n");
     exit(1);
