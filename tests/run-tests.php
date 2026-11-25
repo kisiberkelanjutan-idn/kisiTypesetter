@@ -337,7 +337,7 @@ if ($v1Zip->open($tmpV1Docx) === true) {
     $v1FooterXml = (string) $v1Zip->getFromName('word/footer1.xml');
     $v1Zip->close();
 }
-assertTrue(strpos($v1DocXml, 're-typeset in 2026') !== false, 'Vol 1-2 DOCX preserves 2026 re-typeset Publisher Note box');
+assertTrue(strpos($v1DocXml, 're-typeset in 2026') !== false && strpos($v1DocXml, 'remains neutral') !== false, 'Vol 1-2 DOCX preserves 2026 re-typeset Publisher Note box');
 assertTrue(strpos($v1DocXml, 'Received:') === false && strpos($v1DocXml, 'Accepted:') === false, 'Vol 1-2 DOCX omits Received/Accepted sidebar fields');
 assertTrue(strpos($v1FooterXml, 'Januari-Maret 2024') !== false && strpos($v1FooterXml, 'January') === false, 'Vol 1-2 DOCX footer converts English month to Indonesian');
 @unlink($tmpV1Docx);
@@ -412,7 +412,7 @@ assertTrue(strpos($v3DocXml, 'Roles:') !== false && strpos($v3DocXml, 'ARAP (Con
 assertTrue(strpos($v3DocXml, 'TPB/SDGs') !== false && strpos($v3DocXml, 'w:fill="E8E8E8"') !== false, 'Vol 3+ DOCX renders shaded TPB/SDGs Indonesian box');
 assertTrue(strpos($v3DocXml, 'Contribution to Sustainable Development Goals (SDGs)') !== false, 'Vol 3+ DOCX renders Contribution to SDGs in English abstract');
 assertTrue(strpos($v3DocXml, 're-typeset in 2026') === false && strpos($v3DocXml, '<w:txbxContent') === false, 'Vol 3+ DOCX omits 2026 re-typeset textbox cleanly');
-assertTrue(strpos($v3DocXml, 'remains neutral') !== false, 'Vol 3+ DOCX retains Publisher Note neutrality declaration');
+assertTrue(strpos($v3DocXml, 'remains neutral') !== false && strpos($v3DocXml, 'PT Karya Inovasi Berkelanjutan') !== false, 'Vol 3+ DOCX retains clean Publisher Note neutrality declaration');
 assertTrue(strpos($v3Footer1, 'Juli-September 2026') !== false && strpos($v3Footer2, 'Juli-September 2026') !== false && strpos($v3Footer1, 'July') === false, 'Vol 3+ DOCX footers render Indonesian months (Juli-September 2026)');
 
 $v3Parsed = DocxParser::parse($tmpV3Docx);
@@ -434,7 +434,7 @@ assertTrue(strpos($v3Xml, 're-typeset in 2026') === false, 'Vol 3+ JATS XML omit
 
 $v3Html = JatsHtmlRenderer::renderFullTextHtml($v3Xml, ['include_abstract' => true]);
 assertTrue(strpos($v3Html, 'Received:') !== false && strpos($v3Html, 'Accepted:') !== false && strpos($v3Html, 'ARAP (Conceptualization') !== false, 'JatsHtmlRenderer displays Vol 3+ history dates and contributor roles');
-assertTrue(strpos($v3Html, 'kisi-jats-retypeset-box') === false && strpos($v3Html, 'TPB/SDGs') !== false, 'JatsHtmlRenderer omits retypeset box and renders TPB/SDGs for Vol 3+');
+assertTrue(strpos($v3Html, 'class="kisi-jats-retypeset-box"') === false && strpos($v3Html, 'TPB/SDGs') !== false, 'JatsHtmlRenderer omits retypeset box and renders TPB/SDGs for Vol 3+');
 
 if ($failures > 0) {
     fwrite(STDERR, "\nTotal test failures: {$failures}\n");

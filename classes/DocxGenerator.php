@@ -459,16 +459,40 @@ class DocxGenerator
         }
 
         // Find Publisher's Note paragraph node near the end of w:body
+        // (tolerates curly quote, straight quote, or legacy template mojibake)
         $publisherNoteNode = null;
+        $publisherStmtNode = null;
         for ($i = $afterFrontIndex + 1; $i < count($children); $i++) {
             $node = $children[$i];
             if ($node->localName === 'p') {
                 $txt = trim(DocxParser::getElementText($node, $xpath));
-                if (preg_match('/^Publisher[’\']?s\s+Note$/iu', $txt)) {
+                if (!$publisherNoteNode && preg_match('/^Publisher\S{0,10}\s+Note$/iu', $txt)) {
                     $publisherNoteNode = $node;
+                    continue;
+                }
+                if ($publisherNoteNode && !$publisherStmtNode && stripos($txt, 'remains neutral') !== false) {
+                    $publisherStmtNode = $node;
                     break;
                 }
             }
+        }
+
+        // Normalize Publisher's Note title & declaration cleanly (eliminates template mojibake/spacing issues)
+        if ($publisherNoteNode instanceof DOMElement) {
+            self::clearElementChildren($publisherNoteNode);
+            $publisherNoteNode->appendChild(self::createRun($dom, "Publisher\u{2019}s Note", ['italic' => true]));
+        }
+        if ($publisherStmtNode instanceof DOMElement) {
+            $publisherName = trim((string) ($data['publisher_name'] ?? 'PT Karya Inovasi Berkelanjutan'));
+            if ($publisherName === '') {
+                $publisherName = 'PT Karya Inovasi Berkelanjutan';
+            }
+            self::clearElementChildren($publisherStmtNode);
+            $publisherStmtNode->appendChild(self::createRun(
+                $dom,
+                'The publisher of ' . $publisherName . ' states that it remains neutral with respect to the published ideas and from any institutional affiliation.',
+                ['italic' => true]
+            ));
         }
 
         // Fallback if Publisher's Note wasn't found: use final w:sectPr
@@ -495,10 +519,12 @@ class DocxGenerator
             $body->removeChild($rmNode);
         }
 
-        // Starting Volume 3+ (or when retypeset note is cleared): omit the 2026 re-typeset textbox cleanly
+        // Starting Volume 3+ (or when retypeset note is explicitly cleared): omit the 2026 re-typeset textbox cleanly;
+        // Vol 1-2 archive articles retain the 2026 re-typeset textbox unless explicitly cleared.
         $isVol3Plus = LanguageAuditor::isVolume3Plus($data['volume'] ?? '1');
+        $explicitBlankRetypeset = array_key_exists('retypeset_note', $data) && trim((string) $data['retypeset_note']) === '';
         $retypesetNote = trim((string) ($data['retypeset_note'] ?? ''));
-        if ($isVol3Plus || $retypesetNote === '') {
+        if ($isVol3Plus || $explicitBlankRetypeset) {
             $tbContainers = [];
             foreach ($xpath->query('./w:p[.//w:txbxContent]', $body) as $tbParaNode) {
                 $tbContainers[] = $tbParaNode;
@@ -506,7 +532,7 @@ class DocxGenerator
             foreach ($tbContainers as $rmTb) {
                 $body->removeChild($rmTb);
             }
-        } else {
+        } elseif ($retypesetNote !== '') {
             $retypesetText = rtrim($retypesetNote, '.');
             foreach ($xpath->query('.//w:txbxContent/w:p', $body) as $tbPara) {
                 self::clearElementChildren($tbPara);
