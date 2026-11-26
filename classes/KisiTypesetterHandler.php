@@ -1474,8 +1474,10 @@ class KisiTypesetterHandler extends Handler
     }
 
     /**
-     * Populate OJS native Publication abstract locales when missing in OJS metadata so OJS themes
-     * and external JATS parsers always display an abstract alongside the XML galley.
+     * Populate OJS native Publication abstract locales (Indonesian & English) when missing in OJS
+     * metadata so OJS themes and external JATS parsers always display an abstract alongside the
+     * XML galley. Both Studio abstract editors are persisted, even when the JATS XML output is
+     * configured as English-only.
      */
     protected function syncMissingPublicationAbstracts($publication, array $articleData): void
     {
@@ -1498,7 +1500,10 @@ class KisiTypesetterHandler extends Handler
                 return implode('', $chunks);
             };
 
-            $idHtml = $isEnglishOnly ? '' : $buildText([
+            // The Indonesian abstract is a first-class Studio field (it is rendered in the DOCX/PDF
+            // layout), so it must be persisted in every form mode. The English-only setting only
+            // limits what the JATS XML output contains.
+            $idHtml = $buildText([
                 $articleData['abstract_id']['pendahuluan_metode'] ?? '',
                 $articleData['abstract_id']['hasil'] ?? '',
                 $articleData['abstract_id']['kesimpulan_saran'] ?? '',
@@ -1511,17 +1516,21 @@ class KisiTypesetterHandler extends Handler
 
             $changed = false;
             $updated = $existing;
-            if (!$isEnglishOnly && $idHtml !== '') {
-                $idKeys = array_unique([$pubLocale, 'id', 'id_ID']);
+            if ($idHtml !== '') {
+                $idKeys = array_values(array_unique(array_filter(array_merge(
+                    stripos($pubLocale, 'en') === 0 ? [] : [$pubLocale],
+                    ['id', 'id_ID']
+                ), static fn ($k) => trim((string) $k) !== '')));
+                $idAlreadyPresent = false;
                 foreach ($idKeys as $k) {
-                    if (stripos($k, 'en') === 0) {
-                        continue;
-                    }
-                    if (trim(strip_tags((string) ($updated[$k] ?? ''))) === '') {
-                        $updated[$k] = $idHtml;
-                        $changed = true;
+                    if (trim(strip_tags((string) ($updated[$k] ?? ''))) !== '') {
+                        $idAlreadyPresent = true;
                         break;
                     }
+                }
+                if (!$idAlreadyPresent) {
+                    $updated[$idKeys[0] ?? 'id'] = $idHtml;
+                    $changed = true;
                 }
             }
 

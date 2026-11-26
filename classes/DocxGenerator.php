@@ -22,6 +22,9 @@ class DocxGenerator
 {
     public const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
     public const NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+    public const NS_WP = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing';
+    public const NS_A = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+    public const NS_PIC = 'http://schemas.openxmlformats.org/drawingml/2006/picture';
 
     /**
      * Generate a formatted .docx file from structured article data
@@ -66,13 +69,23 @@ class DocxGenerator
         }
 
         // 2. Update Main Body Sections (between Section 1 break and Publisher's Note)
+        $relsEntry = DocxParser::resolveZipEntryName($zip, 'word/_rels/document.xml.rels');
+        $relsXml = (string) $zip->getFromName($relsEntry);
+        $nextRelId = self::nextRelationshipIdNumber($relsXml);
+        $imageParts = [];
+
         $body = $xpath->query('//w:body')->item(0);
         if ($body instanceof DOMElement) {
-            self::populateMainBody($dom, $xpath, $body, $data);
+            self::populateMainBody($dom, $xpath, $body, $data, $nextRelId, $imageParts);
         }
 
         $updatedDocXml = $dom->saveXML();
         $zip->addFromString($docEntry, $updatedDocXml);
+
+        // 2b. Embed figure pictures: word/media/* parts, document relationships, and content types
+        if (!empty($imageParts)) {
+            self::attachFigureImages($zip, $relsEntry, $relsXml, $imageParts);
+        }
 
         // 3. Update Footers (footer1.xml, footer2.xml and their .rels)
         $articleUrl = trim($data['article_url'] ?? 'https://kisiberkelanjutan.com/index.php/smk/article/view/76');
@@ -471,7 +484,7 @@ class DocxGenerator
     /**
      * Populate Section 2 (Main Article Body: PENDAHULUAN through SUMBER PUSTAKA + Publisher's Note)
      */
-    private static function populateMainBody(DOMDocument $dom, DOMXPath $xpath, DOMElement $body, array $data): void
+    private static function populateMainBody(DOMDocument $dom, DOMXPath $xpath, DOMElement $body, array $data, int &$nextRelId, array &$imageParts): void
     {
         $children = [];
         foreach ($body->childNodes as $child) {
@@ -575,7 +588,9 @@ class DocxGenerator
 
         // Insert Main Body Sections before $publisherNoteNode
         $tableCounter = 1;
-        $emitBlocks = static function (array $blocks) use ($dom, $publisherNoteNode, $body, &$tableCounter): void {
+        $figureCounter = 0;
+        $drawingId = 1;
+        $emitBlocks = static function (array $blocks) use ($dom, $publisherNoteNode, $body, &$tableCounter, &$figureCounter, &$drawingId, &$nextRelId, &$imageParts): void {
             foreach ($blocks as $block) {
                 if (is_string($block)) {
                     $block = ['type' => 'paragraph', 'text' => $block];
@@ -606,6 +621,22 @@ class DocxGenerator
                     if ($footnote !== '') {
                         $body->insertBefore(self::createTableFootnotePara($dom, $footnote), $publisherNoteNode);
                     }
+                } elseif ($bType === 'image') {
+                    $image = self::prepareImageBlock($block);
+                    if ($image === null) {
+                        continue;
+                    }
+                    $figureCounter++;
+                    $rid = 'rId' . $nextRelId++;
+                    $image['media_name'] = 'kisi_figure_' . $figureCounter . '.' . $image['ext'];
+                    $imageParts[$rid] = $image;
+
+                    $caption = trim((string) ($block['caption'] ?? ''));
+                    $body->insertBefore(self::createFigureImagePara($dom, $image, $rid, $drawingId++, $figureCounter), $publisherNoteNode);
+                    if ($caption !== '') {
+                        $body->insertBefore(self::createFigureCaptionPara($dom, $caption, $figureCounter), $publisherNoteNode);
+                    }
+                    $body->insertBefore(self::createStyledPara($dom, '', []), $publisherNoteNode);
                 } else {
                     $pText = trim($block['text'] ?? '');
                     if ($pText !== '') {
@@ -671,6 +702,285 @@ class DocxGenerator
 
         // Add spacing paragraph before Publisher's Note
         $body->insertBefore(self::createStyledPara($dom, '', []), $publisherNoteNode);
+    }
+
+    /**
+     * Find the first free numeric relationship id in word/_rels/document.xml.rels
+     */
+    private static function nextRelationshipIdNumber(string $relsXml): int
+    {
+        $max = 0;
+        if ($relsXml !== '' && preg_match_all('/Id="rId(\d+)"/i', $relsXml, $m)) {
+            foreach ($m[1] as $num) {
+                $max = max($max, (int) $num);
+            }
+        }
+        return $max + 1;
+    }
+
+    /**
+     * Normalize an image block (data URI) into binary + EMU dimensions ready for the DOCX package.
+     * Returns null for missing/corrupt data and for formats Word cannot embed directly (SVG/WebP).
+     */
+    private static function prepareImageBlock(array $block): ?array
+    {
+        $src = trim((string) ($block['data'] ?? ''));
+        if ($src === '' || !preg_match('#^data:(image/[a-z0-9.+-]+);base64,(.+)$#is', $src, $m)) {
+            return null;
+        }
+
+        $binary = base64_decode((string) preg_replace('/\s+/', '', $m[2]), true);
+        if ($binary === false || $binary === '') {
+            return null;
+        }
+
+        $mimeToExt = [
+            'image/png' => 'png',
+            'image/jpeg' => 'jpeg',
+            'image/jpg' => 'jpeg',
+            'image/gif' => 'gif',
+            'image/bmp' => 'bmp',
+            'image/tiff' => 'tiff',
+            'image/x-emf' => 'emf',
+            'image/emf' => 'emf',
+            'image/x-wmf' => 'wmf',
+            'image/wmf' => 'wmf',
+        ];
+        $mime = strtolower(trim($m[1]));
+        $ext = $mimeToExt[$mime] ?? '';
+        if ($ext === '') {
+            return null;
+        }
+
+        $widthPx = (int) ($block['width'] ?? 0);
+        $heightPx = (int) ($block['height'] ?? 0);
+        if (($widthPx <= 0 || $heightPx <= 0) && function_exists('getimagesizefromstring')) {
+            $info = @getimagesizefromstring($binary);
+            if (is_array($info) && !empty($info[0]) && !empty($info[1])) {
+                $widthPx = (int) $info[0];
+                $heightPx = (int) $info[1];
+            }
+        }
+        if ($widthPx <= 0 || $heightPx <= 0) {
+            $widthPx = 600;
+            $heightPx = 400;
+        }
+
+        // Fit inside the A4 text block (~15.9 cm wide) without ever upscaling
+        $maxCx = 5715000;
+        $maxCy = 7000000;
+        $cx = $widthPx * 9525;
+        $cy = $heightPx * 9525;
+        if ($cx > $maxCx) {
+            $cy = (int) round($cy * ($maxCx / $cx));
+            $cx = $maxCx;
+        }
+        if ($cy > $maxCy) {
+            $cx = (int) round($cx * ($maxCy / $cy));
+            $cy = $maxCy;
+        }
+
+        return [
+            'binary' => $binary,
+            'ext' => $ext,
+            'mime' => $mime,
+            'cx' => $cx,
+            'cy' => $cy,
+            'alt' => trim((string) ($block['alt'] ?? '')),
+        ];
+    }
+
+    /**
+     * Write image parts into the .docx package and register their relationships + content types.
+     */
+    private static function attachFigureImages(ZipArchive $zip, string $relsEntry, string $relsXml, array $imageParts): void
+    {
+        foreach ($imageParts as $image) {
+            $zip->addFromString('word/media/' . $image['media_name'], $image['binary']);
+        }
+
+        $relType = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image';
+        $relsUpdated = false;
+        if ($relsXml !== '') {
+            $relsDom = new DOMDocument('1.0', 'UTF-8');
+            if (@$relsDom->loadXML($relsXml, LIBXML_NOENT | LIBXML_NONET) && $relsDom->documentElement instanceof DOMElement) {
+                $root = $relsDom->documentElement;
+                foreach ($imageParts as $rid => $image) {
+                    $rel = $relsDom->createElementNS('http://schemas.openxmlformats.org/package/2006/relationships', 'Relationship');
+                    $rel->setAttribute('Id', (string) $rid);
+                    $rel->setAttribute('Type', $relType);
+                    $rel->setAttribute('Target', 'media/' . $image['media_name']);
+                    $root->appendChild($rel);
+                }
+                $zip->addFromString($relsEntry, $relsDom->saveXML());
+                $relsUpdated = true;
+            }
+        }
+        if (!$relsUpdated) {
+            $extra = '';
+            foreach ($imageParts as $rid => $image) {
+                $extra .= '<Relationship Id="' . $rid . '" Type="' . $relType . '" Target="media/' . $image['media_name'] . '"/>';
+            }
+            $zip->addFromString($relsEntry, (string) preg_replace('#</Relationships>#i', $extra . '</Relationships>', $relsXml));
+        }
+
+        // [Content_Types].xml needs a Default mapping for every new picture extension
+        $ctEntry = DocxParser::resolveZipEntryName($zip, '[Content_Types].xml');
+        $ctXml = $zip->getFromName($ctEntry);
+        if ($ctXml) {
+            $contentTypeByExt = [
+                'png' => 'image/png',
+                'jpeg' => 'image/jpeg',
+                'jpg' => 'image/jpeg',
+                'gif' => 'image/gif',
+                'bmp' => 'image/bmp',
+                'tiff' => 'image/tiff',
+                'emf' => 'image/x-emf',
+                'wmf' => 'image/x-wmf',
+            ];
+            $newDefaults = '';
+            $seen = [];
+            foreach ($imageParts as $image) {
+                $ext = strtolower((string) $image['ext']);
+                if ($ext === '' || isset($seen[$ext]) || stripos($ctXml, 'Extension="' . $ext . '"') !== false) {
+                    continue;
+                }
+                $seen[$ext] = true;
+                $newDefaults .= '<Default Extension="' . $ext . '" ContentType="' . ($contentTypeByExt[$ext] ?? ('image/' . $ext)) . '"/>';
+            }
+            if ($newDefaults !== '') {
+                $ctXml = (string) preg_replace('#(<Types\b[^>]*>)#i', '$1' . $newDefaults, $ctXml, 1);
+                $zip->addFromString($ctEntry, $ctXml);
+            }
+        }
+    }
+
+    /**
+     * Create a centered inline picture paragraph for a figure image block
+     */
+    private static function createFigureImagePara(DOMDocument $dom, array $image, string $rid, int $drawingId, int $figureNum): DOMElement
+    {
+        $p = $dom->createElementNS(self::NS_W, 'w:p');
+        $pPr = $dom->createElementNS(self::NS_W, 'w:pPr');
+
+        $spacing = $dom->createElementNS(self::NS_W, 'w:spacing');
+        $spacing->setAttribute('w:before', '180');
+        $spacing->setAttribute('w:after', '60');
+        $pPr->appendChild($spacing);
+        $pPr->appendChild($dom->createElementNS(self::NS_W, 'w:keepNext'));
+
+        $jc = $dom->createElementNS(self::NS_W, 'w:jc');
+        $jc->setAttribute('w:val', 'center');
+        $pPr->appendChild($jc);
+        $p->appendChild($pPr);
+
+        $run = $dom->createElementNS(self::NS_W, 'w:r');
+        $drawing = $dom->createElementNS(self::NS_W, 'w:drawing');
+
+        $inline = $dom->createElementNS(self::NS_WP, 'wp:inline');
+        foreach (['distT', 'distB', 'distL', 'distR'] as $dist) {
+            $inline->setAttribute($dist, '0');
+        }
+
+        $extent = $dom->createElementNS(self::NS_WP, 'wp:extent');
+        $extent->setAttribute('cx', (string) $image['cx']);
+        $extent->setAttribute('cy', (string) $image['cy']);
+        $inline->appendChild($extent);
+
+        $docPr = $dom->createElementNS(self::NS_WP, 'wp:docPr');
+        $docPr->setAttribute('id', (string) $drawingId);
+        $docPr->setAttribute('name', 'Gambar ' . $figureNum);
+        $docPr->setAttribute('descr', $image['alt'] !== '' ? $image['alt'] : ('Gambar ' . $figureNum));
+        $inline->appendChild($docPr);
+
+        $cNvFrame = $dom->createElementNS(self::NS_WP, 'wp:cNvGraphicFramePr');
+        $locks = $dom->createElementNS(self::NS_A, 'a:graphicFrameLocks');
+        $locks->setAttribute('noChangeAspect', '1');
+        $cNvFrame->appendChild($locks);
+        $inline->appendChild($cNvFrame);
+
+        $graphic = $dom->createElementNS(self::NS_A, 'a:graphic');
+        $graphicData = $dom->createElementNS(self::NS_A, 'a:graphicData');
+        $graphicData->setAttribute('uri', 'http://schemas.openxmlformats.org/drawingml/2006/picture');
+
+        $pic = $dom->createElementNS(self::NS_PIC, 'pic:pic');
+
+        $nvPicPr = $dom->createElementNS(self::NS_PIC, 'pic:nvPicPr');
+        $cNvPr = $dom->createElementNS(self::NS_PIC, 'pic:cNvPr');
+        $cNvPr->setAttribute('id', (string) $drawingId);
+        $cNvPr->setAttribute('name', (string) $image['media_name']);
+        $nvPicPr->appendChild($cNvPr);
+        $nvPicPr->appendChild($dom->createElementNS(self::NS_PIC, 'pic:cNvPicPr'));
+        $pic->appendChild($nvPicPr);
+
+        $blipFill = $dom->createElementNS(self::NS_PIC, 'pic:blipFill');
+        $blip = $dom->createElementNS(self::NS_A, 'a:blip');
+        $blip->setAttributeNS(self::NS_R, 'r:embed', $rid);
+        $blipFill->appendChild($blip);
+        $stretch = $dom->createElementNS(self::NS_A, 'a:stretch');
+        $stretch->appendChild($dom->createElementNS(self::NS_A, 'a:fillRect'));
+        $blipFill->appendChild($stretch);
+        $pic->appendChild($blipFill);
+
+        $spPr = $dom->createElementNS(self::NS_PIC, 'pic:spPr');
+        $xfrm = $dom->createElementNS(self::NS_A, 'a:xfrm');
+        $off = $dom->createElementNS(self::NS_A, 'a:off');
+        $off->setAttribute('x', '0');
+        $off->setAttribute('y', '0');
+        $xfrm->appendChild($off);
+        $ext = $dom->createElementNS(self::NS_A, 'a:ext');
+        $ext->setAttribute('cx', (string) $image['cx']);
+        $ext->setAttribute('cy', (string) $image['cy']);
+        $xfrm->appendChild($ext);
+        $spPr->appendChild($xfrm);
+
+        $prstGeom = $dom->createElementNS(self::NS_A, 'a:prstGeom');
+        $prstGeom->setAttribute('prst', 'rect');
+        $prstGeom->appendChild($dom->createElementNS(self::NS_A, 'a:avLst'));
+        $spPr->appendChild($prstGeom);
+        $pic->appendChild($spPr);
+
+        $graphicData->appendChild($pic);
+        $graphic->appendChild($graphicData);
+        $inline->appendChild($graphic);
+        $drawing->appendChild($inline);
+        $run->appendChild($drawing);
+        $p->appendChild($run);
+
+        return $p;
+    }
+
+    /**
+     * Create a centered figure caption paragraph below the picture ("Gambar N." bold + title)
+     */
+    private static function createFigureCaptionPara(DOMDocument $dom, string $caption, int $figureNum): DOMElement
+    {
+        $p = $dom->createElementNS(self::NS_W, 'w:p');
+        $pPr = $dom->createElementNS(self::NS_W, 'w:pPr');
+
+        $spacing = $dom->createElementNS(self::NS_W, 'w:spacing');
+        $spacing->setAttribute('w:before', '40');
+        $spacing->setAttribute('w:after', '180');
+        $pPr->appendChild($spacing);
+
+        $jc = $dom->createElementNS(self::NS_W, 'w:jc');
+        $jc->setAttribute('w:val', 'center');
+        $pPr->appendChild($jc);
+        $p->appendChild($pPr);
+
+        $labelStr = 'Gambar ' . $figureNum . '.';
+        $titleStr = $caption;
+        if (preg_match('/^((?:Gambar|Figure|Fig\.?)\s+\d+[\.\:]?)\s*(.*)$/iu', $caption, $m)) {
+            $labelStr = rtrim(trim($m[1]), '.:') . '.';
+            $titleStr = trim($m[2]);
+        }
+
+        $p->appendChild(self::createRun($dom, $labelStr . ' ', ['bold' => true, 'sz' => '20', 'noFont' => true]));
+        $titleStr = rtrim($titleStr, '.');
+        if ($titleStr !== '') {
+            $p->appendChild(self::createRun($dom, $titleStr, ['sz' => '20', 'noFont' => true]));
+        }
+        return $p;
     }
 
     /**

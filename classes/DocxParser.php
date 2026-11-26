@@ -21,6 +21,7 @@ use ZipArchive;
 class DocxParser
 {
     public const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+    public const NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 
     /**
      * Parse a .docx file into structured article data
@@ -111,6 +112,9 @@ class DocxParser
             }
         }
 
+        // Extract embedded pictures (word/media/*) keyed by their relationship id
+        $documentMedia = self::extractDocumentMedia($zip);
+
         $zip->close();
 
         if (!$xmlContent) {
@@ -173,6 +177,7 @@ class DocxParser
 
         $noAbstractType = LanguageAuditor::isNoAbstractArticleType((string) ($result['article_type'] ?? ''));
         $currentSection = '';
+        $keywordsLabelSeen = false;
         $pendingTableCaption = '';
         $lastTableRef = null;
         $tableCounter = 1;
@@ -188,6 +193,37 @@ class DocxParser
                 }
 
                 $text = trim(self::getElementText($node, $xpath));
+                $paragraphImages = self::extractParagraphImages($node, $xpath, $documentMedia);
+
+                // Paragraph holds one or more embedded pictures: emit image blocks (plus inline caption text, if any)
+                if (!empty($paragraphImages)) {
+                    if ($currentSection === 'end') {
+                        continue;
+                    }
+                    $bodySectionKeys = ['badan_artikel', 'pendahuluan', 'metode', 'hasil', 'pembahasan', 'kesimpulan_saran'];
+                    $imageSec = in_array($currentSection, $bodySectionKeys, true)
+                        ? $currentSection
+                        : 'badan_artikel';
+                    foreach ($paragraphImages as $imgBlock) {
+                        $result['sections'][$imageSec][] = $imgBlock;
+                    }
+                    if ($text !== '') {
+                        if (preg_match('/^(Gambar|Figure|Fig\.?)\s+\d+[\.\:]?/iu', $text)) {
+                            $lastImgIdx = count($result['sections'][$imageSec]) - 1;
+                            $result['sections'][$imageSec][$lastImgIdx]['caption'] = $text;
+                        } else {
+                            $result['sections'][$imageSec][] = [
+                                'type' => 'paragraph',
+                                'text' => $text,
+                            ];
+                            $rawLines[] = $text;
+                        }
+                    }
+                    $pendingTableCaption = '';
+                    $lastTableRef = null;
+                    continue;
+                }
+
                 if ($text === '') {
                     continue;
                 }
@@ -226,7 +262,25 @@ class DocxParser
                             $noAbstractType = true;
                             continue;
                         }
-                        self::parsePreIntroParagraph($text, $node, $xpath, $result);
+                        // Metadata-only front matter (title, authors, keywords) has ended: the remaining
+                        // prose is the article body. Abstract-less categories (LETTER / DATA REPORT) often
+                        // arrive as plain paragraphs, without the front-matter table and without ABSTRAK/ABSTRACT.
+                        if (!self::parsePreIntroParagraph($text, $node, $xpath, $result, $keywordsLabelSeen)) {
+                            continue;
+                        }
+                        $currentSection = 'badan_artikel';
+                    }
+                }
+
+                // Figure caption paragraph ("Gambar 1. ...") directly below an image block becomes that image's caption
+                if (isset($result['sections'][$currentSection]) && preg_match('/^(Gambar|Figure|Fig\.?)\s+\d+[\.\:]?/iu', $text)) {
+                    $lastBlockIdx = count($result['sections'][$currentSection]) - 1;
+                    if (
+                        $lastBlockIdx >= 0
+                        && ($result['sections'][$currentSection][$lastBlockIdx]['type'] ?? '') === 'image'
+                        && trim((string) ($result['sections'][$currentSection][$lastBlockIdx]['caption'] ?? '')) === ''
+                    ) {
+                        $result['sections'][$currentSection][$lastBlockIdx]['caption'] = $text;
                         continue;
                     }
                 }
@@ -637,34 +691,61 @@ class DocxParser
     }
 
     /**
-     * Handle pre-introduction paragraphs in legacy (non-table) Word documents
+     * Handle pre-introduction paragraphs in legacy (non-table) Word documents.
+     *
+     * @return bool True when the paragraph is the start of the article body, so the caller routes it
+     *              (and everything after it) to 'badan_artikel' instead of the abstract fields.
      */
-    private static function parsePreIntroParagraph(string $text, DOMElement $p, DOMXPath $xpath, array &$result): void
+    private static function parsePreIntroParagraph(string $text, DOMElement $p, DOMXPath $xpath, array &$result, bool &$keywordsLabelSeen): bool
     {
         if (preg_match('/^Kata\s+Kunci\s*:\s*(.+)$/iu', $text, $m)) {
             $result['keywords_id'] = rtrim(trim($m[1]), '.');
-            return;
+            $keywordsLabelSeen = true;
+            return false;
         }
         if (preg_match('/^Keywords\s*:\s*(.+)$/iu', $text, $m)) {
             $result['keywords_en'] = rtrim(trim($m[1]), '.');
-            return;
+            $keywordsLabelSeen = true;
+            return false;
+        }
+        if (preg_match('/^(?:Kata\s+Kunci|Keywords)\s*:\s*$/iu', $text)) {
+            // Label-only line; the keyword list follows on the next paragraph.
+            $keywordsLabelSeen = true;
+            return false;
         }
         if (strcasecmp($text, 'ABSTRAK') === 0 || strcasecmp($text, 'ABSTRACT') === 0) {
-            return;
+            return false;
         }
         if ($result['title_id'] === '' && strlen($text) > 15 && strlen($text) < 300) {
             $result['title_id'] = $text;
-            return;
+            return false;
         }
-        if (strlen($text) > 250) {
-            if ($result['abstract_id']['raw'] === '') {
-                $result['abstract_id']['raw'] = $text;
-                $result['abstract_id']['pendahuluan_metode'] = $text;
-            } elseif ($result['abstract_en']['raw'] === '') {
-                $result['abstract_en']['raw'] = $text;
-                $result['abstract_en']['intro_methods'] = $text;
-            }
+
+        if (mb_strlen($text) <= 250) {
+            return false;
         }
+
+        $hasKeywords = $keywordsLabelSeen
+            || trim((string) ($result['keywords_id'] ?? '')) !== ''
+            || trim((string) ($result['keywords_en'] ?? '')) !== '';
+        $absIdFilled = trim((string) ($result['abstract_id']['raw'] ?? '')) !== '';
+        $absEnFilled = trim((string) ($result['abstract_en']['raw'] ?? '')) !== '';
+
+        // Front matter (title/authors/keywords) is already consumed, or both abstract slots are full:
+        // this prose is the article body, not an abstract.
+        if ($hasKeywords || ($absIdFilled && $absEnFilled)) {
+            return true;
+        }
+
+        if ($result['abstract_id']['raw'] === '') {
+            $result['abstract_id']['raw'] = $text;
+            $result['abstract_id']['pendahuluan_metode'] = $text;
+        } elseif ($result['abstract_en']['raw'] === '') {
+            $result['abstract_en']['raw'] = $text;
+            $result['abstract_en']['intro_methods'] = $text;
+        }
+
+        return false;
     }
 
     /**
@@ -810,6 +891,172 @@ class DocxParser
             }
         }
         return true;
+    }
+
+    /**
+     * Build a rId => image payload map from word/_rels/document.xml.rels and word/media/*
+     * so drawing references (<a:blip r:embed="rIdN">) can be turned into image blocks.
+     */
+    private static function extractDocumentMedia(ZipArchive $zip): array
+    {
+        $media = [];
+        $relsEntry = self::resolveZipEntryName($zip, 'word/_rels/document.xml.rels');
+        $relsXml = $zip->getFromName($relsEntry);
+        if (!$relsXml) {
+            return $media;
+        }
+
+        $relsDom = new DOMDocument();
+        if (!@$relsDom->loadXML($relsXml, LIBXML_NOENT | LIBXML_NONET)) {
+            return $media;
+        }
+
+        foreach ($relsDom->getElementsByTagName('*') as $rel) {
+            if (!$rel instanceof DOMElement || $rel->localName !== 'Relationship') {
+                continue;
+            }
+            if (stripos((string) $rel->getAttribute('Type'), '/image') === false) {
+                continue;
+            }
+            if (strcasecmp((string) $rel->getAttribute('TargetMode'), 'External') === 0) {
+                continue;
+            }
+
+            $rid = (string) $rel->getAttribute('Id');
+            $target = str_replace('\\', '/', (string) $rel->getAttribute('Target'));
+            if ($rid === '' || $target === '') {
+                continue;
+            }
+
+            $entryPath = (strpos($target, '/') === 0)
+                ? ltrim($target, '/')
+                : self::normalizeZipPath('word/' . $target);
+            $entry = self::resolveZipEntryName($zip, $entryPath);
+            $binary = $zip->getFromName($entry);
+            if ($binary === false || $binary === '') {
+                continue;
+            }
+
+            $ext = strtolower((string) pathinfo($entry, PATHINFO_EXTENSION));
+            $mime = self::imageMimeFromExt($ext);
+            $media[$rid] = [
+                'data' => 'data:' . $mime . ';base64,' . base64_encode($binary),
+                'filename' => basename($entry),
+                'mime' => $mime,
+                'ext' => $ext !== '' ? $ext : 'png',
+            ];
+        }
+
+        return $media;
+    }
+
+    /**
+     * Collect embedded pictures referenced by a paragraph as ready-to-use image blocks.
+     */
+    private static function extractParagraphImages(DOMElement $p, DOMXPath $xpath, array $media): array
+    {
+        $blocks = [];
+        if (empty($media)) {
+            return $blocks;
+        }
+
+        foreach ($xpath->query('.//*[local-name()="blip" or local-name()="imagedata"]', $p) as $imgNode) {
+            if (!($imgNode instanceof DOMElement)) {
+                continue;
+            }
+
+            // Skip VML duplicates inside mc:Fallback
+            $inFallback = false;
+            for ($anc = $imgNode->parentNode; $anc && $anc !== $p; $anc = $anc->parentNode) {
+                if ($anc->localName === 'Fallback') {
+                    $inFallback = true;
+                    break;
+                }
+            }
+            if ($inFallback) {
+                continue;
+            }
+
+            $rid = (string) ($imgNode->getAttributeNS(self::NS_R, 'embed') ?: $imgNode->getAttributeNS(self::NS_R, 'id'));
+            if ($rid === '' || !isset($media[$rid])) {
+                continue;
+            }
+
+            [$widthPx, $heightPx] = self::resolveDrawingSizePx($imgNode, $p);
+            $blocks[] = [
+                'type' => 'image',
+                'data' => $media[$rid]['data'],
+                'filename' => $media[$rid]['filename'],
+                'mime' => $media[$rid]['mime'],
+                'ext' => $media[$rid]['ext'],
+                'caption' => '',
+                'alt' => '',
+                'width' => $widthPx,
+                'height' => $heightPx,
+            ];
+        }
+
+        return $blocks;
+    }
+
+    /**
+     * Read the on-page rendered size of a drawing (EMU -> CSS pixels) when available.
+     */
+    private static function resolveDrawingSizePx(DOMElement $imgNode, DOMElement $limit): array
+    {
+        $container = null;
+        for ($anc = $imgNode->parentNode; $anc && $anc !== $limit; $anc = $anc->parentNode) {
+            if ($anc->localName === 'inline' || $anc->localName === 'anchor') {
+                $container = $anc;
+                break;
+            }
+        }
+        if ($container instanceof DOMElement) {
+            foreach ($container->childNodes as $child) {
+                if ($child instanceof DOMElement && $child->localName === 'extent') {
+                    $cx = (int) $child->getAttribute('cx');
+                    $cy = (int) $child->getAttribute('cy');
+                    if ($cx > 0 && $cy > 0) {
+                        return [max(1, (int) round($cx / 9525)), max(1, (int) round($cy / 9525))];
+                    }
+                }
+            }
+        }
+        return [0, 0];
+    }
+
+    private static function imageMimeFromExt(string $ext): string
+    {
+        $map = [
+            'png' => 'image/png',
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'gif' => 'image/gif',
+            'bmp' => 'image/bmp',
+            'tif' => 'image/tiff',
+            'tiff' => 'image/tiff',
+            'webp' => 'image/webp',
+            'emf' => 'image/x-emf',
+            'wmf' => 'image/x-wmf',
+            'svg' => 'image/svg+xml',
+        ];
+        return $map[$ext] ?? 'image/png';
+    }
+
+    private static function normalizeZipPath(string $path): string
+    {
+        $parts = [];
+        foreach (explode('/', str_replace('\\', '/', $path)) as $segment) {
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+            if ($segment === '..') {
+                array_pop($parts);
+                continue;
+            }
+            $parts[] = $segment;
+        }
+        return implode('/', $parts);
     }
 
     /**

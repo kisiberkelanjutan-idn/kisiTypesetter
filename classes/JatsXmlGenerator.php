@@ -473,12 +473,13 @@ class JatsXmlGenerator
     private static function buildBody(DOMDocument $dom, DOMElement $body, array $data): void
     {
         $tableCounter = 1;
+        $figureCounter = 1;
         $maxRefCount = count(array_filter(
             array_map(static fn ($r) => trim((string) $r), (array) ($data['referensi'] ?? [])),
             static fn ($s) => $s !== ''
         ));
 
-        $appendBlocksInto = static function (DOMElement $rootSec, string $baseId, array $blocks) use ($dom, &$tableCounter, $maxRefCount): void {
+        $appendBlocksInto = static function (DOMElement $rootSec, string $baseId, array $blocks) use ($dom, &$tableCounter, &$figureCounter, $maxRefCount): void {
             $currentSubSec = null;
             $currentSubSecL3 = null;
             $subCounter = 1;
@@ -514,6 +515,12 @@ class JatsXmlGenerator
                     $targetContainer = $currentSubSecL3 ?? $currentSubSec ?? $rootSec;
                     $tw = self::buildJatsTableWrap($dom, $block, $tableCounter++);
                     $targetContainer->appendChild($tw);
+                } elseif ($bType === 'image') {
+                    $targetContainer = $currentSubSecL3 ?? $currentSubSec ?? $rootSec;
+                    $figEl = self::buildJatsFigure($dom, $block, $figureCounter++);
+                    if ($figEl instanceof DOMElement) {
+                        $targetContainer->appendChild($figEl);
+                    }
                 } else {
                     $targetContainer = $currentSubSecL3 ?? $currentSubSec ?? $rootSec;
                     $pText = trim($block['text'] ?? '');
@@ -699,6 +706,55 @@ class JatsXmlGenerator
         }
 
         return $tw;
+    }
+
+    /**
+     * Build a JATS <fig> element (<label>, <caption>, <alt-text>, <graphic>) for an image block.
+     * The graphic href is the hosted URL when the editor supplied one, otherwise the embedded data URI,
+     * so the full-text HTML digest can always display the picture.
+     */
+    private static function buildJatsFigure(DOMDocument $dom, array $block, int $figureNum): ?DOMElement
+    {
+        $href = trim((string) ($block['src'] ?? ''));
+        if ($href === '') {
+            $href = trim((string) ($block['data'] ?? ''));
+        }
+        if ($href === '') {
+            return null;
+        }
+
+        $caption = trim((string) ($block['caption'] ?? ''));
+        $alt = trim((string) ($block['alt'] ?? ''));
+        $labelStr = 'Gambar ' . $figureNum . '.';
+        $titleStr = $caption;
+        if ($caption !== '' && preg_match('/^((?:Gambar|Figure|Fig\.?)\s+\d+[\.\:]?)\s*(.*)$/iu', $caption, $m)) {
+            $labelStr = rtrim(trim($m[1]), '.:') . '.';
+            $titleStr = trim($m[2]);
+        }
+        if ($titleStr === '') {
+            $titleStr = $alt;
+        }
+
+        $fig = $dom->createElement('fig');
+        $fig->setAttribute('id', 'F' . $figureNum);
+        $fig->appendChild($dom->createElement('label', $labelStr));
+
+        if ($titleStr !== '') {
+            $captionEl = $dom->createElement('caption');
+            $captionEl->appendChild($dom->createElement('title', $titleStr));
+            $fig->appendChild($captionEl);
+        }
+
+        $altText = $alt !== '' ? $alt : $titleStr;
+        if ($altText !== '') {
+            $fig->appendChild($dom->createElement('alt-text', $altText));
+        }
+
+        $graphic = $dom->createElement('graphic');
+        $graphic->setAttributeNS(self::NS_XLINK, 'xlink:href', $href);
+        $fig->appendChild($graphic);
+
+        return $fig;
     }
 
     private static function appendStatisticalFormattedText(DOMDocument $dom, DOMElement $parent, string $text): void

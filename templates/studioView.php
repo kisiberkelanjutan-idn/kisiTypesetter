@@ -1811,6 +1811,7 @@ function renderBodySectionsEditor(flashTarget = null) {
                     <button type="button" class="btn btn-outline btn-sm" onclick="addSectionBlock('${secKey}', 'subheading')">+ Sub-Judul (L2)</button>
                     <button type="button" class="btn btn-outline btn-sm" onclick="addSectionBlock('${secKey}', 'subheading_l3')">+ Sub-Sub (L3)</button>
                     <button type="button" class="btn btn-outline btn-sm" onclick="addSectionBlock('${secKey}', 'paragraph')">+ Paragraf</button>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="addSectionBlock('${secKey}', 'image')">+ Gambar</button>
                     <button type="button" class="btn btn-teal btn-sm" onclick="addSectionBlock('${secKey}', 'table')">+ Tabel Hasil</button>
                 </div>
             </div>
@@ -1844,7 +1845,7 @@ function renderBodySectionsEditor(flashTarget = null) {
                 return `<option value="${k}" ${k === secKey ? 'selected' : ''}>Bab: ${escapeHtml(lbl)}</option>`;
             }).join('');
 
-            const isTextBlock = (blk.type !== 'table');
+            const isTextBlock = (blk.type !== 'table' && blk.type !== 'image');
             const levelSelectHtml = isTextBlock ? `
                 <select class="block-select-mini" title="Ubah Level Blok (Paragraf / Sub-Judul)" onchange="changeBlockLevel('${secKey}', ${bIdx}, this.value)">
                     <option value="paragraph" ${(blk.type === 'paragraph' || !blk.type) ? 'selected' : ''}>Level: Paragraf</option>
@@ -1855,7 +1856,9 @@ function renderBodySectionsEditor(flashTarget = null) {
 
             const badgeText = blk.type === 'table'
                 ? '📊 TABEL PENELITIAN'
-                : (blk.type === 'subheading' ? '🔖 SUB-JUDUL (L2 BOLD)' : (blk.type === 'subheading_l3' ? '🏷️ SUB-SUB-JUDUL (L3)' : '¶ PARAGRAF'));
+                : (blk.type === 'image'
+                    ? '🖼️ GAMBAR / FIGURE'
+                    : (blk.type === 'subheading' ? '🔖 SUB-JUDUL (L2 BOLD)' : (blk.type === 'subheading_l3' ? '🏷️ SUB-SUB-JUDUL (L3)' : '¶ PARAGRAF')));
 
             const blockHeaderHtml = `
                 <div class="block-item-header">
@@ -1885,6 +1888,27 @@ function renderBodySectionsEditor(flashTarget = null) {
                     <div class="field-group" style="margin-top:8px;margin-bottom:0;">
                         <label>Catatan Kaki Tabel (Footnote / Singkatan / Uji Statistik — otomatis di bawah garis penutup)</label>
                         <textarea rows="2" placeholder="Contoh: Keterangan: F/n, frekuensi; χ², nilai uji Chi-square; p < 0,05 menunjukkan hubungan bermakna secara statistik." oninput="articleState.sections['${secKey}'][${bIdx}].footnote = this.value" onblur="this.value = normalizeParagraphSpacingJs(this.value); articleState.sections['${secKey}'][${bIdx}].footnote = this.value;">${escapeHtml(blk.footnote || '')}</textarea>
+                    </div>
+                `;
+            } else if (blk.type === 'image') {
+                const imgSrc = blk.data || blk.src || '';
+                const imgPreview = imgSrc
+                    ? `<img src="${escapeHtml(imgSrc)}" alt="${escapeHtml(blk.alt || blk.caption || 'Gambar')}" style="max-width:100%;max-height:280px;display:block;margin:0 auto 8px;border:1px solid #e2e8f0;border-radius:6px;">`
+                    : '<div style="padding:18px;text-align:center;color:#94a3b8;border:1px dashed #cbd5e1;border-radius:6px;margin-bottom:8px;">Belum ada gambar. Pilih file gambar di bawah ini.</div>';
+                item.innerHTML = blockHeaderHtml + `
+                    ${imgPreview}
+                    <div class="field-group" style="margin-bottom:8px;">
+                        <label>Ganti / Pilih Gambar (PNG, JPG, GIF, BMP, TIFF — tersimpan di dalam DOCX, JATS &amp; HTML)</label>
+                        <input type="file" accept="image/png,image/jpeg,image/gif,image/bmp,image/tiff" onchange="setBlockImageFromFile('${secKey}', ${bIdx}, this)">
+                        ${imgSrc ? `<div style="margin-top:6px;"><button type="button" class="btn btn-outline btn-xs" onclick="clearBlockImage('${secKey}', ${bIdx})">🗑️ Hapus Gambar</button></div>` : ''}
+                    </div>
+                    <div class="field-group" style="margin-bottom:8px;">
+                        <label>Judul Gambar (Caption — otomatis di bawah gambar, bold pada "Gambar N.")</label>
+                        <input type="text" value="${escapeHtml(blk.caption || '')}" placeholder="Gambar 1. Distribusi responden berdasarkan kelompok umur" oninput="articleState.sections['${secKey}'][${bIdx}].caption = this.value">
+                    </div>
+                    <div class="field-group" style="margin-bottom:0;">
+                        <label>Teks Alternatif (Alt Text — untuk aksesibilitas HTML)</label>
+                        <input type="text" value="${escapeHtml(blk.alt || '')}" placeholder="Deskripsi singkat isi gambar" oninput="articleState.sections['${secKey}'][${bIdx}].alt = this.value">
                     </div>
                 `;
             } else if (blk.type === 'subheading' || blk.type === 'subheading_l3') {
@@ -2011,7 +2035,7 @@ function moveBlockToSection(srcSec, bIdx, targetSec) {
 
 function changeBlockLevel(secKey, bIdx, newType) {
     const blk = articleState.sections[secKey][bIdx];
-    if (!blk || blk.type === 'table') return;
+    if (!blk || blk.type === 'table' || blk.type === 'image') return;
     blk.type = newType;
     renderBodySectionsEditor({ sec: secKey, idx: bIdx });
 }
@@ -2284,6 +2308,16 @@ function addSectionBlock(secKey, type) {
                 ]
             ]
         });
+    } else if (type === 'image') {
+        articleState.sections[secKey].push({
+            type: 'image',
+            data: '',
+            src: '',
+            caption: `Gambar ${countAllFigures() + 1}. `,
+            alt: '',
+            width: 0,
+            height: 0
+        });
     } else {
         articleState.sections[secKey].push({ type: type, text: '' });
     }
@@ -2298,6 +2332,54 @@ function countAllTables() {
         });
     });
     return count;
+}
+
+function countAllFigures() {
+    let count = 0;
+    SECTION_KEYS.forEach(k => {
+        (articleState.sections[k] || []).forEach(b => {
+            if (b && b.type === 'image') count++;
+        });
+    });
+    return count;
+}
+
+function setBlockImageFromFile(secKey, bIdx, inputEl) {
+    const file = (inputEl && inputEl.files) ? inputEl.files[0] : null;
+    if (!file) return;
+    const blk = articleState.sections[secKey] && articleState.sections[secKey][bIdx];
+    if (!blk) return;
+
+    const applyImage = (dataUri, width, height) => {
+        blk.data = dataUri;
+        blk.src = '';
+        blk.filename = file.name;
+        blk.mime = file.type || 'image/png';
+        blk.ext = (String(file.name).split('.').pop() || 'png').toLowerCase();
+        blk.width = width || 0;
+        blk.height = height || 0;
+        renderBodySectionsEditor({ sec: secKey, idx: bIdx });
+        showToast('Gambar disisipkan. Panjang/isi caption dapat diubah di bawah pratinjau.', 'success');
+    };
+
+    const reader = new FileReader();
+    reader.onload = () => {
+        const dataUri = String(reader.result || '');
+        const probe = new Image();
+        probe.onload = () => applyImage(dataUri, probe.naturalWidth, probe.naturalHeight);
+        probe.onerror = () => applyImage(dataUri, 0, 0);
+        probe.src = dataUri;
+    };
+    reader.readAsDataURL(file);
+}
+
+function clearBlockImage(secKey, bIdx) {
+    const blk = articleState.sections[secKey] && articleState.sections[secKey][bIdx];
+    if (!blk) return;
+    blk.data = '';
+    blk.width = 0;
+    blk.height = 0;
+    renderBodySectionsEditor({ sec: secKey, idx: bIdx });
 }
 
 function removeSectionBlock(secKey, bIdx) {

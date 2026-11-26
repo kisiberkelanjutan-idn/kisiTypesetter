@@ -105,6 +105,8 @@ class JatsHtmlRenderer
                     }
                 } elseif ($child->localName === 'table-wrap') {
                     $directBodyBuffer .= self::renderTableWrap($child, $xpath);
+                } elseif ($child->localName === 'fig' || $child->localName === 'figure') {
+                    $directBodyBuffer .= self::renderFigureElement($child, $xpath);
                 } elseif ($child->localName === 'sec') {
                     if ($directBodyBuffer !== '') {
                         $tocItems[] = ['id' => 'kisi-sec-body', 'title' => 'Isi Artikel'];
@@ -657,6 +659,8 @@ JS;
                 }
             } elseif ($child->localName === 'table-wrap') {
                 $html .= self::renderTableWrap($child, $xpath);
+            } elseif ($child->localName === 'fig' || $child->localName === 'figure') {
+                $html .= self::renderFigureElement($child, $xpath);
             } elseif ($child->localName === 'sec') {
                 $subId = $child->getAttribute('id') ?: ($secId . '-sub');
                 $subId = 'kisi-' . preg_replace('/[^a-zA-Z0-9_-]/', '', $subId);
@@ -732,6 +736,50 @@ JS;
         }
 
         $html .= '</figure>';
+        return $html;
+    }
+
+    /**
+     * Render a JATS <fig> element (label, caption, graphic) into a responsive HTML <figure> with <img>
+     */
+    private static function renderFigureElement(DOMElement $figNode, DOMXPath $xpath): string
+    {
+        $label = self::getNodeText($xpath, './label', $figNode);
+        $captionTitle = self::getNodeText($xpath, './caption/title', $figNode)
+            ?: self::getNodeText($xpath, './caption/p', $figNode);
+        $altText = self::getNodeText($xpath, './alt-text', $figNode);
+
+        $graphic = $xpath->query('./graphic', $figNode)->item(0);
+        if (!$graphic instanceof DOMElement) {
+            $graphic = $xpath->query('./media', $figNode)->item(0);
+        }
+        if (!$graphic instanceof DOMElement) {
+            return '';
+        }
+
+        $href = $graphic->getAttributeNS('http://www.w3.org/1999/xlink', 'href')
+            ?: $graphic->getAttribute('xlink:href');
+        if (trim($href) === '') {
+            return '';
+        }
+
+        $alt = $altText !== '' ? $altText : ($captionTitle !== '' ? $captionTitle : $label);
+
+        $html = '<figure class="kisi-jats-figure">';
+        $html .= '<img src="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '" alt="'
+            . htmlspecialchars($alt, ENT_QUOTES, 'UTF-8') . '" loading="lazy">';
+        if ($label !== '' || $captionTitle !== '') {
+            $html .= '<figcaption class="kisi-jats-figure-caption">';
+            if ($label !== '') {
+                $html .= '<strong>' . htmlspecialchars(rtrim($label, '.') . '.', ENT_QUOTES, 'UTF-8') . '</strong> ';
+            }
+            if ($captionTitle !== '' && strcasecmp($captionTitle, $label) !== 0) {
+                $html .= htmlspecialchars($captionTitle, ENT_QUOTES, 'UTF-8');
+            }
+            $html .= '</figcaption>';
+        }
+        $html .= '</figure>';
+
         return $html;
     }
 
@@ -1136,6 +1184,24 @@ HTML;
     margin: 0 0 14px 0;
     text-align: justify;
     text-indent: 2em;
+}
+.kisi-jats-figure {
+    margin: 24px 0;
+    text-align: center;
+}
+.kisi-jats-figure img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 0 auto;
+    border-radius: 4px;
+}
+.kisi-jats-figure-caption {
+    margin-top: 8px;
+    font-size: 13.5px;
+    line-height: 1.5;
+    color: #0f172a;
+    text-align: center;
 }
 .kisi-jats-table-wrap {
     margin: 22px 0;
