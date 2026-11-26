@@ -36,6 +36,9 @@ class GeminiRestructurer
         $model = trim($model) !== '' ? trim($model) : 'gemini-2.5-flash';
         $isEnglishOnly = LanguageAuditor::isEnglishOnlyArticle($articleData);
 
+        $hasIdInput = trim((string) ($articleData['abstract_id']['raw'] ?? $articleData['abstract_id']['pendahuluan_metode'] ?? '')) !== ''
+            || trim((string) ($articleData['abstract_id']['hasil'] ?? '')) !== '';
+
         if ($isEnglishOnly) {
             $payloadForPrompt = [
                 'title_en' => $articleData['title_en'] ?? '',
@@ -44,20 +47,25 @@ class GeminiRestructurer
                 'abstract_en_current' => $articleData['abstract_en'] ?? [],
                 'referensi' => $articleData['referensi'] ?? [],
             ];
+            if ($hasIdInput) {
+                $payloadForPrompt['keywords_id'] = $articleData['keywords_id'] ?? '';
+                $payloadForPrompt['abstract_id_raw'] = $articleData['abstract_id']['raw'] ?? ($articleData['abstract_id']['pendahuluan_metode'] ?? '');
+                $payloadForPrompt['abstract_id_current'] = $articleData['abstract_id'] ?? [];
+            }
 
             $prompt = <<<PROMPT
-Anda adalah editor tata letak ilmiah untuk jurnal "Kisi Berkelanjutan: Sains Medis dan Kesehatan" (mode English-Only Form).
-Tugas Anda adalah merapikan metadata Bahasa Inggris, daftar pustaka Vancouver, & memecah abstrak Bahasa Inggris menjadi struktur 3 bagian TANPA mengubah substansi ilmiah dan TANPA menambahkan field Bahasa Indonesia (title_id / abstract_id / keywords_id tidak digunakan).
+Anda adalah editor tata letak ilmiah untuk jurnal "Kisi Berkelanjutan: Sains Medis dan Kesehatan" (mode English-Only JATS XML + Dukungan Abstrak PDF Indonesia).
+Tugas Anda adalah merapikan metadata Bahasa Inggris, daftar pustaka Vancouver, & memecah abstrak Bahasa Inggris menjadi struktur 3 bagian TANPA mengubah substansi ilmiah.
 
 Aturan ketat:
 1. Pecah abstrak Bahasa Inggris menjadi objek "abstract_en" berisi 3 bagian:
    - "intro_methods": Brief background, objective, study design/methods, population/sample, instruments, and statistical analysis.
    - "results": Key findings and statistical test outcomes (e.g., frequency, percentage, p-value).
    - "conclusions_recommendations": Conclusions and practical/research recommendations.
-2. Perbaiki ejaan akademik Bahasa Inggris pada "title_en" bila perlu tanpa mengubah makna, serta pastikan "keywords_en" dipisahkan dengan titik koma (; ) tanpa titik di akhir.
-3. Terapkan aturan baku spasi tunggal: dilarang ada spasi ganda (>= 2 spasi berturut-turut) di dalam paragraf maupun abstrak.
-4. Format seluruh entri array "referensi" ke gaya Vancouver (ICMJE) secara konsisten (tanpa nomor awalan `1.`, misalnya: "NamaBelakang Inisial, ... Judul. NamaJurnal. Tahun;Vol(No):Hal. doi:...").
-5. JANGAN membuat terjemahan Bahasa Indonesia (biarkan title_id, keywords_id, dan abstract_id kosong).
+2. Jika payload menyertakan input "abstract_id_raw" / "abstract_id_current" (untuk file PDF), pecah juga menjadi objek "abstract_id" ("pendahuluan_metode", "hasil", "kesimpulan_saran") tanpa mengarang terjemahan baru jika kosong.
+3. Rapikan "title_en" (tanpa menerjemahkan/membuat "title_id"), dan pastikan "keywords_en" (serta "keywords_id" jika ada) dipisahkan dengan titik koma (; ) tanpa titik di akhir.
+4. Terapkan aturan baku spasi tunggal: dilarang ada spasi ganda (>= 2 spasi berturut-turut) di dalam paragraf maupun abstrak.
+5. Format seluruh entri array "referensi" ke gaya Vancouver (ICMJE) secara konsisten (tanpa nomor awalan `1.`, misalnya: "NamaBelakang Inisial, ... Judul. NamaJurnal. Tahun;Vol(No):Hal. doi:...").
 
 Data input artikel (JSON):
 PROMPT;
@@ -147,9 +155,24 @@ PROMPT;
 
         if ($isEnglishOnly) {
             $articleData['title_id'] = '';
-            $articleData['keywords_id'] = '';
-            $articleData['sdgs_id'] = '';
-            $articleData['abstract_id'] = ['pendahuluan_metode' => '', 'hasil' => '', 'kesimpulan_saran' => '', 'raw' => ''];
+            if (!$hasIdInput) {
+                $articleData['keywords_id'] = '';
+                $articleData['abstract_id'] = ['pendahuluan_metode' => '', 'hasil' => '', 'kesimpulan_saran' => '', 'raw' => ''];
+            } else {
+                if (!empty($aiJson['keywords_id'])) {
+                    $articleData['keywords_id'] = rtrim(trim((string) $aiJson['keywords_id']), '.');
+                }
+                $abId = $aiJson['abstract_id'] ?? [];
+                if (!empty($abId['pendahuluan_metode'])) {
+                    $articleData['abstract_id']['pendahuluan_metode'] = trim((string) $abId['pendahuluan_metode']);
+                }
+                if (!empty($abId['hasil'])) {
+                    $articleData['abstract_id']['hasil'] = trim((string) $abId['hasil']);
+                }
+                if (!empty($abId['kesimpulan_saran'])) {
+                    $articleData['abstract_id']['kesimpulan_saran'] = trim((string) $abId['kesimpulan_saran']);
+                }
+            }
         } else {
             if (!empty($aiJson['title_id'])) {
                 $articleData['title_id'] = trim((string) $aiJson['title_id']);
@@ -210,17 +233,13 @@ PROMPT;
             return $articleData;
         }
 
-        $isEnglishOnly = LanguageAuditor::isEnglishOnlyArticle($articleData);
-
-        // Split Indonesian Abstract only when not in English-only mode
-        if (!$isEnglishOnly) {
-            $rawId = trim($articleData['abstract_id']['raw'] ?? $articleData['abstract_id']['pendahuluan_metode'] ?? '');
-            if ($rawId !== '' && trim($articleData['abstract_id']['hasil'] ?? '') === '') {
-                $splitId = self::heuristicSplitAbstract($rawId, 'id');
-                $articleData['abstract_id']['pendahuluan_metode'] = $splitId[0];
-                $articleData['abstract_id']['hasil'] = $splitId[1];
-                $articleData['abstract_id']['kesimpulan_saran'] = $splitId[2];
-            }
+        // Split Indonesian Abstract whenever provided in Studio (required for DOCX/PDF output even if JATS XML is English-only)
+        $rawId = trim($articleData['abstract_id']['raw'] ?? $articleData['abstract_id']['pendahuluan_metode'] ?? '');
+        if ($rawId !== '' && trim($articleData['abstract_id']['hasil'] ?? '') === '') {
+            $splitId = self::heuristicSplitAbstract($rawId, 'id');
+            $articleData['abstract_id']['pendahuluan_metode'] = $splitId[0];
+            $articleData['abstract_id']['hasil'] = $splitId[1];
+            $articleData['abstract_id']['kesimpulan_saran'] = $splitId[2];
         }
 
         // Split English Abstract if results & conclusions_recommendations are empty

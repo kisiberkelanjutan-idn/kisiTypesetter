@@ -798,6 +798,80 @@ assertTrue(
     'JatsHtmlRenderer::renderStandaloneReaderPage produces complete XML Galley reader page including Abstract and References'
 );
 
+// 14. Verify Hybrid Mode: Studio & DOCX/PDF include ID & EN abstracts + SDGs, while JATS XML stays English-Only (1 EN abstract, EN title, EN keywords, EN SDGs)
+$hybridArticle = $enFormArticle;
+$hybridArticle['abstract_id'] = [
+    'pendahuluan_metode' => '',
+    'hasil' => '',
+    'kesimpulan_saran' => '',
+    'raw' => 'Telemonitoring meningkatkan kepatuhan  kunjungan antenatal di daerah terpencil. Kami meneliti 120 ibu hamil secara kuasi-eksperimental. Hasil penelitian menunjukkan kunjungan antenatal meningkat signifikan sebesar 34%. Kesimpulan menunjukkan pemantauan digital mendukung keselamatan ibu.',
+];
+$hybridArticle['keywords_id'] = 'Kesehatan ibu; Kebidanan; Telemonitoring';
+$hybridArticle['sdgs_id'] = 'Penelitian ini berkontribusi pada pencapaian Tujuan Pembangunan Berkelanjutan (TPB/SDGs) Tujuan 3.';
+
+$hybridRestructured = GeminiRestructurer::restructureLocally($hybridArticle);
+assertTrue(
+    trim($hybridRestructured['abstract_id']['pendahuluan_metode'] ?? '') !== ''
+        && trim($hybridRestructured['abstract_id']['hasil'] ?? '') !== ''
+        && trim($hybridRestructured['abstract_id']['kesimpulan_saran'] ?? '') !== ''
+        && trim($hybridRestructured['abstract_en']['intro_methods'] ?? '') !== '',
+    'GeminiRestructurer splits both abstract_id (for PDF) and abstract_en (for PDF & JATS XML) when form_mode=en'
+);
+
+$hybridAudit = LanguageAuditor::audit($hybridRestructured);
+$hybridAuditFields = array_map(static fn ($it) => (string) ($it['field_path'] ?? ''), $hybridAudit['issues'] ?? []);
+assertTrue(
+    in_array('sections.pendahuluan.0.text', $hybridAuditFields, true),
+    'LanguageAuditor audits English body and Indonesian abstract fields cleanly in hybrid mode'
+);
+
+$tmpHybridDocx = tempnam(sys_get_temp_dir(), 'kisi_hybrid_') . '.docx';
+assertTrue(DocxGenerator::generate($hybridRestructured, $masterDocx, $tmpHybridDocx), 'DocxGenerator builds hybrid Vol 3+ DOCX (single EN title + ID & EN abstracts for PDF)');
+$hyZip = new ZipArchive();
+$hyDocXml = '';
+if ($hyZip->open($tmpHybridDocx) === true) {
+    $hyDocXml = (string) $hyZip->getFromName('word/document.xml');
+    $hyZip->close();
+}
+assertTrue(
+    substr_count($hyDocXml, 'Effectiveness of Community Midwifery Telemonitoring in Rural Maternal Care') === 1
+        && strpos($hyDocXml, '>ABSTRAK<') !== false
+        && strpos($hyDocXml, 'Telemonitoring meningkatkan kepatuhan') !== false
+        && strpos($hyDocXml, 'Kontribusi terhadap Target Pembangunan Berkelanjutan (TPB/SDGs)') !== false
+        && strpos($hyDocXml, '>ABSTRACT<') !== false
+        && strpos($hyDocXml, 'Contribution to Sustainable Development Goals (SDGs)') !== false,
+    'Hybrid Vol 3+ DOCX/PDF includes single English title plus both Indonesian ABSTRAK/TPB-SDGs and English ABSTRACT/SDGs'
+);
+
+$hyParsed = DocxParser::parse($tmpHybridDocx);
+assertTrue(
+    strpos($hyParsed['title_en'] ?? '', 'Effectiveness of Community Midwifery Telemonitoring') !== false
+        && trim((string) ($hyParsed['title_id'] ?? '')) === ''
+        && strpos($hyParsed['abstract_id']['pendahuluan_metode'] ?? '', 'Telemonitoring meningkatkan kepatuhan') !== false
+        && strpos($hyParsed['abstract_en']['intro_methods'] ?? '', 'Telemonitoring improves antenatal follow-up') !== false
+        && strpos($hyParsed['sdgs_id'] ?? '', 'Tujuan Pembangunan Berkelanjutan') !== false
+        && strpos($hyParsed['sdgs_en'] ?? '', 'Sustainable Development Goals') !== false,
+    'DocxParser round-trips single EN title and both ID & EN abstracts/SDGs from hybrid Vol 3+ DOCX'
+);
+@unlink($tmpHybridDocx);
+
+$hybridJatsXml = JatsXmlGenerator::generate($hybridRestructured);
+$hybridDom = new DOMDocument();
+assertTrue($hybridDom->loadXML($hybridJatsXml) !== false, 'JatsXmlGenerator generates well-formed XML in hybrid mode');
+assertTrue(
+    preg_match('/<article\b[^>]*\bxml:lang="en"/i', $hybridJatsXml) === 1
+        && strpos($hybridJatsXml, '<trans-title-group') === false
+        && strpos($hybridJatsXml, '<abstract xml:lang="id">') === false
+        && strpos($hybridJatsXml, '<trans-abstract') === false
+        && strpos($hybridJatsXml, '<abstract xml:lang="en">') !== false
+        && strpos($hybridJatsXml, '<kwd-group xml:lang="id">') === false
+        && strpos($hybridJatsXml, '<kwd-group xml:lang="en">') !== false
+        && strpos($hybridJatsXml, 'Telemonitoring meningkatkan kepatuhan') === false
+        && strpos($hybridJatsXml, 'Tujuan Pembangunan Berkelanjutan') === false
+        && strpos($hybridJatsXml, 'Contribution to Sustainable Development Goals (SDGs)') !== false,
+    'Hybrid JATS XML outputs strictly 1 English abstract, English title, English keywords, and English SDGs (no ID metadata)'
+);
+
 if ($failures > 0) {
     fwrite(STDERR, "\nTotal test failures: {$failures}\n");
     exit(1);

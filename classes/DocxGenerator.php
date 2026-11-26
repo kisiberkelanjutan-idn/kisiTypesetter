@@ -330,13 +330,13 @@ class DocxGenerator
             return;
         }
 
-        // --- F. Row 7 Cell 1: Indonesian Structured Abstract (or remove empty ID ABSTRAK rows 6..7 in English-only mode) ---
+        // --- F. Row 7 Cell 1: Indonesian Structured Abstract (always rendered in DOCX/PDF when filled, even if JATS XML is English-only) ---
         $isVol3Plus = LanguageAuditor::isVolume3Plus($data['volume'] ?? '1');
         $sdgsId = trim((string) ($data['sdgs_id'] ?? ''));
         $sdgsEn = trim((string) ($data['sdgs_en'] ?? ''));
 
         $abEnRow = $rows->item(8);
-        $hasIdAbsData = !$isEnglishOnly && (
+        $hasIdAbsData = (
             trim($data['abstract_id']['pendahuluan_metode'] ?? '') !== ''
             || trim($data['abstract_id']['hasil'] ?? '') !== ''
             || trim($data['abstract_id']['kesimpulan_saran'] ?? '') !== ''

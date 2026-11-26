@@ -645,16 +645,16 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
         </div>
         <div class="row-2">
             <div class="field-group" style="margin-bottom:0;">
-                <label>Bahasa Formulir Naskah Studio &amp; Ekspor <span class="hint">(Default: English-Only)</span></label>
+                <label>Mode Output JATS XML &amp; Bahasa Formulir <span class="hint">(Studio &amp; PDF tetap tampilkan Abstrak ID &amp; EN)</span></label>
                 <select id="cfg_formLanguageMode" onchange="applyFormLanguageMode(); syncStateFromInputs();">
-                    <option value="en" <?php echo (($settings['formLanguageMode'] ?? 'en') === 'en') ? 'selected' : ''; ?>>🇬🇧 English-Only Form (Hanya Form Bahasa Inggris — Form ID Disembunyikan)</option>
-                    <option value="auto" <?php echo (($settings['formLanguageMode'] ?? 'en') === 'auto') ? 'selected' : ''; ?>>🔄 Otomatis Ikuti Locale / Konten Naskah</option>
-                    <option value="bilingual" <?php echo (($settings['formLanguageMode'] ?? 'en') === 'bilingual') ? 'selected' : ''; ?>>🇮🇩🇬🇧 Bilingual Form (Indonesia &amp; Inggris — Arsip Vol 1–2)</option>
+                    <option value="en" <?php echo (($settings['formLanguageMode'] ?? 'en') === 'en') ? 'selected' : ''; ?>>🇬🇧 JATS English-Only (1 Abstrak, Judul, Keyword &amp; SDGs EN — Studio/PDF tetap ID &amp; EN)</option>
+                    <option value="auto" <?php echo (($settings['formLanguageMode'] ?? 'en') === 'auto') ? 'selected' : ''; ?>>🔄 Otomatis Ikuti Konten JATS</option>
+                    <option value="bilingual" <?php echo (($settings['formLanguageMode'] ?? 'en') === 'bilingual') ? 'selected' : ''; ?>>🇮🇩🇬🇧 Bilingual Penuh (ID &amp; EN pada Studio, PDF &amp; JATS XML)</option>
                 </select>
             </div>
             <div class="field-group" style="margin-bottom:0;display:flex;align-items:flex-end;">
                 <div style="font-size:11.5px;color:var(--kisi-muted);background:#f8fafc;border:1px solid var(--kisi-border);padding:7px 10px;border-radius:7px;width:100%;">
-                    💡 Dalam mode <strong>English-Only</strong>, form Judul &amp; Abstrak Indonesia disembunyikan dan output DOCX/JATS XML memakai <code>xml:lang=&quot;en&quot;</code> penuh.
+                    💡 Dalam mode standar <strong>JATS English-Only</strong>, form Abstrak Indonesia tetap tersedia di Studio agar muncul di file DOCX/PDF, sedangkan output JATS XML hanya memuat 1 abstrak, judul, kata kunci, &amp; SDGs berbahasa Inggris (<code>xml:lang=&quot;en&quot;</code>).
                 </div>
             </div>
         </div>
@@ -901,7 +901,7 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
             <!-- Content Tabs -->
             <div class="tabs" style="margin-top:12px;flex-wrap:wrap;">
                 <button type="button" class="tab-btn active" data-tab="tab-abstracts" onclick="switchTab('tab-abstracts', this)">
-                    1. Abstrak <span id="absTabStatusBadge" style="font-weight:500;"><?php echo $initialEnOnly ? '(English Only)' : '(ID &amp; EN)'; ?></span>
+                    1. Abstrak <span id="absTabStatusBadge" style="font-weight:500;"><?php echo $initialEnOnly ? '(ID PDF &amp; EN JATS)' : '(ID &amp; EN)'; ?></span>
                 </button>
                 <button type="button" class="tab-btn" data-tab="tab-body" onclick="switchTab('tab-body', this)">
                     2. Isi &amp; Tabel Kesehatan
@@ -923,11 +923,11 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
                     📄 <strong>Mode Tanpa Abstrak Aktif (<span id="noAbstractCatLabel">DATA REPORT / LETTER</span>):</strong>
                     Sesuai template resmi, kategori ini tidak menampilkan kolom <em>ABSTRAK</em>, <em>ABSTRACT</em>, maupun <em>Kata Kunci / Keywords</em> pada DOCX maupun JATS XML. Silakan langsung sunting isi naskah di <strong>Tab 2 (Isi &amp; Tabel)</strong>.
                 </div>
-                <div id="abstractInputsGrid" class="row-2"<?php echo $initialEnOnly ? ' style="grid-template-columns:1fr;"' : ''; ?>>
-                    <!-- Indonesian Abstract -->
-                    <div id="abstractIdCard" style="background:#f8fafc;padding:10px 12px;border-radius:8px;border:1px solid var(--kisi-border);<?php echo $initialEnOnly ? 'display:none;' : ''; ?>">
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                            <h3 style="margin:0;font-size:13px;color:var(--kisi-navy);">🇮🇩 ABSTRAK (Indonesia)</h3>
+                <div id="abstractInputsGrid" class="row-2">
+                    <!-- Indonesian Abstract (Always visible in Studio for DOCX/PDF rendering) -->
+                    <div id="abstractIdCard" style="background:#f8fafc;padding:10px 12px;border-radius:8px;border:1px solid var(--kisi-border);">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:6px;flex-wrap:wrap;">
+                            <h3 style="margin:0;font-size:13px;color:var(--kisi-navy);">🇮🇩 ABSTRAK (Indonesia — <span id="abstractIdRoleHint"><?php echo $initialEnOnly ? 'Khusus DOCX/PDF' : 'PDF &amp; JATS XML'; ?></span>)</h3>
                             <span id="idAbsWordCount" class="word-badge">0 kata</span>
                         </div>
                         <div class="field-group">
@@ -1192,7 +1192,7 @@ function applyArticleTypeLayoutMode(userInitiated = false) {
         absGrid.style.pointerEvents = noAbs ? 'none' : 'auto';
     }
     if (absBadge) {
-        const modeLabel = (getActiveFormLanguageModeJs() === 'en') ? '(English Only)' : '(ID & EN)';
+        const modeLabel = (getActiveFormLanguageModeJs() === 'en') ? '(ID PDF & EN JATS)' : '(ID & EN)';
         absBadge.textContent = noAbs ? '(Tanpa Abstrak)' : modeLabel;
     }
 
@@ -1354,7 +1354,7 @@ function applyVolumeTemplateMode() {
     }
     if (datesRow) datesRow.style.display = vol3Plus ? 'grid' : 'none';
     if (rolesGrp) rolesGrp.style.display = vol3Plus ? 'block' : 'none';
-    if (sdgsIdGrp) sdgsIdGrp.style.display = (vol3Plus && getActiveFormLanguageModeJs() !== 'en') ? 'block' : 'none';
+    if (sdgsIdGrp) sdgsIdGrp.style.display = vol3Plus ? 'block' : 'none';
     if (sdgsEnGrp) sdgsEnGrp.style.display = vol3Plus ? 'block' : 'none';
     if (retNoteGrp) retNoteGrp.style.opacity = vol3Plus ? '0.45' : '1';
     if (retNoteHint) retNoteHint.textContent = vol3Plus ? '(Otomatis dihapus di Vol 3+)' : '(Vol 1–2 Arsip)';
@@ -1387,6 +1387,7 @@ function applyFormLanguageMode() {
     const titleEnLbl = document.getElementById('titleEnLabel');
     const absGrid = document.getElementById('abstractInputsGrid');
     const absIdCard = document.getElementById('abstractIdCard');
+    const absIdRoleHint = document.getElementById('abstractIdRoleHint');
     const absEnHead = document.getElementById('abstractEnHeading');
     const absBadge = document.getElementById('absTabStatusBadge');
 
@@ -1398,15 +1399,19 @@ function applyFormLanguageMode() {
             : 'Judul Artikel (Inggris — Italic 14pt)';
     }
 
-    if (absIdCard) absIdCard.style.display = enOnly ? 'none' : 'block';
-    if (absGrid) absGrid.style.gridTemplateColumns = enOnly ? '1fr' : '';
+    // Keep Indonesian Abstract card visible in Studio because DOCX/PDF retains Indonesian abstract!
+    if (absIdCard) absIdCard.style.display = 'block';
+    if (absGrid) absGrid.style.gridTemplateColumns = '';
+    if (absIdRoleHint) {
+        absIdRoleHint.textContent = enOnly ? 'Khusus DOCX/PDF' : 'PDF & JATS XML';
+    }
     if (absEnHead) {
         absEnHead.textContent = enOnly
-            ? '🇬🇧 ABSTRACT (English Only)'
+            ? '🇬🇧 ABSTRACT (English — PDF & JATS XML)'
             : '🇬🇧 ABSTRACT (English — Italic)';
     }
     if (absBadge && !isNoAbstractType(articleState.article_type)) {
-        absBadge.textContent = enOnly ? '(English Only)' : '(ID & EN)';
+        absBadge.textContent = enOnly ? '(ID PDF & EN JATS)' : '(ID & EN)';
     }
 }
 
@@ -2618,43 +2623,30 @@ async function sendParseDocxRequest(formData) {
         if (p.volume && !articleState.volume) articleState.volume = p.volume;
         if (p.issue_number && !articleState.issue_number) articleState.issue_number = p.issue_number;
         if (p.doi && !articleState.doi) articleState.doi = p.doi;
+        if (p.keywords_id && !articleState.keywords_id) articleState.keywords_id = p.keywords_id;
         if (enOnly) {
             const parsedEnKw = p.keywords_en || p.keywords_id || '';
             if (parsedEnKw && !articleState.keywords_en) articleState.keywords_en = parsedEnKw;
+        } else if (p.keywords_en && !articleState.keywords_en) {
+            articleState.keywords_en = p.keywords_en;
+        }
+        if (p.sdgs_id && !articleState.sdgs_id) articleState.sdgs_id = p.sdgs_id;
+        if (enOnly) {
             const parsedEnSdgs = p.sdgs_en || p.sdgs_id || '';
             if (parsedEnSdgs && !articleState.sdgs_en) articleState.sdgs_en = parsedEnSdgs;
-            articleState.keywords_id = '';
-            articleState.sdgs_id = '';
-        } else {
-            if (p.keywords_id && !articleState.keywords_id) articleState.keywords_id = p.keywords_id;
-            if (p.keywords_en && !articleState.keywords_en) articleState.keywords_en = p.keywords_en;
-            if (p.sdgs_id && !articleState.sdgs_id) articleState.sdgs_id = p.sdgs_id;
-            if (p.sdgs_en && !articleState.sdgs_en) articleState.sdgs_en = p.sdgs_en;
+        } else if (p.sdgs_en && !articleState.sdgs_en) {
+            articleState.sdgs_en = p.sdgs_en;
         }
         if (p.authors && p.authors.length > 0 && (!articleState.authors || !articleState.authors[0].name)) {
             articleState.authors = p.authors;
             articleState.corresponding_name = p.corresponding_name || '';
             articleState.corresponding_email = p.corresponding_email || '';
         }
-        if (enOnly) {
-            articleState.abstract_id = { pendahuluan_metode: '', hasil: '', kesimpulan_saran: '', raw: '' };
-            if (p.abstract_en && (p.abstract_en.intro_methods || p.abstract_en.raw)) {
-                articleState.abstract_en = p.abstract_en;
-            } else if (p.abstract_id && (p.abstract_id.pendahuluan_metode || p.abstract_id.raw)) {
-                articleState.abstract_en = {
-                    intro_methods: p.abstract_id.pendahuluan_metode || p.abstract_id.raw || '',
-                    results: p.abstract_id.hasil || '',
-                    conclusions_recommendations: p.abstract_id.kesimpulan_saran || '',
-                    raw: p.abstract_id.raw || ''
-                };
-            }
-        } else {
-            if (p.abstract_id && (p.abstract_id.pendahuluan_metode || p.abstract_id.raw)) {
-                articleState.abstract_id = p.abstract_id;
-            }
-            if (p.abstract_en && (p.abstract_en.intro_methods || p.abstract_en.raw)) {
-                articleState.abstract_en = p.abstract_en;
-            }
+        if (p.abstract_id && (p.abstract_id.pendahuluan_metode || p.abstract_id.raw)) {
+            articleState.abstract_id = p.abstract_id;
+        }
+        if (p.abstract_en && (p.abstract_en.intro_methods || p.abstract_en.raw)) {
+            articleState.abstract_en = p.abstract_en;
         }
         articleState.sections = p.sections || articleState.sections;
         articleState.referensi = p.referensi || articleState.referensi;

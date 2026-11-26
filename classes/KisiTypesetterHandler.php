@@ -1107,10 +1107,8 @@ class KisiTypesetterHandler extends Handler
                     ? $kwId
                     : self::extractControlledVocabString($keywords, ['en', 'en_US', 'id', 'id_ID'], true);
             }
-            // English-only form mode: Indonesian submission fields are unused
+            // JATS XML English-only mode: keep single English title while preserving any Indonesian abstract/keywords for Studio & PDF
             $titleId = '';
-            $absIdRaw = '';
-            $kwId = '';
         } elseif ($titleId === '') {
             $fallbackTitle = self::cleanHtmlText(self::pickLocaleValue($titles, ['id', 'id_ID', 'en', 'en_US'], true));
             $titleId = $titleEn !== '' ? $titleEn : $fallbackTitle;
@@ -1238,54 +1236,33 @@ class KisiTypesetterHandler extends Handler
         if (!empty($docxData['footer_issue_line']) && ($ojsData['footer_issue_line'] ?? '') === '') {
             $ojsData['footer_issue_line'] = $docxData['footer_issue_line'];
         }
+        // Always keep Indonesian keywords/SDGs when extracted from DOCX (rendered on PDF/DOCX even if JATS XML is English-only)
+        if ($ojsData['keywords_id'] === '' && $docxData['keywords_id'] !== '') {
+            $ojsData['keywords_id'] = $docxData['keywords_id'];
+        }
         if ($enOnly) {
             if (($ojsData['keywords_en'] ?? '') === '') {
                 $ojsData['keywords_en'] = ($docxData['keywords_en'] ?? '') !== '' ? $docxData['keywords_en'] : ($docxData['keywords_id'] ?? '');
             }
-            $ojsData['keywords_id'] = '';
-            if (empty($ojsData['sdgs_en'])) {
-                $ojsData['sdgs_en'] = !empty($docxData['sdgs_en']) ? $docxData['sdgs_en'] : ($docxData['sdgs_id'] ?? '');
-            }
-            $ojsData['sdgs_id'] = '';
-        } else {
-            if ($ojsData['keywords_id'] === '' && $docxData['keywords_id'] !== '') {
-                $ojsData['keywords_id'] = $docxData['keywords_id'];
-            }
-            if ($ojsData['keywords_en'] === '' && $docxData['keywords_en'] !== '') {
-                $ojsData['keywords_en'] = $docxData['keywords_en'];
-            }
-            if (!empty($docxData['sdgs_id'])) {
-                $ojsData['sdgs_id'] = $docxData['sdgs_id'];
-            }
-            if (!empty($docxData['sdgs_en'])) {
-                $ojsData['sdgs_en'] = $docxData['sdgs_en'];
-            }
+        } elseif ($ojsData['keywords_en'] === '' && $docxData['keywords_en'] !== '') {
+            $ojsData['keywords_en'] = $docxData['keywords_en'];
+        }
+        if (!empty($docxData['sdgs_id'])) {
+            $ojsData['sdgs_id'] = $docxData['sdgs_id'];
+        }
+        if (!empty($docxData['sdgs_en'])) {
+            $ojsData['sdgs_en'] = $docxData['sdgs_en'];
+        } elseif ($enOnly && empty($ojsData['sdgs_en']) && !empty($docxData['sdgs_id'])) {
+            $ojsData['sdgs_en'] = $docxData['sdgs_id'];
         }
 
         if (!LanguageAuditor::isNoAbstractArticleType((string) ($ojsData['article_type'] ?? ''))) {
-            $hasDocxEn = !empty($docxData['abstract_en']['results'])
-                || trim((string) ($docxData['abstract_en']['intro_methods'] ?? '')) !== ''
-                || trim((string) ($docxData['abstract_en']['conclusions_recommendations'] ?? '')) !== '';
-            if ($enOnly) {
-                $ojsData['abstract_id'] = ['pendahuluan_metode' => '', 'hasil' => '', 'kesimpulan_saran' => '', 'raw' => ''];
-                if ($hasDocxEn && (!empty($docxData['abstract_en']['results']) || trim((string) ($ojsData['abstract_en']['intro_methods'] ?? '')) === '')) {
-                    $ojsData['abstract_en'] = $docxData['abstract_en'];
-                } elseif (trim((string) ($ojsData['abstract_en']['intro_methods'] ?? '')) === '' && !empty($docxData['abstract_id']['pendahuluan_metode'])) {
-                    $ojsData['abstract_en'] = [
-                        'intro_methods' => (string) ($docxData['abstract_id']['pendahuluan_metode'] ?? ''),
-                        'results' => (string) ($docxData['abstract_id']['hasil'] ?? ''),
-                        'conclusions_recommendations' => (string) ($docxData['abstract_id']['kesimpulan_saran'] ?? ''),
-                        'raw' => (string) ($docxData['abstract_id']['raw'] ?? ''),
-                    ];
-                }
-            } else {
-                // If DOCX has structured abstract, prefer DOCX's structured abstract
-                if (!empty($docxData['abstract_id']['hasil']) || $ojsData['abstract_id']['pendahuluan_metode'] === '') {
-                    $ojsData['abstract_id'] = $docxData['abstract_id'];
-                }
-                if (!empty($docxData['abstract_en']['results']) || $ojsData['abstract_en']['intro_methods'] === '') {
-                    $ojsData['abstract_en'] = $docxData['abstract_en'];
-                }
+            // If DOCX has structured abstract, prefer DOCX's structured abstract for both PDF (ID & EN) and JATS XML (EN)
+            if (!empty($docxData['abstract_id']['hasil']) || ($ojsData['abstract_id']['pendahuluan_metode'] ?? '') === '') {
+                $ojsData['abstract_id'] = $docxData['abstract_id'];
+            }
+            if (!empty($docxData['abstract_en']['results']) || ($ojsData['abstract_en']['intro_methods'] ?? '') === '') {
+                $ojsData['abstract_en'] = $docxData['abstract_en'];
             }
         }
 
