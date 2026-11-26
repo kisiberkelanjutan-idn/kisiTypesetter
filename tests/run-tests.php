@@ -758,12 +758,14 @@ $complexHtml = JatsHtmlRenderer::renderFullTextHtml($complexExternalXml, [
 ]);
 assertTrue(
     strpos($complexHtml, 'id="kisi-sec-abstract"') !== false
+        && strpos($complexHtml, 'class="kisi-jats-digest-wrapper article-fulltext"') !== false
+        && strpos($complexHtml, 'article-section-title') !== false
         && strpos($complexHtml, 'id="kisi-abs-pane-en"') !== false
         && strpos($complexHtml, 'id="kisi-abs-pane-id"') === false
         && strpos($complexHtml, 'Maternal follow-up in') !== false
         && strpos($complexHtml, 'adherence rose') !== false
         && strpos($complexHtml, 'Telemedicine; Maternal Health') !== false,
-    'JatsHtmlRenderer renders BOM/prefixed/entity-rich/nested-sec JATS XML and classifies untagged English abstract cleanly without ID tab'
+    'JatsHtmlRenderer renders BOM/prefixed/entity-rich/nested-sec JATS XML, smkTheme hooks, and classifies untagged English abstract cleanly without ID tab'
 );
 
 $extractedMap = JatsHtmlRenderer::extractAbstractTextsByLocale($complexExternalXml);

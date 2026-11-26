@@ -197,7 +197,7 @@ class JatsHtmlRenderer
 
         $css = self::getFullTextCss();
         $fullHtml = $css
-            . '<div id="kisi-jats-fulltext-container" class="kisi-jats-digest-wrapper">'
+            . '<div id="kisi-jats-fulltext-container" class="kisi-jats-digest-wrapper article-fulltext">'
             . $metaBarHtml
             . $tocHtml
             . '<div class="kisi-jats-article-body">'
@@ -647,7 +647,7 @@ JS;
             if ($child->localName === 'title') {
                 $t = trim($child->textContent);
                 if ($t !== '') {
-                    $hClass = ($headingLevel === 2) ? 'kisi-jats-h2' : 'kisi-jats-h3';
+                    $hClass = ($headingLevel === 2) ? 'kisi-jats-h2 article-section-title' : 'kisi-jats-h3 article-subsection-title';
                     $html .= '<' . $hTag . ' class="' . $hClass . '">' . htmlspecialchars($t, ENT_QUOTES, 'UTF-8') . '</' . $hTag . '>';
                 }
             } elseif ($child->localName === 'p') {
@@ -792,7 +792,7 @@ JS;
     private static function renderReferencesSection($refNodes, DOMXPath $xpath, string $title): string
     {
         $html = '<section id="kisi-sec-references" class="kisi-jats-section">';
-        $html .= '<h2 class="kisi-jats-h2">' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</h2>';
+        $html .= '<h2 class="kisi-jats-h2 article-section-title">' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</h2>';
         $html .= '<ol class="kisi-jats-ref-list">';
 
         foreach ($refNodes as $ref) {

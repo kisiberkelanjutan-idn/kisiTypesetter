@@ -142,33 +142,60 @@ class KisiTypesetterPlugin extends GenericPlugin
         ]);
 
         if ($html !== '') {
-            if ($hideThemeAbstract) {
-                $html .= <<<HTML
+            $hideFlagJs = $hideThemeAbstract ? 'true' : 'false';
+            $html .= <<<HTML
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    var absSec = document.getElementById('kisi-sec-abstract');
-    var container = document.getElementById('kisi-jats-fulltext-container');
-    if (!absSec || !absSec.textContent || absSec.textContent.replace(/\s+/g, '').length < 20) return;
-    var defaultAbs = document.querySelectorAll('.obj_article_details .item.abstract, .article-details .article-abstract, section.item.abstract, .article-abstract');
-    var placedTop = false;
-    defaultAbs.forEach(function(el) {
-        if (!el.contains(absSec) && (!container || !el.contains(container))) {
-            if (!placedTop && el.parentNode && container && (el.compareDocumentPosition(container) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+(function() {
+    function syncKisiAbstractWithTheme() {
+        var absSec = document.getElementById('kisi-sec-abstract');
+        var container = document.getElementById('kisi-jats-fulltext-container');
+        if (!absSec || !container || !document.body.contains(absSec)) return;
+        if (!absSec.textContent || absSec.textContent.replace(/\s+/g, '').length < 20) return;
+
+        var isFrontiersTheme = !!document.querySelector('.obj_article_details.frontiers-layout, .frontiers-center-main');
+        if (isFrontiersTheme) {
+            var outlineList = document.querySelector('.frontiers-outline-list');
+            var kisiToc = container.querySelector('.kisi-jats-toc');
+            if (outlineList && kisiToc) {
+                kisiToc.style.display = 'none';
+            }
+        }
+
+        if (!{$hideFlagJs}) return;
+
+        var defaultAbs = document.querySelectorAll('#section-abstract, .obj_article_details .item.abstract, .article-details .article-abstract, section.item.abstract, .article-abstract');
+        var placedTop = false;
+        defaultAbs.forEach(function(el) {
+            if (!el || el.contains(absSec) || el.contains(container)) return;
+            if (!placedTop && el.parentNode) {
                 absSec.style.marginTop = '8px';
                 absSec.style.marginBottom = '18px';
                 el.parentNode.insertBefore(absSec, el);
                 placedTop = true;
             }
             var rect = absSec.getBoundingClientRect();
-            if (rect && rect.height > 10 && window.getComputedStyle(absSec).display !== 'none') {
+            if (document.body.contains(absSec) && rect && rect.height > 10 && window.getComputedStyle(absSec).display !== 'none') {
                 el.style.display = 'none';
+            } else {
+                el.style.display = '';
             }
-        }
-    });
-});
+        });
+        document.querySelectorAll('.frontiers-outline-list a[href="#section-abstract"]').forEach(function(a) {
+            a.setAttribute('href', '#kisi-sec-abstract');
+        });
+    }
+    function scheduleSync() {
+        setTimeout(syncKisiAbstractWithTheme, 50);
+        setTimeout(syncKisiAbstractWithTheme, 350);
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', scheduleSync);
+    } else {
+        scheduleSync();
+    }
+})();
 </script>
 HTML;
-            }
             $output .= $html;
             $this->fullTextRenderedInHook = true;
         }
@@ -259,27 +286,45 @@ document.addEventListener('DOMContentLoaded', function() {
         var hasValidAbs = !!(absSec && absSec.textContent && absSec.textContent.replace(/\s+/g, '').length >= 20);
         if (target.classList.contains('abstract')) {
             target.parentNode.insertBefore(wrapper, target.nextSibling);
-            if ({$hideFlagJs} && hasValidAbs && absSec.getBoundingClientRect().height > 10) {
-                target.style.display = 'none';
-            }
+            setTimeout(function() {
+                if ({$hideFlagJs} && hasValidAbs && document.body.contains(absSec) && absSec.getBoundingClientRect().height > 10) {
+                    target.style.display = 'none';
+                }
+            }, 60);
         } else {
             target.appendChild(wrapper);
-            if ({$hideFlagJs} && hasValidAbs) {
-                var placedTop = false;
-                document.querySelectorAll('.obj_article_details .item.abstract, .article-details .article-abstract, section.item.abstract, .article-abstract').forEach(function(el) {
-                    if (!el.contains(wrapper)) {
-                        if (!placedTop && el.parentNode && (el.compareDocumentPosition(wrapper) & Node.DOCUMENT_POSITION_FOLLOWING)) {
-                            absSec.style.marginTop = '8px';
-                            absSec.style.marginBottom = '18px';
-                            el.parentNode.insertBefore(absSec, el);
-                            placedTop = true;
+            var syncFallback = function() {
+                var isFrontiersTheme = !!document.querySelector('.obj_article_details.frontiers-layout, .frontiers-center-main');
+                if (isFrontiersTheme && hasValidAbs) {
+                    var cm = document.querySelector('.frontiers-center-main');
+                    var ftw = document.getElementById('section-fulltext');
+                    if (cm && ftw && !cm.contains(wrapper)) ftw.appendChild(wrapper);
+                    var ol = document.querySelector('.frontiers-outline-list');
+                    var kt = wrapper.querySelector('.kisi-jats-toc');
+                    if (ol && kt) kt.style.display = 'none';
+                }
+                if ({$hideFlagJs} && hasValidAbs) {
+                    var placedTop = false;
+                    document.querySelectorAll('#section-abstract, .obj_article_details .item.abstract, .article-details .article-abstract, section.item.abstract, .article-abstract').forEach(function(el) {
+                        if (!el.contains(wrapper) && !el.contains(absSec)) {
+                            if (!placedTop && el.parentNode) {
+                                absSec.style.marginTop = '8px';
+                                absSec.style.marginBottom = '18px';
+                                el.parentNode.insertBefore(absSec, el);
+                                placedTop = true;
+                            }
+                            if (document.body.contains(absSec) && absSec.getBoundingClientRect().height > 10 && window.getComputedStyle(absSec).display !== 'none') {
+                                el.style.display = 'none';
+                            }
                         }
-                        if (absSec.getBoundingClientRect().height > 10 && window.getComputedStyle(absSec).display !== 'none') {
-                            el.style.display = 'none';
-                        }
-                    }
-                });
-            }
+                    });
+                    document.querySelectorAll('.frontiers-outline-list a[href="#section-abstract"]').forEach(function(a) {
+                        a.setAttribute('href', '#kisi-sec-abstract');
+                    });
+                }
+            };
+            setTimeout(syncFallback, 60);
+            setTimeout(syncFallback, 350);
         }
     }
 });
@@ -530,14 +575,24 @@ HTML;
         $titleKeys = array_keys(array_filter((array) $publication->getData('title'), static fn ($v) => trim((string) $v) !== ''));
 
         $targets = [];
+        $activeUiLocale = '';
+        if (class_exists('\PKP\facades\Locale') && method_exists('\PKP\facades\Locale', 'getLocale')) {
+            $activeUiLocale = trim((string) \PKP\facades\Locale::getLocale());
+        }
         if ($formLangMode === 'en') {
             foreach ($titleKeys as $tk) {
                 if (stripos((string) $tk, 'en') === 0) {
                     $targets[] = (string) $tk;
                 }
             }
+            if ($pubLocale !== '') {
+                $targets[] = $pubLocale;
+            }
+            if ($activeUiLocale !== '') {
+                $targets[] = $activeUiLocale;
+            }
             if (empty($targets)) {
-                $targets[] = (stripos($pubLocale, 'en') === 0) ? $pubLocale : 'en';
+                $targets[] = 'en';
             }
         } else {
             if ($idHtml !== '') {
