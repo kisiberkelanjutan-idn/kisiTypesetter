@@ -804,10 +804,11 @@ $hybridArticle['abstract_id'] = [
     'pendahuluan_metode' => '',
     'hasil' => '',
     'kesimpulan_saran' => '',
-    'raw' => 'Telemonitoring meningkatkan kepatuhan  kunjungan antenatal di daerah terpencil. Kami meneliti 120 ibu hamil secara kuasi-eksperimental. Hasil penelitian menunjukkan kunjungan antenatal meningkat signifikan sebesar 34%. Kesimpulan menunjukkan pemantauan digital mendukung keselamatan ibu.',
+    'raw' => 'Telemonitoring meningkatkan kepatuhan kunjungan antenatal di daerah terpencil. Kami melakukan analisa terhadap 120 ibu hamil secara kuasi-eksperimental. Hasil penelitian menunjukkan kunjungan antenatal meningkat signifikan sebesar 34%. Kesimpulan menunjukkan pemantauan digital mendukung keselamatan ibu.',
 ];
 $hybridArticle['keywords_id'] = 'Kesehatan ibu; Kebidanan; Telemonitoring';
 $hybridArticle['sdgs_id'] = 'Penelitian ini berkontribusi pada pencapaian Tujuan Pembangunan Berkelanjutan (TPB/SDGs) Tujuan 3.';
+$hybridArticle['sections']['pendahuluan'][0]['text'] = 'Maternal care-seeking behaviour remains delayed in rural districts [1].';
 
 $hybridRestructured = GeminiRestructurer::restructureLocally($hybridArticle);
 assertTrue(
@@ -821,7 +822,9 @@ assertTrue(
 $hybridAudit = LanguageAuditor::audit($hybridRestructured);
 $hybridAuditFields = array_map(static fn ($it) => (string) ($it['field_path'] ?? ''), $hybridAudit['issues'] ?? []);
 assertTrue(
-    in_array('sections.pendahuluan.0.text', $hybridAuditFields, true),
+    in_array('abstract_id.pendahuluan_metode', $hybridAuditFields, true)
+        && in_array('sections.pendahuluan.0.text', $hybridAuditFields, true)
+        && !in_array('title_id', $hybridAuditFields, true),
     'LanguageAuditor audits English body and Indonesian abstract fields cleanly in hybrid mode'
 );
 

@@ -955,7 +955,7 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
                     <!-- English Abstract -->
                     <div id="abstractEnCard" style="background:#f8fafc;padding:10px 12px;border-radius:8px;border:1px solid var(--kisi-border);">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                            <h3 id="abstractEnHeading" style="margin:0;font-size:13px;color:var(--kisi-navy);"><?php echo $initialEnOnly ? '🇬🇧 ABSTRACT (English Only)' : '🇬🇧 ABSTRACT (English — Italic)'; ?></h3>
+                            <h3 id="abstractEnHeading" style="margin:0;font-size:13px;color:var(--kisi-navy);"><?php echo $initialEnOnly ? '🇬🇧 ABSTRACT (English — PDF &amp; JATS XML)' : '🇬🇧 ABSTRACT (English — Italic)'; ?></h3>
                             <span id="enAbsWordCount" class="word-badge">0 words</span>
                         </div>
                         <div class="field-group">
@@ -1365,16 +1365,11 @@ function getActiveFormLanguageModeJs() {
     const cfg = sel ? String(sel.value || 'en').toLowerCase() : String(articleState.form_mode || 'en').toLowerCase();
     if (cfg === 'en' || cfg === 'english') return 'en';
     if (cfg === 'bilingual' || cfg === 'id_en') return 'bilingual';
-    const hasIdData = !!(
-        (articleState.title_id && String(articleState.title_id).trim()) ||
-        (articleState.keywords_id && String(articleState.keywords_id).trim()) ||
-        (articleState.abstract_id && (
-            String(articleState.abstract_id.pendahuluan_metode || '').trim() ||
-            String(articleState.abstract_id.hasil || '').trim() ||
-            String(articleState.abstract_id.kesimpulan_saran || '').trim()
-        ))
+    const hasDualTitles = !!(
+        articleState.title_id && String(articleState.title_id).trim() &&
+        articleState.title_en && String(articleState.title_en).trim()
     );
-    return hasIdData ? 'bilingual' : 'en';
+    return hasDualTitles ? 'bilingual' : 'en';
 }
 
 function applyFormLanguageMode() {
@@ -2624,19 +2619,9 @@ async function sendParseDocxRequest(formData) {
         if (p.issue_number && !articleState.issue_number) articleState.issue_number = p.issue_number;
         if (p.doi && !articleState.doi) articleState.doi = p.doi;
         if (p.keywords_id && !articleState.keywords_id) articleState.keywords_id = p.keywords_id;
-        if (enOnly) {
-            const parsedEnKw = p.keywords_en || p.keywords_id || '';
-            if (parsedEnKw && !articleState.keywords_en) articleState.keywords_en = parsedEnKw;
-        } else if (p.keywords_en && !articleState.keywords_en) {
-            articleState.keywords_en = p.keywords_en;
-        }
+        if (p.keywords_en && !articleState.keywords_en) articleState.keywords_en = p.keywords_en;
         if (p.sdgs_id && !articleState.sdgs_id) articleState.sdgs_id = p.sdgs_id;
-        if (enOnly) {
-            const parsedEnSdgs = p.sdgs_en || p.sdgs_id || '';
-            if (parsedEnSdgs && !articleState.sdgs_en) articleState.sdgs_en = parsedEnSdgs;
-        } else if (p.sdgs_en && !articleState.sdgs_en) {
-            articleState.sdgs_en = p.sdgs_en;
-        }
+        if (p.sdgs_en && !articleState.sdgs_en) articleState.sdgs_en = p.sdgs_en;
         if (p.authors && p.authors.length > 0 && (!articleState.authors || !articleState.authors[0].name)) {
             articleState.authors = p.authors;
             articleState.corresponding_name = p.corresponding_name || '';

@@ -1097,15 +1097,23 @@ class KisiTypesetterHandler extends Handler
                 $fallbackTitle = self::cleanHtmlText(self::pickLocaleValue($titles, ['en', 'en_US', 'id', 'id_ID'], true));
                 $titleEn = $titleId !== '' ? $titleId : $fallbackTitle;
             }
-            if ($absEnRaw === '') {
-                $absEnRaw = $absIdRaw !== ''
-                    ? $absIdRaw
-                    : self::cleanHtmlText(self::pickLocaleValue($abstracts, ['en', 'en_US', 'id', 'id_ID'], true));
+            if ($absEnRaw === '' && $absIdRaw !== '' && LanguageAuditor::detectLanguage($absIdRaw) === 'en') {
+                $absEnRaw = $absIdRaw;
+                $absIdRaw = '';
+            } elseif ($absEnRaw === '' && $absIdRaw === '') {
+                $anyAbs = self::cleanHtmlText(self::pickLocaleValue($abstracts, ['en', 'en_US', 'id', 'id_ID'], true));
+                if ($anyAbs !== '' && LanguageAuditor::detectLanguage($anyAbs) === 'en') {
+                    $absEnRaw = $anyAbs;
+                }
             }
-            if ($kwEn === '') {
-                $kwEn = $kwId !== ''
-                    ? $kwId
-                    : self::extractControlledVocabString($keywords, ['en', 'en_US', 'id', 'id_ID'], true);
+            if ($kwEn === '' && $kwId !== '' && LanguageAuditor::detectLanguage($kwId) === 'en') {
+                $kwEn = $kwId;
+                $kwId = '';
+            } elseif ($kwEn === '' && $kwId === '') {
+                $anyKw = self::extractControlledVocabString($keywords, ['en', 'en_US', 'id', 'id_ID'], true);
+                if ($anyKw !== '' && LanguageAuditor::detectLanguage($anyKw) === 'en') {
+                    $kwEn = $anyKw;
+                }
             }
             // JATS XML English-only mode: keep single English title while preserving any Indonesian abstract/keywords for Studio & PDF
             $titleId = '';
@@ -1236,15 +1244,11 @@ class KisiTypesetterHandler extends Handler
         if (!empty($docxData['footer_issue_line']) && ($ojsData['footer_issue_line'] ?? '') === '') {
             $ojsData['footer_issue_line'] = $docxData['footer_issue_line'];
         }
-        // Always keep Indonesian keywords/SDGs when extracted from DOCX (rendered on PDF/DOCX even if JATS XML is English-only)
+        // Keep Indonesian & English keywords/SDGs strictly separated (ID for DOCX/PDF, EN for DOCX/PDF & JATS XML)
         if ($ojsData['keywords_id'] === '' && $docxData['keywords_id'] !== '') {
             $ojsData['keywords_id'] = $docxData['keywords_id'];
         }
-        if ($enOnly) {
-            if (($ojsData['keywords_en'] ?? '') === '') {
-                $ojsData['keywords_en'] = ($docxData['keywords_en'] ?? '') !== '' ? $docxData['keywords_en'] : ($docxData['keywords_id'] ?? '');
-            }
-        } elseif ($ojsData['keywords_en'] === '' && $docxData['keywords_en'] !== '') {
+        if (($ojsData['keywords_en'] ?? '') === '' && ($docxData['keywords_en'] ?? '') !== '') {
             $ojsData['keywords_en'] = $docxData['keywords_en'];
         }
         if (!empty($docxData['sdgs_id'])) {
@@ -1252,8 +1256,6 @@ class KisiTypesetterHandler extends Handler
         }
         if (!empty($docxData['sdgs_en'])) {
             $ojsData['sdgs_en'] = $docxData['sdgs_en'];
-        } elseif ($enOnly && empty($ojsData['sdgs_en']) && !empty($docxData['sdgs_id'])) {
-            $ojsData['sdgs_en'] = $docxData['sdgs_id'];
         }
 
         if (!LanguageAuditor::isNoAbstractArticleType((string) ($ojsData['article_type'] ?? ''))) {
@@ -1288,17 +1290,10 @@ class KisiTypesetterHandler extends Handler
             return 'bilingual';
         }
         if ($configured === 'auto') {
-            $hasIdSignals = trim((string) ($signals['title_id'] ?? '')) !== ''
-                || trim((string) ($signals['abs_id'] ?? '')) !== ''
-                || trim((string) ($signals['kw_id'] ?? '')) !== '';
-            if ($hasIdSignals) {
+            $hasDualTitles = trim((string) ($signals['title_id'] ?? '')) !== ''
+                && trim((string) ($signals['title_en'] ?? '')) !== '';
+            if ($hasDualTitles) {
                 return 'bilingual';
-            }
-            if ($context && method_exists($context, 'getSupportedFormLocales')) {
-                $formLocales = array_map('strtolower', (array) $context->getSupportedFormLocales());
-                if ((in_array('id', $formLocales, true) || in_array('id_id', $formLocales, true)) && count($formLocales) > 1) {
-                    return 'bilingual';
-                }
             }
         }
         return 'en';

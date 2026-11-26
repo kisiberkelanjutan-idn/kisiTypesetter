@@ -378,11 +378,13 @@ class DocxGenerator
                     $abIdCell->appendChild(self::createStyledPara($dom, '', ['jc' => 'both']));
                 }
 
-                $pKwId = self::createStyledPara($dom, '', ['jc' => 'both']);
-                $pKwId->appendChild(self::createRun($dom, 'Kata Kunci', ['bold' => true]));
-                $pKwId->appendChild(self::createRun($dom, ': ' . $kwId . '.', []));
-                $abIdCell->appendChild($pKwId);
-                $abIdCell->appendChild(self::createStyledPara($dom, '', ['jc' => 'both']));
+                if ($kwId !== '') {
+                    $pKwId = self::createStyledPara($dom, '', ['jc' => 'both']);
+                    $pKwId->appendChild(self::createRun($dom, 'Kata Kunci', ['bold' => true]));
+                    $pKwId->appendChild(self::createRun($dom, ': ' . $kwId . '.', []));
+                    $abIdCell->appendChild($pKwId);
+                    $abIdCell->appendChild(self::createStyledPara($dom, '', ['jc' => 'both']));
+                }
             }
 
             // Vol 3+: Insert full-width shaded (#E8E8E8) SDGs Indonesian block between ABSTRAK and ABSTRACT rows
@@ -446,11 +448,13 @@ class DocxGenerator
                 $abEnCell->appendChild(self::createStyledPara($dom, '', ['italic' => true, 'jc' => 'both']));
             }
 
-            $pKwEn = self::createStyledPara($dom, '', ['italic' => true, 'jc' => 'both']);
-            $pKwEn->appendChild(self::createRun($dom, 'Keywords', ['bold' => true, 'italic' => true]));
-            $pKwEn->appendChild(self::createRun($dom, ': ' . $kwEn . '.', ['italic' => true]));
-            $abEnCell->appendChild($pKwEn);
-            $abEnCell->appendChild(self::createStyledPara($dom, '', ['italic' => true, 'jc' => 'both']));
+            if ($kwEn !== '') {
+                $pKwEn = self::createStyledPara($dom, '', ['italic' => true, 'jc' => 'both']);
+                $pKwEn->appendChild(self::createRun($dom, 'Keywords', ['bold' => true, 'italic' => true]));
+                $pKwEn->appendChild(self::createRun($dom, ': ' . $kwEn . '.', ['italic' => true]));
+                $abEnCell->appendChild($pKwEn);
+                $abEnCell->appendChild(self::createStyledPara($dom, '', ['italic' => true, 'jc' => 'both']));
+            }
 
             if ($isVol3Plus && $sdgsEn !== '') {
                 $abEnCell->appendChild(self::createStyledPara(
