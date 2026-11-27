@@ -332,12 +332,72 @@ class DocxGenerator
             $corrCell->appendChild(self::createStyledPara($dom, $corrLine, ['sz' => '22', 'italic' => true]));
         }
 
-        // For DATA REPORT & LETTER: remove ABSTRAK/ABSTRACT rows (rows 5..8) so front-matter ends after Corresponding Author
+        // For DATA REPORT & LETTER: the narrative ABSTRAK/ABSTRACT rows (6..8) are removed so front-matter
+        // ends after Corresponding Author, but Keywords and the TPB/SDGs contribution statement stay
+        // mandatory and are printed as full-width rows cloned from the gridSpan=2 English abstract row.
         if (LanguageAuditor::isNoAbstractArticleType($articleType)) {
-            for ($ri = $rows->length - 1; $ri >= 5; $ri--) {
+            $metaRowTemplate = $rows->item(8);
+            for ($ri = $rows->length - 1; $ri >= 6; $ri--) {
                 $rowNode = $rows->item($ri);
                 if ($rowNode instanceof DOMElement && $rowNode->parentNode === $tbl) {
                     $tbl->removeChild($rowNode);
+                }
+            }
+
+            if ($metaRowTemplate instanceof DOMElement) {
+                $isVol3Plus = LanguageAuditor::isVolume3Plus($data['volume'] ?? '1');
+
+                $appendMetaRow = static function (array $paras) use ($dom, $xpath, $tbl, $metaRowTemplate): void {
+                    $newRow = $metaRowTemplate->cloneNode(true);
+                    if (!($newRow instanceof DOMElement)) {
+                        return;
+                    }
+                    $cell = $xpath->query('./w:tc[1]', $newRow)->item(0);
+                    if (!($cell instanceof DOMElement)) {
+                        return;
+                    }
+                    self::clearCellParagraphs($cell, $xpath);
+                    foreach ($paras as $para) {
+                        if ($para instanceof DOMElement) {
+                            $cell->appendChild($para);
+                        }
+                    }
+                    $cell->appendChild(self::createStyledPara($dom, '', []));
+                    $tbl->appendChild($newRow);
+                };
+
+                $kwId = rtrim(trim((string) ($data['keywords_id'] ?? '')), '.');
+                $sdgsId = trim((string) ($data['sdgs_id'] ?? ''));
+                $idParas = [];
+                if ($kwId !== '') {
+                    $pKwId = self::createStyledPara($dom, '', ['jc' => 'both']);
+                    $pKwId->appendChild(self::createRun($dom, 'Kata Kunci', ['bold' => true]));
+                    $pKwId->appendChild(self::createRun($dom, ': ' . $kwId . '.', []));
+                    $idParas[] = $pKwId;
+                }
+                if ($isVol3Plus && $sdgsId !== '') {
+                    $idParas[] = self::createStyledPara($dom, 'Kontribusi terhadap Target Pembangunan Berkelanjutan (TPB/SDGs)', ['bold' => true]);
+                    $idParas[] = self::createStyledPara($dom, $sdgsId, ['jc' => 'both']);
+                }
+                if (!empty($idParas)) {
+                    $appendMetaRow($idParas);
+                }
+
+                $kwEn = rtrim(trim((string) ($data['keywords_en'] ?? '')), '.');
+                $sdgsEn = trim((string) ($data['sdgs_en'] ?? ''));
+                $enParas = [];
+                if ($kwEn !== '') {
+                    $pKwEn = self::createStyledPara($dom, '', ['italic' => true, 'jc' => 'both']);
+                    $pKwEn->appendChild(self::createRun($dom, 'Keywords', ['bold' => true, 'italic' => true]));
+                    $pKwEn->appendChild(self::createRun($dom, ': ' . $kwEn . '.', ['italic' => true]));
+                    $enParas[] = $pKwEn;
+                }
+                if ($isVol3Plus && $sdgsEn !== '') {
+                    $enParas[] = self::createStyledPara($dom, 'Contribution to Sustainable Development Goals (SDGs)', ['bold' => true, 'italic' => true]);
+                    $enParas[] = self::createStyledPara($dom, $sdgsEn, ['italic' => true, 'jc' => 'both']);
+                }
+                if (!empty($enParas)) {
+                    $appendMetaRow($enParas);
                 }
             }
             return;

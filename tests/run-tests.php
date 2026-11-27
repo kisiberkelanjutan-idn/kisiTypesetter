@@ -259,12 +259,25 @@ $letterXml = JatsXmlGenerator::generate($letterData);
 $letterDom = new DOMDocument();
 assertTrue($letterDom->loadXML($letterXml) !== false, 'JatsXmlGenerator generates well-formed XML for LETTER');
 assertTrue(strpos($letterXml, 'article-type="letter"') !== false, 'JATS root sets article-type="letter"');
-assertTrue(strpos($letterXml, '<abstract') === false && strpos($letterXml, '<trans-abstract') === false && strpos($letterXml, '<kwd-group') === false, 'JATS XML omits abstract and keywords for LETTER');
+assertTrue(strpos($letterXml, '<abstract') === false && strpos($letterXml, '<trans-abstract') === false, 'JATS XML omits narrative abstract for LETTER');
+assertTrue(strpos($letterXml, '<kwd-group xml:lang="id">') !== false && strpos($letterXml, '<kwd>Tuberkulosis</kwd>') !== false, 'JATS XML keeps mandatory Indonesian keywords for LETTER');
+assertTrue(strpos($letterXml, '<kwd-group xml:lang="en">') !== false && strpos($letterXml, '<kwd>Tuberculosis</kwd>') !== false, 'JATS XML keeps mandatory English keywords for LETTER');
 assertTrue(strpos($letterXml, 'PENDAHULUAN') === false, 'JATS XML emits direct body without forced PENDAHULUAN heading for LETTER');
 
 $letterHtml = JatsHtmlRenderer::renderFullTextHtml($letterXml, ['include_abstract' => true]);
-assertTrue(strpos($letterHtml, 'kisi-sec-abstract') === false, 'JatsHtmlRenderer omits abstract block for LETTER');
+assertTrue(strpos($letterHtml, 'Seharusnya diabaikan untuk Letter.') === false && strpos($letterHtml, 'Should be omitted.') === false, 'JatsHtmlRenderer omits narrative abstract text for LETTER');
+assertTrue(strpos($letterHtml, 'Kata Kunci:') !== false && strpos($letterHtml, 'Tuberkulosis') !== false, 'JatsHtmlRenderer renders mandatory keywords for LETTER');
 assertTrue(strpos($letterHtml, 'kisi-sec-body') !== false && strpos($letterHtml, 'Dokumentasi Pelaksanaan Sosialisasi') !== false, 'JatsHtmlRenderer renders direct body paragraphs of LETTER');
+
+$letterV3Data = array_merge($letterData, [
+    'volume' => '3',
+    'sdgs_id' => 'Kegiatan ini berkontribusi pada TPB Tujuan 3: kehidupan sehat dan sejahtera.',
+    'sdgs_en' => 'This activity contributes to SDG 3: good health and well-being.',
+]);
+$letterV3Xml = JatsXmlGenerator::generate($letterV3Data);
+assertTrue(strpos($letterV3Xml, 'SDGs Contribution (ID)') !== false && strpos($letterV3Xml, 'SDGs Contribution (EN)') !== false, 'JATS XML keeps mandatory TPB/SDGs contribution for LETTER (Vol 3+)');
+$letterV3Html = JatsHtmlRenderer::renderFullTextHtml($letterV3Xml, ['include_abstract' => true]);
+assertTrue(strpos($letterV3Html, 'Kontribusi terhadap Target Pembangunan Berkelanjutan') !== false, 'JatsHtmlRenderer renders TPB/SDGs contribution for LETTER (Vol 3+)');
 
 $dataReportData = array_merge($letterData, [
     'article_type' => 'DATA REPORT',
@@ -294,6 +307,7 @@ if ($drZip->numFiles > 0) {
     $drZip->close();
 }
 assertTrue($drDocXml !== '' && strpos($drDocXml, 'ABSTRAK') === false && strpos($drDocXml, 'ABSTRACT') === false, 'DATA REPORT DOCX removes ABSTRAK/ABSTRACT rows from front-matter table');
+assertTrue(strpos($drDocXml, 'Kata Kunci') !== false && strpos($drDocXml, 'Tuberkulosis; HIV') !== false && strpos($drDocXml, 'Keywords') !== false, 'DATA REPORT DOCX keeps mandatory Keywords rows');
 assertTrue(strpos($drDocXml, 'DATA REPORT') !== false && strpos($drDocXml, 'PENDAHULUAN') === false, 'DATA REPORT DOCX labels category DATA REPORT and goes straight into body prose');
 
 $drParsed = DocxParser::parse($tmpDrDocx);

@@ -5,7 +5,7 @@ Generic Plugin untuk **OJS 3.5** (kompatibel juga dengan OJS 3.4) yang dirancang
 ## Fitur Utama
 1. **Penarikan Metadata Otomatis dari OJS 3.5:**
    - Menarik Kategori Artikel (`ORIGINAL ARTICLE`, `REVIEW ARTICLE`, `DATA REPORT`, `LETTER`, dll.), Judul (ID & EN), Penulis, Afiliasi (ROR / multi-afiliasi OJS 3.5 + deduplikasi otomatis), Email Korespondensi, DOI, Tanggal Terbit, Volume, Nomor Edisi, Nomor Artikel (`eXX`), dan URL Artikel.
-   - Mendukung **template tanpa abstrak untuk kategori `DATA REPORT` dan `LETTER`** (otomatis menghapus kolom `ABSTRAK`/`ABSTRACT` & `Kata Kunci`/`Keywords` pada DOCX dan JATS XML, langsung masuk ke badan/isi artikel).
+   - Mendukung **template tanpa abstrak naratif untuk kategori `DATA REPORT` dan `LETTER`** (otomatis menghapus kolom `ABSTRAK`/`ABSTRACT` pada DOCX dan JATS XML, langsung masuk ke badan/isi artikel), sementara kolom wajib **`Kata Kunci`/`Keywords`** dan **Kontribusi TPB/SDGs** tetap aktif di Studio dan tetap tercetak pada DOCX, JATS XML, serta Full-Text HTML.
    - **Review Editor Otomatis dari `Metadata > Subject`** & parsing file `.docx` langsung dari tahapan OJS (*Submission / Copyediting / Production*) atau unggahan lokal.
 2. **Detektor Typo & Kata Tidak Baku (Bahasa Indonesia & Inggris):**
    - Didukung korpus bahasa terpercaya yang tertanam langsung di `resources/lexicon/`:
@@ -19,6 +19,7 @@ Generic Plugin untuk **OJS 3.5** (kompatibel juga dengan OJS 3.4) yang dirancang
    - Pada Tab 2 (*Isi Artikel & Tabel*), editor dapat menyeret blok (`⋮⋮`) atau menekan tombol **`▲ / ▼`** untuk menggeser **Sub-Judul (L2), Sub-Sub-Judul (L3), Paragraf, maupun Tabel** naik-turun di dalam bab maupun **menembus batas antar bab** (*PENDAHULUAN ↔ METODE ↔ HASIL ↔ PEMBAHASAN ↔ KESIMPULAN DAN SARAN*), memindahkan bab via dropdown, serta mengubah level blok (`Paragraf ↔ Sub-Judul L2 ↔ Sub-Sub-Judul L3`) dan mengelola baris/kolom tabel secara manual.
 5. **Dual Generator & Full-Text XML Digest di OJS 3.5:**
    - **Download `.docx` (Template 2026)** & **Download `.xml` (JATS 1.2 / AmeliCA)** serta tombol **Simpan Otomatis ke Galley OJS 3.5** yang langsung me-render **Full-Text HTML Interaktif** pada `/article/view/{id}`.
+   - Halaman full-text website **hanya** mem-parse JATS XML yang terbit sebagai **Galley**. File XML yang masih berada di tahap **Production** (*ready/proof file*) tidak pernah ikut ditampilkan.
 
 ---
 

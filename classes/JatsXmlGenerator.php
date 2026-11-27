@@ -343,7 +343,8 @@ class JatsXmlGenerator
 
         $noAbstract = LanguageAuditor::isNoAbstractArticleType((string) ($data['article_type'] ?? 'ORIGINAL ARTICLE'));
 
-        // Structured Abstract & Keywords (Omitted for DATA REPORT, LETTER, Editorial)
+        // The narrative abstract is omitted for DATA REPORT / LETTER, but Keywords and the TPB/SDGs
+        // contribution statement remain mandatory for every category.
         if (!$noAbstract) {
             // Structured Abstract (Indonesian)
             $idParts = [
@@ -410,29 +411,48 @@ class JatsXmlGenerator
                 }
                 $am->appendChild($absEn);
             }
+        }
 
-            // Keywords ID (skip in English-only mode)
-            $kwIdList = $isEnglishOnly ? [] : array_filter(array_map('trim', preg_split('/[;,]/u', (string) ($data['keywords_id'] ?? ''))));
-            if (!empty($kwIdList)) {
-                $kwgId = $dom->createElement('kwd-group');
-                $kwgId->setAttribute('xml:lang', 'id');
-                $kwgId->appendChild($dom->createElement('title', 'Kata Kunci'));
-                foreach ($kwIdList as $kw) {
-                    $kwgId->appendChild($dom->createElement('kwd', rtrim($kw, '.')));
-                }
-                $am->appendChild($kwgId);
+        // Keywords ID (skip in English-only mode) — emitted for every category, including DATA REPORT / LETTER
+        $kwIdList = $isEnglishOnly ? [] : array_filter(array_map('trim', preg_split('/[;,]/u', (string) ($data['keywords_id'] ?? ''))));
+        if (!empty($kwIdList)) {
+            $kwgId = $dom->createElement('kwd-group');
+            $kwgId->setAttribute('xml:lang', 'id');
+            $kwgId->appendChild($dom->createElement('title', 'Kata Kunci'));
+            foreach ($kwIdList as $kw) {
+                $kwgId->appendChild($dom->createElement('kwd', rtrim($kw, '.')));
             }
+            $am->appendChild($kwgId);
+        }
 
-            // Keywords EN
-            $kwEnList = array_filter(array_map('trim', preg_split('/[;,]/u', (string) ($data['keywords_en'] ?? ''))));
-            if (!empty($kwEnList)) {
-                $kwgEn = $dom->createElement('kwd-group');
-                $kwgEn->setAttribute('xml:lang', 'en');
-                $kwgEn->appendChild($dom->createElement('title', 'Keywords'));
-                foreach ($kwEnList as $kw) {
-                    $kwgEn->appendChild($dom->createElement('kwd', rtrim($kw, '.')));
+        // Keywords EN — emitted for every category, including DATA REPORT / LETTER
+        $kwEnList = array_filter(array_map('trim', preg_split('/[;,]/u', (string) ($data['keywords_en'] ?? ''))));
+        if (!empty($kwEnList)) {
+            $kwgEn = $dom->createElement('kwd-group');
+            $kwgEn->setAttribute('xml:lang', 'en');
+            $kwgEn->appendChild($dom->createElement('title', 'Keywords'));
+            foreach ($kwEnList as $kw) {
+                $kwgEn->appendChild($dom->createElement('kwd', rtrim($kw, '.')));
+            }
+            $am->appendChild($kwgEn);
+        }
+
+        // TPB/SDGs statements for abstract-exempt categories (no <abstract> element to host them)
+        if ($noAbstract && $isVol3Plus) {
+            $sdgsId = trim((string) ($data['sdgs_id'] ?? ''));
+            $sdgsEn = trim((string) ($data['sdgs_en'] ?? ''));
+            if ($sdgsId !== '' || $sdgsEn !== '') {
+                $cmg = $dom->createElement('custom-meta-group');
+                foreach ([['SDGs Contribution (ID)', $sdgsId], ['SDGs Contribution (EN)', $sdgsEn]] as $metaPair) {
+                    if ($metaPair[1] === '') {
+                        continue;
+                    }
+                    $cm = $dom->createElement('custom-meta');
+                    $cm->appendChild($dom->createElement('meta-name', $metaPair[0]));
+                    $cm->appendChild($dom->createElement('meta-value', $metaPair[1]));
+                    $cmg->appendChild($cm);
                 }
-                $am->appendChild($kwgEn);
+                $am->appendChild($cmg);
             }
         }
 

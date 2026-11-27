@@ -637,8 +637,11 @@ HTML;
     }
 
     /**
-     * Find the best JATS XML file content attached to an article's Galleys or Production Ready Files
-     * (prefers Galleys, newer uploads, and complete XML containing <abstract>/<body>/<ref-list>).
+     * Find the best JATS XML file content published as one of the article's Publication Galleys
+     * (prefers newer galleys and complete XML containing <abstract>/<body>/<ref-list>).
+     *
+     * Only Galley files are eligible on purpose: JATS XML that merely sits in the Production stage
+     * (ready/proof files, stage files) must never be digested onto the public full-text page.
      */
     public function findArticleJatsXmlContent(int $submissionId, $publication = null): string
     {
@@ -692,6 +695,10 @@ HTML;
                     $sf = Repo::submissionFile()->get($sfId);
                     if ($sf) {
                         $xml = $this->readXmlFromSubmissionFile($sf);
+                        $isJatsArticle = stripos($xml, '<article') !== false || stripos($xml, '<jats:article') !== false;
+                        if (!$isJatsArticle) {
+                            continue;
+                        }
                         $sc = $scoreXml($xml, 100);
                         if ($sc > $bestScore) {
                             $bestScore = $sc;
@@ -702,28 +709,8 @@ HTML;
             }
         }
 
-        // 2. Fallback: Check Submission Files (Production Ready / Proof / JATS stages), latest file first
-        try {
-            $subFiles = Repo::submissionFile()->getCollector()
-                ->filterBySubmissionIds([$submissionId])
-                ->getMany();
-            $sfList = [];
-            foreach ($subFiles as $sf) {
-                $sfList[] = $sf;
-            }
-            usort($sfList, static fn ($a, $b) => (int) $b->getId() <=> (int) $a->getId());
-            foreach ($sfList as $sf) {
-                $xml = $this->readXmlFromSubmissionFile($sf);
-                $sc = $scoreXml($xml, 10);
-                if ($sc > $bestScore) {
-                    $bestScore = $sc;
-                    $bestXml = $xml;
-                }
-            }
-        } catch (\Throwable $e) {
-            // ignore
-        }
-
+        // Intentionally no fallback to submission files in the Production stage: only a published
+        // Galley may feed the public full-text digest.
         return $bestXml;
     }
 

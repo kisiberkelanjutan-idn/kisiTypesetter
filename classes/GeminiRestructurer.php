@@ -24,7 +24,7 @@ class GeminiRestructurer
         if (LanguageAuditor::isNoAbstractArticleType($articleType)) {
             $articleData = VancouverFormatter::convertAllReferences($articleData);
             $articleData = LanguageAuditor::normalizeArticleParagraphSpaces($articleData);
-            $articleData['_ai_status'] = "Kategori {$articleType} tidak menggunakan abstrak/kata kunci (langsung ke badan artikel).";
+            $articleData['_ai_status'] = "Kategori {$articleType} tidak menggunakan abstrak naratif (Keywords & TPB/SDGs tetap, langsung ke badan artikel).";
             return $articleData;
         }
 
@@ -229,7 +229,7 @@ PROMPT;
         if (LanguageAuditor::isNoAbstractArticleType($articleType)) {
             $articleData = VancouverFormatter::convertAllReferences($articleData);
             $articleData = LanguageAuditor::normalizeArticleParagraphSpaces($articleData);
-            $articleData['_ai_status'] = $statusMessage !== '' ? $statusMessage : "Kategori {$articleType}: langsung badan artikel (tanpa abstrak).";
+            $articleData['_ai_status'] = $statusMessage !== '' ? $statusMessage : "Kategori {$articleType}: langsung badan artikel (tanpa abstrak naratif).";
             return $articleData;
         }
 

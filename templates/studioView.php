@@ -746,8 +746,8 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
                             <select id="f_article_type_preset" onchange="onArticleTypePresetChange()">
                                 <option value="ORIGINAL ARTICLE">ORIGINAL ARTICLE</option>
                                 <option value="REVIEW ARTICLE">REVIEW ARTICLE</option>
-                                <option value="DATA REPORT">DATA REPORT (Tanpa Abstrak)</option>
-                                <option value="LETTER">LETTER (Tanpa Abstrak)</option>
+                                <option value="DATA REPORT">DATA REPORT (Tanpa Abstrak Naratif)</option>
+                                <option value="LETTER">LETTER (Tanpa Abstrak Naratif)</option>
                                 <option value="CASE REPORT">CASE REPORT</option>
                                 <option value="SHORT COMMUNICATION">SHORT COMMUNICATION</option>
                                 <option value="CUSTOM">Kustom (Manual)...</option>
@@ -920,8 +920,10 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
             <!-- TAB 1: Bilingual Structured Abstracts -->
             <div id="tab-abstracts" class="tab-pane active">
                 <div id="noAbstractNotice" style="display:none;background:#eff6ff;border:1px solid #93c5fd;color:#1e3a8a;padding:10px 12px;border-radius:8px;margin-bottom:10px;font-size:12.5px;">
-                    📄 <strong>Mode Tanpa Abstrak Aktif (<span id="noAbstractCatLabel">DATA REPORT / LETTER</span>):</strong>
-                    Sesuai template resmi, kategori ini tidak menampilkan kolom <em>ABSTRAK</em>, <em>ABSTRACT</em>, maupun <em>Kata Kunci / Keywords</em> pada DOCX maupun JATS XML. Silakan langsung sunting isi naskah di <strong>Tab 2 (Isi &amp; Tabel)</strong>.
+                    📄 <strong>Mode <span id="noAbstractCatLabel">DATA REPORT / LETTER</span>:</strong>
+                    Sesuai template resmi, abstrak naratif <em>ABSTRAK</em>/<em>ABSTRACT</em> tidak dicetak pada DOCX maupun JATS XML.
+                    Namun kolom <strong>Kata Kunci / Keywords</strong> dan <strong>Kontribusi TPB/SDGs</strong> tetap <strong>wajib diisi</strong> dan akan tercetak.
+                    Isi naskah utama di <strong>Tab 2 (Isi &amp; Tabel)</strong>.
                 </div>
                 <div id="abstractInputsGrid" class="row-2">
                     <!-- Indonesian Abstract (Always visible in Studio for DOCX/PDF rendering) -->
@@ -1187,23 +1189,18 @@ function applyArticleTypeLayoutMode(userInitiated = false) {
 
     if (notice) notice.style.display = noAbs ? 'block' : 'none';
     if (catLbl) catLbl.textContent = String(articleState.article_type || 'DATA REPORT / LETTER').toUpperCase();
+    // Keywords & TPB/SDGs stay mandatory for DATA REPORT / LETTER, so the form remains fully editable.
     if (absGrid) {
-        absGrid.style.opacity = noAbs ? '0.45' : '1';
-        absGrid.style.pointerEvents = noAbs ? 'none' : 'auto';
+        absGrid.style.opacity = '1';
+        absGrid.style.pointerEvents = 'auto';
     }
     if (absBadge) {
         const modeLabel = (getActiveFormLanguageModeJs() === 'en') ? '(ID PDF & EN JATS)' : '(ID & EN)';
-        absBadge.textContent = noAbs ? '(Tanpa Abstrak)' : modeLabel;
+        absBadge.textContent = noAbs ? '(Keywords & TPB/SDGs)' : modeLabel;
     }
 
     if (userInitiated && noAbs) {
-        // Automatically jump to Tab 2 when user picks DATA REPORT / LETTER while viewing Tab 1
-        const tab1Active = document.getElementById('tab-abstracts').classList.contains('active');
-        if (tab1Active) {
-            const tab2Btn = document.querySelector('.tab-btn[data-tab="tab-body"]');
-            if (tab2Btn) switchTab('tab-body', tab2Btn);
-        }
-        showToast(`Mode ${articleState.article_type}: Abstrak dihilangkan & langsung ke Badan Artikel.`, 'info');
+        showToast(`Mode ${articleState.article_type}: abstrak naratif tidak dicetak, tetapi Keywords & TPB/SDGs tetap wajib diisi.`, 'info');
     }
     applyFormLanguageMode();
     renderBodySectionsEditor();

@@ -243,7 +243,7 @@ class LanguageAuditor
             $issues[] = $issue;
         };
 
-        // 1. Fixed-language front-matter fields (omit Indonesian fields in English-only mode; omit abstracts/keywords for DATA REPORT & LETTER)
+        // 1. Fixed-language front-matter fields (omit Indonesian fields in English-only mode; omit narrative abstracts for DATA REPORT & LETTER)
         $isEnglishOnly = self::isEnglishOnlyArticle($articleData);
         $fixedFields = [];
         if (!$isEnglishOnly) {
@@ -257,20 +257,23 @@ class LanguageAuditor
                 ['path' => 'abstract_id.pendahuluan_metode', 'label' => 'Abstrak ID · Pendahuluan & Metode', 'lang' => 'id', 'text' => (string) ($articleData['abstract_id']['pendahuluan_metode'] ?? '')],
                 ['path' => 'abstract_id.hasil', 'label' => 'Abstrak ID · Hasil', 'lang' => 'id', 'text' => (string) ($articleData['abstract_id']['hasil'] ?? '')],
                 ['path' => 'abstract_id.kesimpulan_saran', 'label' => 'Abstrak ID · Kesimpulan & Saran', 'lang' => 'id', 'text' => (string) ($articleData['abstract_id']['kesimpulan_saran'] ?? '')],
-                ['path' => 'keywords_id', 'label' => 'Kata Kunci (ID)', 'lang' => 'id', 'text' => (string) ($articleData['keywords_id'] ?? '')],
             ]);
-            if (self::isVolume3Plus($articleData['volume'] ?? '1')) {
-                $fixedFields[] = ['path' => 'sdgs_id', 'label' => 'Kontribusi TPB/SDGs (ID)', 'lang' => 'id', 'text' => (string) ($articleData['sdgs_id'] ?? '')];
-            }
+        }
+        // Keywords & TPB/SDGs stay mandatory for every category, including DATA REPORT & LETTER
+        $fixedFields[] = ['path' => 'keywords_id', 'label' => 'Kata Kunci (ID)', 'lang' => 'id', 'text' => (string) ($articleData['keywords_id'] ?? '')];
+        if (self::isVolume3Plus($articleData['volume'] ?? '1')) {
+            $fixedFields[] = ['path' => 'sdgs_id', 'label' => 'Kontribusi TPB/SDGs (ID)', 'lang' => 'id', 'text' => (string) ($articleData['sdgs_id'] ?? '')];
+        }
+        if (!$noAbstract) {
             $fixedFields = array_merge($fixedFields, [
                 ['path' => 'abstract_en.intro_methods', 'label' => 'Abstract EN · Introduction & Methods', 'lang' => 'en', 'text' => (string) ($articleData['abstract_en']['intro_methods'] ?? '')],
                 ['path' => 'abstract_en.results', 'label' => 'Abstract EN · Results', 'lang' => 'en', 'text' => (string) ($articleData['abstract_en']['results'] ?? '')],
                 ['path' => 'abstract_en.conclusions_recommendations', 'label' => 'Abstract EN · Conclusions & Recommendations', 'lang' => 'en', 'text' => (string) ($articleData['abstract_en']['conclusions_recommendations'] ?? '')],
-                ['path' => 'keywords_en', 'label' => 'Keywords (EN)', 'lang' => 'en', 'text' => (string) ($articleData['keywords_en'] ?? '')],
             ]);
-            if (self::isVolume3Plus($articleData['volume'] ?? '1')) {
-                $fixedFields[] = ['path' => 'sdgs_en', 'label' => 'Contribution to SDGs (EN)', 'lang' => 'en', 'text' => (string) ($articleData['sdgs_en'] ?? '')];
-            }
+        }
+        $fixedFields[] = ['path' => 'keywords_en', 'label' => 'Keywords (EN)', 'lang' => 'en', 'text' => (string) ($articleData['keywords_en'] ?? '')];
+        if (self::isVolume3Plus($articleData['volume'] ?? '1')) {
+            $fixedFields[] = ['path' => 'sdgs_en', 'label' => 'Contribution to SDGs (EN)', 'lang' => 'en', 'text' => (string) ($articleData['sdgs_en'] ?? '')];
         }
 
         $enSegmentsForLt = [];

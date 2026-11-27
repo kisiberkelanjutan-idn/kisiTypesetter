@@ -79,10 +79,15 @@ class JatsHtmlRenderer
         $includeAbstract = $options['include_abstract'] ?? true;
         if ($includeAbstract) {
             $absHtml = self::renderBilingualAbstracts($xpath, $options);
+            $absTocLabel = (strtolower((string) ($options['form_language_mode'] ?? 'auto')) === 'en')
+                ? 'Abstract'
+                : 'Abstrak / Abstract';
+            if ($absHtml === '') {
+                // DATA REPORT / LETTER: no narrative abstract, but Keywords and TPB/SDGs stay mandatory
+                $absHtml = self::renderKeywordSdgsSummary($xpath, $options);
+                $absTocLabel = 'Keywords & SDGs';
+            }
             if ($absHtml !== '') {
-                $absTocLabel = (strtolower((string) ($options['form_language_mode'] ?? 'auto')) === 'en')
-                    ? 'Abstract'
-                    : 'Abstrak / Abstract';
                 $tocItems[] = ['id' => 'kisi-sec-abstract', 'title' => $absTocLabel];
                 $bodyHtmlParts[] = $absHtml;
             }
@@ -519,6 +524,76 @@ JS;
             $html .= '<div class="kisi-jats-abstract-single-head">ABSTRAK</div>';
             $html .= '<div id="kisi-abs-pane-id" class="kisi-abs-pane" style="display:block;">' . $idInner . '</div>';
         }
+
+        $html .= '</section>';
+        return $html;
+    }
+
+    /**
+     * Render the mandatory Keywords + TPB/SDGs block for factual categories (DATA REPORT / LETTER)
+     * that carry no narrative abstract.
+     */
+    private static function renderKeywordSdgsSummary(DOMXPath $xpath, array $options = []): string
+    {
+        $collected = self::collectAbstractNodesAndKeywords($xpath);
+        $kwId = array_values(array_filter($collected['kw_id'], static fn ($k) => trim((string) $k) !== ''));
+        $kwEn = array_values(array_filter($collected['kw_en'], static fn ($k) => trim((string) $k) !== ''));
+
+        $sdgsId = '';
+        $sdgsEn = '';
+        foreach ($xpath->query('//article-meta/custom-meta-group/custom-meta') as $meta) {
+            if (!($meta instanceof DOMElement)) {
+                continue;
+            }
+            $name = strtoupper(trim(self::getNodeText($xpath, './meta-name', $meta)));
+            $value = trim(self::getNodeText($xpath, './meta-value', $meta));
+            if ($value === '') {
+                continue;
+            }
+            if (strpos($name, '(EN)') !== false) {
+                if ($sdgsEn === '') {
+                    $sdgsEn = $value;
+                }
+            } elseif ($sdgsId === '') {
+                $sdgsId = $value;
+            }
+        }
+
+        if (empty($kwId) && empty($kwEn) && $sdgsId === '' && $sdgsEn === '') {
+            return '';
+        }
+
+        $formLangMode = strtolower(trim((string) ($options['form_language_mode'] ?? 'auto')));
+        $englishOnly = ($formLangMode === 'en' || !empty($options['english_only']));
+
+        $html = '<section id="kisi-sec-abstract" class="kisi-jats-section kisi-jats-abstract-box">';
+        if ($englishOnly && !empty($kwEn)) {
+            $html .= '<p class="kisi-abs-keywords"><strong>Keywords:</strong> ' . htmlspecialchars(implode('; ', $kwEn) . '.', ENT_QUOTES, 'UTF-8') . '</p>';
+        } elseif (!empty($kwId) || !empty($kwEn)) {
+            if (!empty($kwId)) {
+                $html .= '<p class="kisi-abs-keywords"><strong>Kata Kunci:</strong> ' . htmlspecialchars(implode('; ', $kwId) . '.', ENT_QUOTES, 'UTF-8') . '</p>';
+            }
+            if (!empty($kwEn)) {
+                $html .= '<p class="kisi-abs-keywords"><em><strong>Keywords:</strong> ' . htmlspecialchars(implode('; ', $kwEn) . '.', ENT_QUOTES, 'UTF-8') . '</em></p>';
+            }
+        }
+
+        $appendSdgs = static function (string $title, string $body, bool $isEnglish) use (&$html): void {
+            if ($body === '') {
+                return;
+            }
+            if (!$isEnglish) {
+                $html .= '<div style="margin-top:10px;padding:10px 12px;background:#eef2f7;border-radius:6px;">';
+            }
+            $html .= '<h4 class="kisi-abs-subhead"' . (!$isEnglish ? ' style="margin-top:0;"' : '') . '>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</h4>';
+            $bodyHtml = htmlspecialchars($body, ENT_QUOTES, 'UTF-8');
+            $html .= '<p class="kisi-abs-p"' . (!$isEnglish ? ' style="margin-bottom:0;"' : '') . '>' . ($isEnglish ? '<em>' . $bodyHtml . '</em>' : $bodyHtml) . '</p>';
+            if (!$isEnglish) {
+                $html .= '</div>';
+            }
+        };
+        $appendSdgs('Kontribusi terhadap Target Pembangunan Berkelanjutan (TPB/SDGs)', $sdgsId, false);
+        $appendSdgs('Contribution to Sustainable Development Goals (SDGs)', $sdgsEn, true);
 
         $html .= '</section>';
         return $html;
