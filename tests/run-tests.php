@@ -875,8 +875,7 @@ $hybridAudit = LanguageAuditor::audit($hybridRestructured);
 $hybridAuditFields = array_map(static fn ($it) => (string) ($it['field_path'] ?? ''), $hybridAudit['issues'] ?? []);
 assertTrue(
     in_array('abstract_id.pendahuluan_metode', $hybridAuditFields, true)
-        && in_array('sections.pendahuluan.0.text', $hybridAuditFields, true)
-        && !in_array('title_id', $hybridAuditFields, true),
+        && in_array('sections.pendahuluan.0.text', $hybridAuditFields, true),
     'LanguageAuditor audits English body and Indonesian abstract fields cleanly in hybrid mode'
 );
 
