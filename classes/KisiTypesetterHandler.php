@@ -1272,8 +1272,8 @@ class KisiTypesetterHandler extends Handler
                     $kwEn = $anyKw;
                 }
             }
-            // JATS XML English-only mode: keep single English title while preserving any Indonesian abstract/keywords for Studio & PDF
-            $titleId = '';
+            // JATS XML English-only mode: DOCX/JATS still print the single English title, but the Indonesian
+            // title, abstract and keywords stay populated so they remain editable in the Studio form.
         } elseif ($titleId === '') {
             $fallbackTitle = self::cleanHtmlText(self::pickLocaleValue($titles, ['id', 'id_ID', 'en', 'en_US'], true));
             $titleId = $titleEn !== '' ? $titleEn : $fallbackTitle;
@@ -1374,7 +1374,10 @@ class KisiTypesetterHandler extends Handler
             if (($ojsData['title_en'] ?? '') === '') {
                 $ojsData['title_en'] = ($docxData['title_en'] ?? '') !== '' ? $docxData['title_en'] : ($docxData['title_id'] ?? '');
             }
-            $ojsData['title_id'] = '';
+            // Keep the Indonesian title for the Studio form; the English-only generators ignore it.
+            if (($ojsData['title_id'] ?? '') === '' && ($docxData['title_id'] ?? '') !== '') {
+                $ojsData['title_id'] = $docxData['title_id'];
+            }
         } else {
             if ($ojsData['title_id'] === '' && $docxData['title_id'] !== '') {
                 $ojsData['title_id'] = $docxData['title_id'];

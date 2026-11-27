@@ -866,8 +866,8 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
             </div>
 
             <!-- Article Titles (English-Only or Bilingual depending on Form Mode) -->
-            <div id="titleFieldsRow" class="row-2"<?php echo $initialEnOnly ? ' style="grid-template-columns:1fr;"' : ''; ?>>
-                <div class="field-group" id="titleIdGroup"<?php echo $initialEnOnly ? ' style="display:none;"' : ''; ?>>
+            <div id="titleFieldsRow" class="row-2">
+                <div class="field-group" id="titleIdGroup">
                     <label>Judul Artikel (Indonesia — Bold 14pt)</label>
                     <textarea id="f_title_id" rows="2" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                 </div>
@@ -1383,8 +1383,9 @@ function applyFormLanguageMode() {
     const absEnHead = document.getElementById('abstractEnHeading');
     const absBadge = document.getElementById('absTabStatusBadge');
 
-    if (titleIdGrp) titleIdGrp.style.display = enOnly ? 'none' : 'block';
-    if (titleRow) titleRow.style.gridTemplateColumns = enOnly ? '1fr' : '';
+    // Indonesian title field stays visible in every mode: English-Only JATS/DOCX still print the English title only.
+    if (titleIdGrp) titleIdGrp.style.display = 'block';
+    if (titleRow) titleRow.style.gridTemplateColumns = '';
     if (titleEnLbl) {
         titleEnLbl.textContent = enOnly
             ? 'Article Title / Judul Artikel (English — Bold 14pt)'
@@ -2748,7 +2749,8 @@ async function sendParseDocxRequest(formData) {
         if (enOnly) {
             const parsedEnTitle = p.title_en || p.title_id || '';
             if (parsedEnTitle && !articleState.title_en) articleState.title_en = parsedEnTitle;
-            articleState.title_id = '';
+            // Keep the Indonesian title field filled even though the English-only output prints just the English title.
+            if (p.title_id && !articleState.title_id) articleState.title_id = p.title_id;
         } else {
             if (p.title_id && !articleState.title_id) articleState.title_id = p.title_id;
             if (p.title_en && !articleState.title_en) articleState.title_en = p.title_en;

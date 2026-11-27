@@ -154,7 +154,6 @@ PROMPT;
         }
 
         if ($isEnglishOnly) {
-            $articleData['title_id'] = '';
             if (!$hasIdInput) {
                 $articleData['keywords_id'] = '';
                 $articleData['abstract_id'] = ['pendahuluan_metode' => '', 'hasil' => '', 'kesimpulan_saran' => '', 'raw' => ''];
