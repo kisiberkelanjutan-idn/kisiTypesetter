@@ -28,7 +28,7 @@ $defaultArticle = $activeArticleData ?: [
     'footer_issue_line' => 'Volume 1 Nomor 1, Januari-Maret 2024',
     'article_url' => 'https://kisiberkelanjutan.com/index.php/smk/article/view/76',
     'journal_path' => $context ? $context->getPath() : 'smk',
-    'journal_title' => $settings['journalTitle'] ?? 'Kisi Berkelanjutan: Sains Medis Dan Kesehatan',
+    'journal_title' => str_replace('Sains Medis Dan Kesehatan', 'Sains Medis dan Kesehatan', (string) ($settings['journalTitle'] ?? 'Kisi Berkelanjutan: Sains Medis dan Kesehatan')),
     'journal_short_footer' => $settings['journalShortFooter'] ?? 'Kisi Berkelanjutan: SMK',
     'publisher_name' => $settings['publisherName'] ?? 'PT Karya Inovasi Berkelanjutan',
     'eissn' => $settings['eissn'] ?? '3062-9063',
@@ -601,7 +601,7 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
         <div class="row-3">
             <div class="field-group">
                 <label>Nama Jurnal Lengkap (Untuk Sitasi Artikel &amp; JATS XML)</label>
-                <input type="text" id="cfg_journalTitle" value="<?php echo htmlspecialchars($settings['journalTitle'] ?? 'Kisi Berkelanjutan: Sains Medis Dan Kesehatan', ENT_QUOTES, 'UTF-8'); ?>">
+                <input type="text" id="cfg_journalTitle" value="<?php echo htmlspecialchars(str_replace('Sains Medis Dan Kesehatan', 'Sains Medis dan Kesehatan', (string) ($settings['journalTitle'] ?? 'Kisi Berkelanjutan: Sains Medis dan Kesehatan')), ENT_QUOTES, 'UTF-8'); ?>">
             </div>
             <div class="field-group">
                 <label>Nama Pendek Jurnal (Untuk Footer DOCX)</label>
@@ -723,6 +723,13 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
                 <button type="button" class="btn btn-ai btn-sm" onclick="runAiRestructure()">
                     ✨ AI Struktur &amp; Terjemahan
                 </button>
+            </div>
+        </div>
+        <div id="historyStatusBar" style="margin-top:8px;padding:7px 10px;border-radius:7px;background:#f8fafc;border:1px solid var(--kisi-border);display:none;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:12px;">
+            <span id="historyStatusText" style="color:var(--kisi-navy);font-weight:600;"></span>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <button type="button" class="btn btn-outline btn-xs" onclick="saveArticleHistoryNow(true)">💾 Simpan Riwayat</button>
+                <button type="button" class="btn btn-outline btn-xs" onclick="resetArticleToFreshOjsDocx()" title="Hapus riwayat edit tersimpan lalu muat ulang dari metadata OJS &amp; file .docx">🔄 Muat Ulang OJS &amp; DOCX</button>
             </div>
         </div>
     </div>
@@ -1117,6 +1124,146 @@ let articleState = <?php echo json_encode($defaultArticle, JSON_UNESCAPED_UNICOD
 
 const ARTICLE_TYPE_PRESETS = ['ORIGINAL ARTICLE', 'REVIEW ARTICLE', 'DATA REPORT', 'LETTER', 'CASE REPORT', 'SHORT COMMUNICATION'];
 let showOptionalImradForNoAbs = false;
+let isPopulatingForm = false;
+let hasPendingHistorySave = false;
+let autoSaveHistoryTimer = null;
+let isSavingHistory = false;
+
+function formatHistoryTimestampJs(isoStr) {
+    if (!isoStr) return '';
+    try {
+        const dt = new Date(isoStr);
+        if (!isNaN(dt.getTime())) {
+            return dt.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+        }
+    } catch (_e) {}
+    return String(isoStr);
+}
+
+function updateHistoryStatusUi() {
+    const bar = document.getElementById('historyStatusBar');
+    const txt = document.getElementById('historyStatusText');
+    if (!bar || !txt) return;
+    const subId = parseInt(articleState && articleState.submission_id ? articleState.submission_id : 0, 10);
+    if (!subId) {
+        bar.style.display = 'none';
+        return;
+    }
+    bar.style.display = 'flex';
+    const isPub = !!articleState._is_published;
+    const hasSaved = !!articleState._has_saved_state;
+    const tsLabel = formatHistoryTimestampJs(articleState._saved_at);
+
+    if (hasPendingHistorySave) {
+        bar.style.background = '#fffbeb';
+        bar.style.borderColor = '#fde68a';
+        txt.style.color = '#92400e';
+        txt.textContent = '✏️ Menyimpan perubahan riwayat edit...';
+        return;
+    }
+
+    if (hasSaved) {
+        bar.style.background = isPub ? '#ecfdf5' : '#eff6ff';
+        bar.style.borderColor = isPub ? '#a7f3d0' : '#bfdbfe';
+        txt.style.color = isPub ? '#065f46' : '#1e40af';
+        const prefix = isPub ? '✅ Artikel Terbit · Riwayat edit terakhir dimuat' : '🕘 Riwayat edit terakhir tersimpan';
+        txt.textContent = tsLabel ? `${prefix} (${tsLabel})` : prefix;
+    } else {
+        bar.style.background = '#f8fafc';
+        bar.style.borderColor = 'var(--kisi-border)';
+        txt.style.color = 'var(--kisi-navy)';
+        txt.textContent = isPub
+            ? '📄 Artikel Terbit (muat awal dari OJS/.docx — perubahan atau ekspor akan disimpan otomatis sebagai riwayat)'
+            : '📄 Muat awal dari metadata OJS & .docx (isian akan tersimpan otomatis saat diedit/diekspor)';
+    }
+}
+
+function markHistorySavedUi(savedAt = '') {
+    hasPendingHistorySave = false;
+    if (autoSaveHistoryTimer) {
+        clearTimeout(autoSaveHistoryTimer);
+        autoSaveHistoryTimer = null;
+    }
+    if (articleState && typeof articleState === 'object') {
+        articleState._has_saved_state = true;
+        articleState._saved_at = savedAt || new Date().toISOString();
+    }
+    updateHistoryStatusUi();
+}
+
+function markArticleHistoryDirty() {
+    if (isPopulatingForm) return;
+    const subId = parseInt(articleState && articleState.submission_id ? articleState.submission_id : 0, 10);
+    if (!subId) return;
+    hasPendingHistorySave = true;
+    updateHistoryStatusUi();
+    if (autoSaveHistoryTimer) clearTimeout(autoSaveHistoryTimer);
+    autoSaveHistoryTimer = setTimeout(() => {
+        saveArticleHistoryNow(false);
+    }, 1200);
+}
+
+async function saveArticleHistoryNow(manual = false) {
+    const subId = parseInt(articleState && articleState.submission_id ? articleState.submission_id : 0, 10);
+    if (!subId || isSavingHistory) return;
+    isSavingHistory = true;
+    try {
+        syncStateFromInputs();
+        syncReferencesFromInput(true);
+        const fd = await buildArticleFormData({ reason: manual ? 'manual' : 'autosave' });
+        const res = await fetch(BASE_URL + '/saveState', {
+            method: 'POST',
+            body: fd,
+            credentials: 'same-origin'
+        });
+        const data = await res.json();
+        if (data.ok) {
+            markHistorySavedUi(data.saved_at || new Date().toISOString());
+            if (manual) {
+                showToast('💾 ' + (data.message || 'Riwayat edit terakhir berhasil disimpan.'), 'success');
+            }
+        } else if (manual) {
+            showToast(data.error || 'Gagal menyimpan riwayat edit.', 'error');
+        }
+    } catch (e) {
+        if (manual) showToast('Error jaringan saat menyimpan riwayat: ' + e.message, 'error');
+    } finally {
+        isSavingHistory = false;
+    }
+}
+
+async function resetArticleToFreshOjsDocx() {
+    const subId = parseInt(articleState && articleState.submission_id ? articleState.submission_id : 0, 10);
+    if (!subId) return;
+    if (!confirm('Muat ulang isian dari metadata OJS & file .docx terbaru? Riwayat edit terakhir di Typesetter untuk artikel ini akan diganti.')) {
+        return;
+    }
+    showToast('🔄 Memuat ulang metadata OJS & mengekstrak .docx terbaru...', 'info');
+    try {
+        const fd = new FormData();
+        fd.append('submissionId', String(subId));
+        const res = await fetch(BASE_URL + '/resetSavedState', {
+            method: 'POST',
+            body: fd,
+            credentials: 'same-origin'
+        });
+        const data = await res.json();
+        if (data.ok && data.article) {
+            hasPendingHistorySave = false;
+            if (autoSaveHistoryTimer) {
+                clearTimeout(autoSaveHistoryTimer);
+                autoSaveHistoryTimer = null;
+            }
+            articleState = data.article;
+            populateFormFromState();
+            showToast('🔄 ' + (data.message || 'Isian berhasil dimuat ulang dari OJS & DOCX.'), 'success');
+        } else {
+            showToast(data.error || 'Gagal memuat ulang dari OJS & DOCX.', 'error');
+        }
+    } catch (e) {
+        showToast('Error jaringan saat memuat ulang: ' + e.message, 'error');
+    }
+}
 
 function isNoAbstractType(artType) {
     const u = String(artType || '').toUpperCase().trim();
@@ -1232,6 +1379,7 @@ function mergeImradSectionsIntoDirectBody() {
         }
     });
     renderBodySectionsEditor({ sec: 'badan_artikel', idx: Math.max(0, articleState.sections.badan_artikel.length - 1) });
+    markArticleHistoryDirty();
     showToast(`📥 ${moved} blok dari bagian IMRaD digabungkan ke Badan Artikel Langsung.`, 'success');
 }
 
@@ -1307,6 +1455,7 @@ function rebuildFooterIssueLine() {
     const rebuilt = `Volume ${vol} Nomor ${no}, ${period}${yr ? ' ' + yr : ''}`;
     articleState.footer_issue_line = rebuilt;
     document.getElementById('f_footer_issue_line').value = rebuilt;
+    markArticleHistoryDirty();
     showToast('Footer edisi disusun ulang dengan nama bulan Indonesia.', 'success');
 }
 
@@ -1331,6 +1480,7 @@ function rebuildContributorRolesDefault() {
     const text = parts.join(', ') + '.';
     articleState.contributor_roles = text;
     document.getElementById('f_contributor_roles').value = text;
+    markArticleHistoryDirty();
     showToast('Inisial Contributor’s Roles (CRediT) diperbarui.', 'success');
 }
 
@@ -1424,58 +1574,64 @@ function applyFormLanguageMode() {
 }
 
 function populateFormFromState() {
-    syncArticleTypeControlFromState();
-    document.getElementById('f_elocation_id').value = articleState.elocation_id || ('e' + (articleState.submission_id || '76'));
-    document.getElementById('f_volume').value = articleState.volume || '1';
-    document.getElementById('f_issue_number').value = articleState.issue_number || '1';
-    document.getElementById('f_copyright_year').value = articleState.copyright_year || '2024';
-    document.getElementById('f_footer_issue_line').value = translateFooterMonthsToId(articleState.footer_issue_line || 'Volume 1 Nomor 1, Januari-Maret 2024');
-    document.getElementById('f_article_url').value = articleState.article_url || '';
-    document.getElementById('f_citation').value = articleState.citation || '';
-    document.getElementById('f_doi').value = articleState.doi || '';
-    document.getElementById('f_review_editor').value = articleState.review_editor || '';
-    document.getElementById('f_received_date').value = articleState.received_date || '';
-    document.getElementById('f_accepted_date').value = articleState.accepted_date || '';
-    document.getElementById('f_published_date').value = articleState.published_date || '';
-    document.getElementById('f_funding').value = articleState.funding || (isVolume3Plus(articleState.volume) ? 'None' : 'none');
-    document.getElementById('f_competing_interests').value = articleState.competing_interests || '';
-    document.getElementById('f_contributor_roles').value = articleState.contributor_roles || '';
-    document.getElementById('f_retypeset_note').value = articleState.retypeset_note || '';
+    isPopulatingForm = true;
+    try {
+        syncArticleTypeControlFromState();
+        document.getElementById('f_elocation_id').value = articleState.elocation_id || ('e' + (articleState.submission_id || '76'));
+        document.getElementById('f_volume').value = articleState.volume || '1';
+        document.getElementById('f_issue_number').value = articleState.issue_number || '1';
+        document.getElementById('f_copyright_year').value = articleState.copyright_year || '2024';
+        document.getElementById('f_footer_issue_line').value = translateFooterMonthsToId(articleState.footer_issue_line || 'Volume 1 Nomor 1, Januari-Maret 2024');
+        document.getElementById('f_article_url').value = articleState.article_url || '';
+        document.getElementById('f_citation').value = articleState.citation || '';
+        document.getElementById('f_doi').value = articleState.doi || '';
+        document.getElementById('f_review_editor').value = articleState.review_editor || '';
+        document.getElementById('f_received_date').value = articleState.received_date || '';
+        document.getElementById('f_accepted_date').value = articleState.accepted_date || '';
+        document.getElementById('f_published_date').value = articleState.published_date || '';
+        document.getElementById('f_funding').value = articleState.funding || (isVolume3Plus(articleState.volume) ? 'None' : 'none');
+        document.getElementById('f_competing_interests').value = articleState.competing_interests || '';
+        document.getElementById('f_contributor_roles').value = articleState.contributor_roles || '';
+        document.getElementById('f_retypeset_note').value = articleState.retypeset_note || '';
 
-    document.getElementById('f_title_id').value = articleState.title_id || '';
-    document.getElementById('f_title_en').value = articleState.title_en || '';
-    document.getElementById('f_corresponding_name').value = articleState.corresponding_name || '';
-    document.getElementById('f_corresponding_email').value = articleState.corresponding_email || '';
+        document.getElementById('f_title_id').value = articleState.title_id || '';
+        document.getElementById('f_title_en').value = articleState.title_en || '';
+        document.getElementById('f_corresponding_name').value = articleState.corresponding_name || '';
+        document.getElementById('f_corresponding_email').value = articleState.corresponding_email || '';
 
-    const abId = articleState.abstract_id || {};
-    document.getElementById('f_ab_id_pm').value = abId.pendahuluan_metode || '';
-    document.getElementById('f_ab_id_hasil').value = abId.hasil || '';
-    document.getElementById('f_ab_id_kes').value = abId.kesimpulan_saran || '';
-    document.getElementById('f_keywords_id').value = articleState.keywords_id || '';
-    document.getElementById('f_sdgs_id').value = articleState.sdgs_id || '';
+        const abId = articleState.abstract_id || {};
+        document.getElementById('f_ab_id_pm').value = abId.pendahuluan_metode || '';
+        document.getElementById('f_ab_id_hasil').value = abId.hasil || '';
+        document.getElementById('f_ab_id_kes').value = abId.kesimpulan_saran || '';
+        document.getElementById('f_keywords_id').value = articleState.keywords_id || '';
+        document.getElementById('f_sdgs_id').value = articleState.sdgs_id || '';
 
-    const abEn = articleState.abstract_en || {};
-    document.getElementById('f_ab_en_im').value = abEn.intro_methods || '';
-    document.getElementById('f_ab_en_res').value = abEn.results || '';
-    document.getElementById('f_ab_en_conc').value = abEn.conclusions_recommendations || '';
-    document.getElementById('f_keywords_en').value = articleState.keywords_en || '';
-    document.getElementById('f_sdgs_en').value = articleState.sdgs_en || '';
+        const abEn = articleState.abstract_en || {};
+        document.getElementById('f_ab_en_im').value = abEn.intro_methods || '';
+        document.getElementById('f_ab_en_res').value = abEn.results || '';
+        document.getElementById('f_ab_en_conc').value = abEn.conclusions_recommendations || '';
+        document.getElementById('f_keywords_en').value = articleState.keywords_en || '';
+        document.getElementById('f_sdgs_en').value = articleState.sdgs_en || '';
 
-    const refs = Array.isArray(articleState.referensi) ? articleState.referensi : [];
-    const cleanRefs = refs.map(r => stripRefPrefixJs(r)).filter(Boolean);
-    articleState.referensi = cleanRefs;
-    const activeRefStyle = getActiveJournalRefStyleJs();
-    const styleLbl = document.getElementById('journalRefStyleLabel');
-    if (styleLbl) styleLbl.textContent = 'Gaya ' + activeRefStyle.toUpperCase();
-    document.getElementById('f_referensi').value = formatRefsListForTextareaJs(cleanRefs, activeRefStyle);
-    document.getElementById('refCountBadge').textContent = cleanRefs.length;
+        const refs = Array.isArray(articleState.referensi) ? articleState.referensi : [];
+        const cleanRefs = refs.map(r => stripRefPrefixJs(r)).filter(Boolean);
+        articleState.referensi = cleanRefs;
+        const activeRefStyle = getActiveJournalRefStyleJs();
+        const styleLbl = document.getElementById('journalRefStyleLabel');
+        if (styleLbl) styleLbl.textContent = 'Gaya ' + activeRefStyle.toUpperCase();
+        document.getElementById('f_referensi').value = formatRefsListForTextareaJs(cleanRefs, activeRefStyle);
+        document.getElementById('refCountBadge').textContent = cleanRefs.length;
 
-    applyVolumeTemplateMode();
-    applyFormLanguageMode();
-    renderAuthorsEditor();
-    renderBodySectionsEditor();
-    updateAbstractWordCounts();
-    refreshVancouverSyncBannerJs();
+        applyVolumeTemplateMode();
+        applyFormLanguageMode();
+        renderAuthorsEditor();
+        renderBodySectionsEditor();
+        updateAbstractWordCounts();
+        refreshVancouverSyncBannerJs();
+        updateHistoryStatusUi();
+    } finally {
+        isPopulatingForm = false;
+    }
 }
 
 function syncStateFromInputs() {
@@ -1621,7 +1777,7 @@ function refreshVancouverSyncBannerJs() {
 
 async function formatVancouverReferencesAjax() {
     syncStateFromInputs();
-    syncReferencesFromInput();
+    syncReferencesFromInput(true);
     showToast('Mengonversi & menyinkronkan Sumber Pustaka ke gaya referensi jurnal...', 'info');
     const fd = await buildArticleFormData();
     try {
@@ -1630,6 +1786,7 @@ async function formatVancouverReferencesAjax() {
         if (data.ok && data.article) {
             articleState = data.article;
             populateFormFromState();
+            markHistorySavedUi(data.saved_at || '');
             showToast(data.message || 'Sumber pustaka disinkronkan ke gaya jurnal.', 'success');
         } else {
             showToast(data.error || 'Gagal menyinkronkan referensi.', 'error');
@@ -1641,7 +1798,7 @@ async function formatVancouverReferencesAjax() {
 
 async function syncReferencesToOjsMenu() {
     syncStateFromInputs();
-    syncReferencesFromInput();
+    syncReferencesFromInput(true);
     showToast('📤 Memparser daftar pustaka langsung ke menu References OJS...', 'info');
     const fd = await buildArticleFormData();
     try {
@@ -1652,6 +1809,7 @@ async function syncReferencesToOjsMenu() {
                 articleState = data.article;
                 populateFormFromState();
             }
+            markHistorySavedUi(data.saved_at || '');
             showToast(data.message || 'Referensi berhasil diparser ke menu References OJS.', 'success');
         } else {
             showToast(data.error || 'Gagal memparser ke menu References OJS.', 'error');
@@ -1661,11 +1819,12 @@ async function syncReferencesToOjsMenu() {
     }
 }
 
-function syncReferencesFromInput() {
+function syncReferencesFromInput(silent = false) {
     const raw = document.getElementById('f_referensi').value;
     articleState.referensi = raw.split(/\r?\n/).map(s => stripRefPrefixJs(s)).filter(Boolean);
     document.getElementById('refCountBadge').textContent = articleState.referensi.length;
     refreshVancouverSyncBannerJs();
+    if (!silent) markArticleHistoryDirty();
 }
 
 const SECTION_KEYS = ['badan_artikel', 'pendahuluan', 'metode', 'hasil', 'pembahasan', 'kesimpulan_saran'];
@@ -1706,6 +1865,7 @@ function moveAuthorRow(idx, delta) {
     articleState.authors[idx] = articleState.authors[target];
     articleState.authors[target] = tmp;
     renderAuthorsEditor();
+    markArticleHistoryDirty();
 }
 
 function updateAuthor(idx, key, val) {
@@ -1723,12 +1883,14 @@ function addAuthorRow() {
     const defaultAff = (articleState.authors[0] && articleState.authors[0].affiliation) ? articleState.authors[0].affiliation : '';
     articleState.authors.push({ name: '', affiliation: defaultAff, email: '', is_corresponding: false });
     renderAuthorsEditor();
+    markArticleHistoryDirty();
 }
 
 function removeAuthorRow(idx) {
     if (articleState.authors.length <= 1) return;
     articleState.authors.splice(idx, 1);
     renderAuthorsEditor();
+    markArticleHistoryDirty();
 }
 
 function updateAffDeduplicationPreview() {
@@ -2015,12 +2177,14 @@ function performBlockRelocation(srcSec, srcIdx, targetSec, rawTargetIdx) {
     articleState.sections[targetSec].splice(targetIdx, 0, moved);
     dragBlockState = { srcSec: null, srcIdx: null };
     renderBodySectionsEditor({ sec: targetSec, idx: targetIdx });
+    markArticleHistoryDirty();
 }
 
 function moveBlockVertical(secKey, bIdx, delta) {
     const blocks = articleState.sections[secKey] || [];
     const activeKeys = getActiveSectionKeys();
     const secPos = activeKeys.indexOf(secKey);
+    let changed = false;
 
     if (delta < 0) {
         if (bIdx > 0) {
@@ -2028,6 +2192,7 @@ function moveBlockVertical(secKey, bIdx, delta) {
             blocks[bIdx - 1] = blocks[bIdx];
             blocks[bIdx] = tmp;
             renderBodySectionsEditor({ sec: secKey, idx: bIdx - 1 });
+            changed = true;
         } else if (secPos > 0) {
             const prevSec = activeKeys[secPos - 1];
             const [moved] = blocks.splice(bIdx, 1);
@@ -2035,6 +2200,7 @@ function moveBlockVertical(secKey, bIdx, delta) {
             articleState.sections[prevSec].push(moved);
             renderBodySectionsEditor({ sec: prevSec, idx: articleState.sections[prevSec].length - 1 });
             showToast('Blok dipindahkan naik ke akhir bab ' + prevSec.replace('_', ' ').toUpperCase(), 'info');
+            changed = true;
         }
     } else if (delta > 0) {
         if (bIdx < blocks.length - 1) {
@@ -2042,6 +2208,7 @@ function moveBlockVertical(secKey, bIdx, delta) {
             blocks[bIdx + 1] = blocks[bIdx];
             blocks[bIdx] = tmp;
             renderBodySectionsEditor({ sec: secKey, idx: bIdx + 1 });
+            changed = true;
         } else if (secPos >= 0 && secPos < activeKeys.length - 1) {
             const nextSec = activeKeys[secPos + 1];
             const [moved] = blocks.splice(bIdx, 1);
@@ -2049,8 +2216,10 @@ function moveBlockVertical(secKey, bIdx, delta) {
             articleState.sections[nextSec].unshift(moved);
             renderBodySectionsEditor({ sec: nextSec, idx: 0 });
             showToast('Blok dipindahkan turun ke awal bab ' + nextSec.replace('_', ' ').toUpperCase(), 'info');
+            changed = true;
         }
     }
+    if (changed) markArticleHistoryDirty();
 }
 
 function moveBlockToSection(srcSec, bIdx, targetSec) {
@@ -2058,6 +2227,7 @@ function moveBlockToSection(srcSec, bIdx, targetSec) {
     const [moved] = articleState.sections[srcSec].splice(bIdx, 1);
     articleState.sections[targetSec].push(moved);
     renderBodySectionsEditor({ sec: targetSec, idx: articleState.sections[targetSec].length - 1 });
+    markArticleHistoryDirty();
     showToast('Blok dipindahkan ke bab ' + targetSec.replace('_', ' ').toUpperCase(), 'success');
 }
 
@@ -2066,6 +2236,7 @@ function changeBlockLevel(secKey, bIdx, newType) {
     if (!blk || blk.type === 'table' || blk.type === 'image') return;
     blk.type = newType;
     renderBodySectionsEditor({ sec: secKey, idx: bIdx });
+    markArticleHistoryDirty();
 }
 
 function renderTablePreviewHtml(secKey, bIdx, blk) {
@@ -2183,6 +2354,7 @@ function setTableColAlign(secKey, bIdx, colIdx, align) {
         });
     });
     renderBodySectionsEditor();
+    markArticleHistoryDirty();
 }
 
 function setTableRowType(secKey, bIdx, rIdx, rowType) {
@@ -2205,6 +2377,7 @@ function setTableRowType(secKey, bIdx, rIdx, rowType) {
                 row_type: 'group'
             }];
             renderBodySectionsEditor();
+            markArticleHistoryDirty();
             return;
         }
     }
@@ -2213,6 +2386,7 @@ function setTableRowType(secKey, bIdx, rIdx, rowType) {
         c.header = (rowType === 'header');
     });
     renderBodySectionsEditor();
+    markArticleHistoryDirty();
 }
 
 function moveTableRow(secKey, bIdx, rIdx, delta) {
@@ -2223,6 +2397,7 @@ function moveTableRow(secKey, bIdx, rIdx, delta) {
     rows[rIdx] = rows[target];
     rows[target] = tmp;
     renderBodySectionsEditor();
+    markArticleHistoryDirty();
 }
 
 function addTableRow(secKey, bIdx, rowType) {
@@ -2251,6 +2426,7 @@ function addTableRow(secKey, bIdx, rowType) {
         rows.push(newRow);
     }
     renderBodySectionsEditor();
+    markArticleHistoryDirty();
 }
 
 function removeTableRow(secKey, bIdx, rIdx) {
@@ -2258,6 +2434,7 @@ function removeTableRow(secKey, bIdx, rIdx) {
     if (rows.length <= 1) return;
     rows.splice(rIdx, 1);
     renderBodySectionsEditor();
+    markArticleHistoryDirty();
 }
 
 function addTableColumn(secKey, bIdx) {
@@ -2271,6 +2448,7 @@ function addTableColumn(secKey, bIdx) {
         }
     });
     renderBodySectionsEditor();
+    markArticleHistoryDirty();
 }
 
 function removeLastTableColumn(secKey, bIdx) {
@@ -2283,6 +2461,7 @@ function removeLastTableColumn(secKey, bIdx) {
         }
     });
     renderBodySectionsEditor();
+    markArticleHistoryDirty();
 }
 
 async function formatAllTablesHealthStandard(forceReclassify = true) {
@@ -2298,6 +2477,7 @@ async function formatAllTablesHealthStandard(forceReclassify = true) {
         if (data.ok && data.article) {
             articleState = data.article;
             renderBodySectionsEditor();
+            markHistorySavedUi(data.saved_at || '');
             showToast(data.message || 'Tabel berhasil diformat.', 'success');
         } else {
             showToast(data.error || 'Gagal memformat tabel.', 'error');
@@ -2356,6 +2536,7 @@ function addSectionBlock(secKey, type) {
         articleState.sections[secKey].push({ type: type, text: '' });
     }
     renderBodySectionsEditor({ sec: secKey, idx: articleState.sections[secKey].length - 1 });
+    markArticleHistoryDirty();
 }
 
 function countAllTables() {
@@ -2396,6 +2577,11 @@ function serializeArticleForServer() {
         delete snapshot.raw_text_for_ai;
         delete snapshot._ai_status;
         delete snapshot._loaded_docx_name;
+        delete snapshot._has_saved_state;
+        delete snapshot._saved_at;
+        delete snapshot._saved_reason;
+        delete snapshot._saved_by;
+        delete snapshot._is_published;
         if (snapshot.abstract_id && typeof snapshot.abstract_id === 'object' && String(snapshot.abstract_id.pendahuluan_metode || '').trim() !== '') {
             delete snapshot.abstract_id.raw;
         }
@@ -2457,6 +2643,7 @@ function setBlockImageFromFile(secKey, bIdx, inputEl, slot = 1) {
                 if (uploaded.ext) current['ext' + suf] = uploaded.ext;
             }
             showToast('Gambar disisipkan & tersimpan di server. Caption dapat diubah di bawah pratinjau.', 'success');
+            markArticleHistoryDirty();
         } catch (e) {
             showToast('Gambar tampil di pratinjau, tetapi gagal disimpan di server: ' + e.message, 'error');
         }
@@ -2492,11 +2679,13 @@ function clearBlockImage(secKey, bIdx, slot = 1) {
     blk['width' + suf] = 0;
     blk['height' + suf] = 0;
     renderBodySectionsEditor({ sec: secKey, idx: bIdx });
+    markArticleHistoryDirty();
 }
 
 function removeSectionBlock(secKey, bIdx) {
     articleState.sections[secKey].splice(bIdx, 1);
     renderBodySectionsEditor();
+    markArticleHistoryDirty();
 }
 
 // =========================================================================
@@ -2514,7 +2703,7 @@ function quickOpenLanguageAudit() {
 
 async function runLanguageAudit() {
     syncStateFromInputs();
-    syncReferencesFromInput();
+    syncReferencesFromInput(true);
     const box = document.getElementById('languageAuditResultsBox');
     box.innerHTML = '<div style="padding:28px;text-align:center;color:#64748b;">⏳ Memeriksa ejaan &amp; kata baku (KBBI VI, EYD V, SCOWL US English, AMA Style)...</div>';
 
@@ -2697,6 +2886,7 @@ function applyAuditFix(issueId) {
 
     populateFormFromState();
     renderLanguageAuditResults();
+    markArticleHistoryDirty();
     showToast(`Diperbaiki: "${iss.found}" → "${cleanRep}"`, 'success');
 }
 
@@ -2720,6 +2910,7 @@ function applyAllSafeAuditFixes() {
     auditState.issues = remaining;
     populateFormFromState();
     renderLanguageAuditResults();
+    if (applied > 0) markArticleHistoryDirty();
     showToast(`✨ ${applied} perbaikan baku/EYD/typo aman berhasil diterapkan!`, 'success');
 }
 
@@ -2735,7 +2926,8 @@ function rebuildApaCitation() {
         : 'Author';
     const year = articleState.copyright_year || '2024';
     const title = (articleState.title_en || articleState.title_id || '').replace(/\.$/, '');
-    const jTitle = document.getElementById('cfg_journalTitle').value || 'Kisi Berkelanjutan: Sains Medis Dan Kesehatan';
+    const jTitleRaw = document.getElementById('cfg_journalTitle').value || 'Kisi Berkelanjutan: Sains Medis dan Kesehatan';
+    const jTitle = jTitleRaw.replace(/Sains Medis Dan Kesehatan/g, 'Sains Medis dan Kesehatan');
     const vol = articleState.volume || '1';
     const num = articleState.issue_number || '1';
     const eloc = articleState.elocation_id || 'e76';
@@ -2743,6 +2935,7 @@ function rebuildApaCitation() {
 
     articleState.citation = `${firstAuthor} et al., (${year}). ${title}. ${jTitle}, ${vol}(${num}), ${eloc}. ${url}`;
     document.getElementById('f_citation').value = articleState.citation;
+    markArticleHistoryDirty();
     showToast('Format Citation APA berhasil diperbarui.', 'success');
 }
 
@@ -2824,6 +3017,7 @@ async function sendParseDocxRequest(formData) {
         articleState.referensi = p.referensi || articleState.referensi;
 
         populateFormFromState();
+        markArticleHistoryDirty();
         showToast('Berhasil mengekstrak naskah & tabel dari: ' + data.fileName, 'success');
     } catch (e) {
         showToast('Gagal memproses file .docx: ' + e.message, 'error');
@@ -2842,6 +3036,7 @@ async function runAiRestructure() {
             articleState = data.article;
             articleState.form_mode = keptMode;
             populateFormFromState();
+            markHistorySavedUi(data.saved_at || '');
             showToast(data.message || 'Abstrak berhasil dirapikan!', 'success');
         } else {
             showToast(data.error || 'Gagal menjalankan restrukturisasi AI.', 'error');
@@ -2870,7 +3065,7 @@ function autoNormalizeInputElement(el) {
 
 function normalizeAllArticleSpacing(showNotice = true) {
     syncStateFromInputs();
-    syncReferencesFromInput();
+    syncReferencesFromInput(true);
     let changes = 0;
 
     const norm = (val) => {
@@ -3037,6 +3232,7 @@ async function downloadGeneratedFile(endpointOp) {
         } else {
             showToast(isDocx ? '📄 File DOCX Template 2026 berhasil diunduh!' : '🧬 File AmeliCA JATS XML berhasil diunduh!', 'success');
         }
+        markHistorySavedUi(new Date().toISOString());
     } catch (e) {
         showToast('Error jaringan saat mengunduh file: ' + e.message, 'error');
     }
@@ -3068,6 +3264,7 @@ async function saveDirectlyToOjsGalley() {
         const res = await fetch(BASE_URL + '/saveToGalley', { method: 'POST', body: fd, credentials: 'same-origin' });
         const data = await res.json();
         if (data.ok) {
+            markHistorySavedUi(data.saved_at || '');
             showToast(data.message, 'success');
         } else {
             showToast(data.error || 'Gagal menyimpan ke Galley OJS.', 'error');
@@ -3085,7 +3282,27 @@ function escapeHtml(str) {
         .replace(/"/g, '&quot;');
 }
 
-document.addEventListener('DOMContentLoaded', populateFormFromState);
+document.addEventListener('DOMContentLoaded', () => {
+    populateFormFromState();
+    const layoutEl = document.querySelector('.studio-layout');
+    if (layoutEl) {
+        layoutEl.addEventListener('input', () => markArticleHistoryDirty());
+        layoutEl.addEventListener('change', () => markArticleHistoryDirty());
+    }
+});
+
+window.addEventListener('pagehide', () => {
+    const subId = parseInt(articleState && articleState.submission_id ? articleState.submission_id : 0, 10);
+    if (!subId || !hasPendingHistorySave) return;
+    try {
+        syncStateFromInputs();
+        syncReferencesFromInput(true);
+        const fd = new FormData();
+        fd.append('reason', 'autosave');
+        fd.append('articleJson', serializeArticleForServer());
+        fetch(BASE_URL + '/saveState', { method: 'POST', body: fd, credentials: 'same-origin', keepalive: true });
+    } catch (_e) {}
+});
 </script>
 </body>
 </html>

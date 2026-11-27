@@ -12,12 +12,14 @@ $root = dirname(__DIR__);
 require_once $root . '/classes/HealthTableFormatter.php';
 require_once $root . '/classes/LanguageAuditor.php';
 require_once $root . '/classes/VancouverFormatter.php';
+require_once $root . '/classes/ArticleStateStore.php';
 require_once $root . '/classes/GeminiRestructurer.php';
 require_once $root . '/classes/DocxParser.php';
 require_once $root . '/classes/DocxGenerator.php';
 require_once $root . '/classes/JatsXmlGenerator.php';
 require_once $root . '/classes/JatsHtmlRenderer.php';
 
+use APP\plugins\generic\kisiTypesetter\classes\ArticleStateStore;
 use APP\plugins\generic\kisiTypesetter\classes\DocxGenerator;
 use APP\plugins\generic\kisiTypesetter\classes\DocxParser;
 use APP\plugins\generic\kisiTypesetter\classes\GeminiRestructurer;
@@ -1082,6 +1084,84 @@ assertTrue(
     ($parsedIdOnly['title_id'] ?? '') === 'Edukasi Kesehatan Ibu Hamil di Wilayah Pesisir'
         && ($parsedIdOnly['title_en'] ?? '') === '',
     'DocxParser preserves genuinely Indonesian single title even when Corresponding author label is English'
+);
+
+// 17. Verify Last Edit History Persistence (ArticleStateStore) & Citation Journal Name Capitalization
+$stateTestDir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'kisi_state_test_' . str_replace('.', '', uniqid('', true));
+$statePayload = array_merge($hybridRestructured, [
+    'submission_id' => 314,
+    'citation' => 'Sari et al., (2026). Effectiveness of Community Midwifery Telemonitoring. Kisi Berkelanjutan: Sains Medis Dan Kesehatan, 3(3), e105. https://kisiberkelanjutan.com/index.php/smk/article/view/314',
+    '_has_saved_state' => true,
+    '_loaded_docx_name' => 'draft_should_be_stripped.docx',
+    'raw_text_for_ai' => 'ephemeral transport field',
+    'sections' => [
+        'badan_artikel' => [],
+        'pendahuluan' => [
+            ['type' => 'paragraph', 'text' => 'Custom edited paragraph saved in Studio history.'],
+            [
+                'type' => 'image',
+                'media_key' => 'abc123def4567890abcd1234.png',
+                'data' => 'data:image/png;base64,iVBORw0KGgo=',
+                'caption' => 'Gambar 1. Grafik edit terakhir.',
+            ],
+        ],
+        'metode' => [],
+        'hasil' => [],
+        'pembahasan' => [],
+        'kesimpulan_saran' => [],
+    ],
+]);
+$statePayload['citation'] = LanguageAuditor::normalizeJournalTitle($statePayload['citation']);
+assertTrue(
+    strpos($statePayload['citation'], 'Kisi Berkelanjutan: Sains Medis dan Kesehatan') !== false
+        && strpos($statePayload['citation'], 'Sains Medis Dan Kesehatan') === false,
+    'LanguageAuditor::normalizeJournalTitle lowercases "Dan" in Kisi Berkelanjutan: Sains Medis dan Kesehatan'
+);
+
+$savedMeta = ArticleStateStore::save(1, 314, $statePayload, [
+    'saved_by' => 'editor_kisi',
+    'saved_reason' => 'save_to_galley',
+], $stateTestDir);
+assertTrue(
+    is_array($savedMeta)
+        && ArticleStateStore::exists(1, 314, $stateTestDir)
+        && ($savedMeta['saved_reason'] ?? '') === 'save_to_galley',
+    'ArticleStateStore::save persists submission edit history JSON on disk'
+);
+
+$loadedHistory = ArticleStateStore::load(1, 314, $stateTestDir);
+assertTrue(
+    is_array($loadedHistory)
+        && ($loadedHistory['saved_by'] ?? '') === 'editor_kisi'
+        && ($loadedHistory['article']['title_id'] ?? '') === ($hybridRestructured['title_id'] ?? '')
+        && ($loadedHistory['article']['sections']['pendahuluan'][0]['text'] ?? '') === 'Custom edited paragraph saved in Studio history.'
+        && ($loadedHistory['article']['sections']['pendahuluan'][1]['media_key'] ?? '') === 'abc123def4567890abcd1234.png'
+        && ($loadedHistory['article']['sections']['pendahuluan'][1]['data'] ?? null) === ''
+        && !isset($loadedHistory['article']['_has_saved_state'])
+        && !isset($loadedHistory['article']['_loaded_docx_name'])
+        && !isset($loadedHistory['article']['raw_text_for_ai']),
+    'ArticleStateStore::load restores exact Studio edits while stripping ephemeral transport keys and redundant base64 bloat'
+);
+
+assertTrue(
+    ArticleStateStore::delete(1, 314, $stateTestDir) && !ArticleStateStore::exists(1, 314, $stateTestDir),
+    'ArticleStateStore::delete clears saved history cleanly for explicit OJS/DOCX reload'
+);
+@rmdir($stateTestDir);
+
+$handlerSource = (string) file_get_contents($root . '/classes/KisiTypesetterHandler.php');
+$studioUpdatedSource = (string) file_get_contents($root . '/templates/studioView.php');
+$jatsRendererSource = (string) file_get_contents($root . '/classes/JatsHtmlRenderer.php');
+assertTrue(
+    strpos($handlerSource, 'Sains Medis Dan Kesehatan') === false
+        && strpos($studioUpdatedSource, 'Kisi Berkelanjutan: Sains Medis Dan Kesehatan') === false
+        && strpos($jatsRendererSource, 'Kisi Berkelanjutan: Sains Medis Dan Kesehatan') === false
+        && strpos($handlerSource, 'ArticleStateStore::load') !== false
+        && strpos($handlerSource, 'function saveState(') !== false
+        && strpos($handlerSource, 'function resetSavedState(') !== false
+        && strpos($studioUpdatedSource, '/saveState') !== false
+        && strpos($studioUpdatedSource, '/resetSavedState') !== false,
+    'Handler, Studio UI, and JatsHtmlRenderer wire state persistence endpoints and lowercase journal conjunction "dan"'
 );
 
 if ($failures > 0) {

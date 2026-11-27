@@ -1032,7 +1032,8 @@ JS;
         }
 
         $journalTitle = self::getNodeText($xpath, '//journal-meta/journal-title-group/journal-title')
-            ?: (string) ($meta['journal_title'] ?? 'Kisi Berkelanjutan: Sains Medis Dan Kesehatan');
+            ?: (string) ($meta['journal_title'] ?? 'Kisi Berkelanjutan: Sains Medis dan Kesehatan');
+        $journalTitle = str_replace('Sains Medis Dan Kesehatan', 'Sains Medis dan Kesehatan', $journalTitle);
         $doi = self::getNodeText($xpath, '//article-meta/article-id[@pub-id-type="doi"]');
 
         $authors = [];

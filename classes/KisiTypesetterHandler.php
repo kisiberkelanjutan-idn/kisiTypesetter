@@ -20,6 +20,7 @@ use PKP\submissionFile\SubmissionFile;
 
 require_once __DIR__ . '/VancouverFormatter.php';
 require_once __DIR__ . '/MediaStore.php';
+require_once __DIR__ . '/ArticleStateStore.php';
 
 class KisiTypesetterHandler extends Handler
 {
@@ -104,32 +105,35 @@ class KisiTypesetterHandler extends Handler
         if ($selectedSubmissionId > 0) {
             $submission = Repo::submission()->get($selectedSubmissionId);
             if ($submission && (int) $submission->getData('contextId') === (int) $contextId) {
-                $activeArticleData = $this->extractOjsSubmissionData($submission, $context, $request, $settings);
                 $attachedDocxFiles = $this->getSubmissionDocxFiles($submission->getId());
+                $isPublished = $this->resolveSubmissionPublishedStatus($submission);
+                $savedHistory = ArticleStateStore::load((int) $contextId, $selectedSubmissionId);
 
-                // Automatically parse the latest attached .docx file if one exists in OJS!
-                if (!empty($attachedDocxFiles)) {
-                    $firstDocx = $attachedDocxFiles[0];
-                    $loadedPath = '';
-                    $tmpAutoUnlink = '';
-                    if (!empty($firstDocx['abs_path']) && file_exists($firstDocx['abs_path'])) {
-                        $loadedPath = $firstDocx['abs_path'];
-                    } elseif (!empty($firstDocx['rel_path'])) {
-                        $content = $this->readFromFileService($firstDocx['rel_path']);
-                        if ($content !== '') {
-                            $tmpAutoUnlink = tempnam(sys_get_temp_dir(), 'kisi_auto_') . '.docx';
-                            file_put_contents($tmpAutoUnlink, $content);
-                            $loadedPath = $tmpAutoUnlink;
+                if ($savedHistory !== null) {
+                    $activeArticleData = $this->hydrateArticleImages((array) $savedHistory['article']);
+                    foreach (['journal_title', 'citation'] as $jKey) {
+                        if (isset($activeArticleData[$jKey]) && is_string($activeArticleData[$jKey])) {
+                            $activeArticleData[$jKey] = LanguageAuditor::normalizeJournalTitle($activeArticleData[$jKey]);
                         }
                     }
-                    if ($loadedPath !== '') {
-                        $parsedDocx = $this->attachMediaKeys(DocxParser::parse($loadedPath));
-                        $activeArticleData = $this->mergeOjsAndDocxData($activeArticleData, $parsedDocx);
-                        $activeArticleData['_loaded_docx_name'] = $firstDocx['name'];
-                    }
-                    if ($tmpAutoUnlink !== '' && file_exists($tmpAutoUnlink)) {
-                        @unlink($tmpAutoUnlink);
-                    }
+                    $activeArticleData['_has_saved_state'] = true;
+                    $activeArticleData['_saved_at'] = (string) ($savedHistory['saved_at'] ?? '');
+                    $activeArticleData['_saved_reason'] = (string) ($savedHistory['saved_reason'] ?? '');
+                    $activeArticleData['_saved_by'] = (string) ($savedHistory['saved_by'] ?? '');
+                    $activeArticleData['_is_published'] = $isPublished;
+                } else {
+                    $activeArticleData = $this->loadFreshSubmissionArticleData(
+                        $submission,
+                        $context,
+                        $request,
+                        $settings,
+                        $attachedDocxFiles
+                    );
+                    $activeArticleData['_has_saved_state'] = false;
+                    $activeArticleData['_saved_at'] = '';
+                    $activeArticleData['_saved_reason'] = '';
+                    $activeArticleData['_saved_by'] = '';
+                    $activeArticleData['_is_published'] = $isPublished;
                 }
             }
         }
@@ -230,11 +234,190 @@ class KisiTypesetterHandler extends Handler
         foreach ($keys as $k) {
             $val = $request->getUserVar($k);
             if ($val !== null) {
-                $plugin->updateSetting($contextId, $k, trim((string) $val), 'string');
+                $cleanVal = trim((string) $val);
+                if ($k === 'journalTitle') {
+                    $cleanVal = LanguageAuditor::normalizeJournalTitle($cleanVal);
+                }
+                $plugin->updateSetting($contextId, $k, $cleanVal, 'string');
             }
         }
 
         echo json_encode(['ok' => true, 'message' => 'Pengaturan plugin berhasil disimpan.']);
+    }
+
+    /**
+     * AJAX POST: Persist current Studio article state as the submission's last edit history.
+     */
+    public function saveState($args, $request)
+    {
+        if (!$this->ensureAuthorized($request)) {
+            return;
+        }
+        header('Content-Type: application/json; charset=UTF-8');
+
+        $articleData = $this->extractArticlePayload($request);
+        if (!is_array($articleData)) {
+            echo json_encode(['ok' => false, 'error' => 'Data artikel JSON tidak valid.']);
+            return;
+        }
+
+        $submissionId = (int) ($articleData['submission_id'] ?? 0);
+        if ($submissionId <= 0) {
+            echo json_encode(['ok' => false, 'error' => 'Pilih artikel OJS terlebih dahulu sebelum menyimpan riwayat.']);
+            return;
+        }
+
+        $reason = trim((string) ($request->getUserVar('reason') ?: 'manual'));
+        $savedMeta = $this->persistArticleHistory($request, $articleData, $reason);
+        if ($savedMeta === null) {
+            echo json_encode(['ok' => false, 'error' => 'Gagal menyimpan riwayat edit ke penyimpanan server.']);
+            return;
+        }
+
+        echo json_encode([
+            'ok' => true,
+            'saved_at' => $savedMeta['saved_at'],
+            'saved_by' => $savedMeta['saved_by'],
+            'saved_reason' => $savedMeta['saved_reason'],
+            'message' => 'Riwayat edit terakhir tersimpan.',
+        ], JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * AJAX POST: Clear saved edit history and reload fresh OJS metadata + attached DOCX.
+     */
+    public function resetSavedState($args, $request)
+    {
+        if (!$this->ensureAuthorized($request)) {
+            return;
+        }
+        header('Content-Type: application/json; charset=UTF-8');
+
+        $context = $request->getContext();
+        $contextId = $context ? (int) $context->getId() : 0;
+        $submissionId = (int) $request->getUserVar('submissionId');
+        if ($submissionId <= 0) {
+            echo json_encode(['ok' => false, 'error' => 'Submission ID tidak valid.']);
+            return;
+        }
+
+        $submission = Repo::submission()->get($submissionId);
+        if (!$submission || (int) $submission->getData('contextId') !== $contextId) {
+            echo json_encode(['ok' => false, 'error' => 'Artikel OJS #' . $submissionId . ' tidak ditemukan.']);
+            return;
+        }
+
+        ArticleStateStore::delete($contextId, $submissionId);
+        $settings = $this->getSettingsArray($contextId, $this->getPluginInstance());
+        $attachedDocxFiles = $this->getSubmissionDocxFiles($submissionId);
+        $freshData = $this->loadFreshSubmissionArticleData(
+            $submission,
+            $context,
+            $request,
+            $settings,
+            $attachedDocxFiles
+        );
+        $freshData['_has_saved_state'] = false;
+        $freshData['_saved_at'] = '';
+        $freshData['_saved_reason'] = '';
+        $freshData['_saved_by'] = '';
+        $freshData['_is_published'] = $this->resolveSubmissionPublishedStatus($submission);
+
+        echo json_encode([
+            'ok' => true,
+            'article' => $freshData,
+            'message' => 'Isian dimuat ulang dari metadata OJS & file .docx terbaru.',
+        ], JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * Check whether an OJS submission or its current publication is published (STATUS_PUBLISHED = 3).
+     */
+    protected function resolveSubmissionPublishedStatus($submission): bool
+    {
+        if (!$submission || !method_exists($submission, 'getData')) {
+            return false;
+        }
+        $pubStatus = defined('\PKP\submission\PKPSubmission::STATUS_PUBLISHED')
+            ? (int) \PKP\submission\PKPSubmission::STATUS_PUBLISHED
+            : 3;
+        if ((int) $submission->getData('status') === $pubStatus) {
+            return true;
+        }
+        if (method_exists($submission, 'getCurrentPublication')) {
+            $pub = $submission->getCurrentPublication();
+            if ($pub && method_exists($pub, 'getData') && (int) $pub->getData('status') === $pubStatus) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Load fresh OJS metadata merged with the highest-priority attached DOCX file.
+     */
+    protected function loadFreshSubmissionArticleData(
+        $submission,
+        $context,
+        Request $request,
+        array $settings,
+        array $attachedDocxFiles = []
+    ): array {
+        $activeArticleData = $this->extractOjsSubmissionData($submission, $context, $request, $settings);
+
+        if (!empty($attachedDocxFiles)) {
+            $firstDocx = $attachedDocxFiles[0];
+            $loadedPath = '';
+            $tmpAutoUnlink = '';
+            if (!empty($firstDocx['abs_path']) && file_exists($firstDocx['abs_path'])) {
+                $loadedPath = $firstDocx['abs_path'];
+            } elseif (!empty($firstDocx['rel_path'])) {
+                $content = $this->readFromFileService($firstDocx['rel_path']);
+                if ($content !== '') {
+                    $tmpAutoUnlink = tempnam(sys_get_temp_dir(), 'kisi_auto_') . '.docx';
+                    file_put_contents($tmpAutoUnlink, $content);
+                    $loadedPath = $tmpAutoUnlink;
+                }
+            }
+            if ($loadedPath !== '') {
+                $parsedDocx = $this->attachMediaKeys(DocxParser::parse($loadedPath));
+                $activeArticleData = $this->mergeOjsAndDocxData($activeArticleData, $parsedDocx);
+                $activeArticleData['_loaded_docx_name'] = $firstDocx['name'];
+            }
+            if ($tmpAutoUnlink !== '' && file_exists($tmpAutoUnlink)) {
+                @unlink($tmpAutoUnlink);
+            }
+        }
+
+        return $activeArticleData;
+    }
+
+    /**
+     * Save the latest article payload to ArticleStateStore for (contextId, submissionId).
+     */
+    protected function persistArticleHistory(Request $request, array $articleData, string $reason = 'auto'): ?array
+    {
+        $submissionId = (int) ($articleData['submission_id'] ?? 0);
+        if ($submissionId <= 0) {
+            return null;
+        }
+        $context = $request->getContext();
+        $contextId = $context ? (int) $context->getId() : 0;
+        $user = $request->getUser();
+        $savedBy = '';
+        if ($user) {
+            if (method_exists($user, 'getUsername') && trim((string) $user->getUsername()) !== '') {
+                $savedBy = trim((string) $user->getUsername());
+            } elseif (method_exists($user, 'getFullName')) {
+                $savedBy = trim((string) $user->getFullName());
+            }
+        }
+
+        $withMediaKeys = $this->attachMediaKeys($articleData);
+        return ArticleStateStore::save($contextId, $submissionId, $withMediaKeys, [
+            'saved_reason' => $reason,
+            'saved_by' => $savedBy,
+        ]);
     }
 
     /**
@@ -371,10 +554,12 @@ class KisiTypesetterHandler extends Handler
             $settings['geminiApiKey'] ?? '',
             $settings['geminiModel'] ?? 'gemini-2.5-flash'
         );
+        $savedMeta = $this->persistArticleHistory($request, $restructured, 'ai_restructure');
 
         echo json_encode([
             'ok' => true,
             'article' => $restructured,
+            'saved_at' => $savedMeta['saved_at'] ?? '',
             'message' => $restructured['_ai_status'] ?? 'Berhasil dirapikan.',
         ], JSON_UNESCAPED_UNICODE);
     }
@@ -457,10 +642,12 @@ class KisiTypesetterHandler extends Handler
             'suggest_footnote' => (string) $request->getUserVar('suggestFootnote') !== '0',
         ]);
         $formatted = LanguageAuditor::normalizeArticleParagraphSpaces($formatted);
+        $savedMeta = $this->persistArticleHistory($request, $formatted, 'format_tables');
 
         echo json_encode([
             'ok' => true,
             'article' => $formatted,
+            'saved_at' => $savedMeta['saved_at'] ?? '',
             'message' => 'Seluruh tabel berhasil diformat sesuai standar tabel ilmiah rumpun kesehatan (3 garis terbuka, perataan stub/numerik, hierarki variabel, & catatan kaki).',
         ], JSON_UNESCAPED_UNICODE);
     }
@@ -486,10 +673,12 @@ class KisiTypesetterHandler extends Handler
 
         $changes = 0;
         $normalized = LanguageAuditor::normalizeArticleParagraphSpaces($articleData, $changes);
+        $savedMeta = $this->persistArticleHistory($request, $normalized, 'normalize_spacing');
         echo json_encode([
             'ok' => true,
             'article' => $normalized,
             'changes' => $changes,
+            'saved_at' => $savedMeta['saved_at'] ?? '',
             'message' => $changes > 0
                 ? "Aturan baku spasi tunggal diterapkan pada {$changes} bidang/paragraf."
                 : 'Semua paragraf sudah mematuhi aturan maksimal 1 spasi tunggal.',
@@ -546,6 +735,7 @@ class KisiTypesetterHandler extends Handler
                 ? $this->normalizeArticleReferencesForStyle($articleData, 'apa')
                 : VancouverFormatter::convertAllReferences($articleData);
             $updatedArticle['reference_style'] = $journalStyle;
+            $savedMeta = $this->persistArticleHistory($request, $updatedArticle, 'sync_references');
 
             $styleLabel = strtoupper($journalStyle);
             echo json_encode([
@@ -555,6 +745,7 @@ class KisiTypesetterHandler extends Handler
                 'styleLabel' => $styleLabel,
                 'citationsRaw' => $syncRes['citationsRaw'],
                 'article' => $updatedArticle,
+                'saved_at' => $savedMeta['saved_at'] ?? '',
                 'message' => $syncRes['count'] > 0
                     ? "Berhasil memparser {$syncRes['count']} referensi (gaya {$styleLabel}) ke menu References OJS artikel #{$submissionId}."
                     : "Daftar References artikel #{$submissionId} dikosongkan (tidak ada entri referensi).",
@@ -601,6 +792,7 @@ class KisiTypesetterHandler extends Handler
         $updated['reference_style'] = $journalStyle;
         $updated = LanguageAuditor::normalizeArticleParagraphSpaces($updated);
         $syncReport = VancouverFormatter::auditSync($updated);
+        $savedMeta = $this->persistArticleHistory($request, $updated, 'format_references');
 
         echo json_encode([
             'ok' => true,
@@ -608,6 +800,7 @@ class KisiTypesetterHandler extends Handler
             'converted' => $converted,
             'style' => $journalStyle,
             'sync' => $syncReport,
+            'saved_at' => $savedMeta['saved_at'] ?? '',
             'message' => $converted > 0
                 ? 'Berhasil mengonversi ' . $converted . ' entri sumber pustaka ke gaya ' . strtoupper($journalStyle) . '.'
                 : 'Seluruh sumber pustaka sudah sesuai gaya ' . strtoupper($journalStyle) . ' jurnal.',
@@ -770,6 +963,8 @@ class KisiTypesetterHandler extends Handler
             return;
         }
 
+        $this->persistArticleHistory($request, $articleData, 'generate_docx');
+
         $masterPath = $plugin->getMasterTemplatePath();
         $tmpOut = tempnam(sys_get_temp_dir(), 'kisi_docx_') . '.docx';
 
@@ -815,6 +1010,8 @@ class KisiTypesetterHandler extends Handler
             return;
         }
 
+        $this->persistArticleHistory($request, $articleData, 'preview_fulltext');
+
         $xmlString = JatsXmlGenerator::generate($articleData);
         $htmlDigest = JatsHtmlRenderer::renderFullTextHtml($xmlString, [
             'include_abstract' => true,
@@ -846,6 +1043,8 @@ class KisiTypesetterHandler extends Handler
             echo 'Invalid article data JSON';
             return;
         }
+
+        $this->persistArticleHistory($request, $articleData, 'generate_jats');
 
         $xmlString = JatsXmlGenerator::generate($articleData);
         $eloc = preg_replace('/[^a-zA-Z0-9_-]/', '', (string) ($articleData['elocation_id'] ?? 'e76'));
@@ -988,9 +1187,11 @@ class KisiTypesetterHandler extends Handler
                 }
             }
             $this->syncMissingPublicationAbstracts($publication, $articleData);
+            $savedMeta = $this->persistArticleHistory($request, $articleData, 'save_to_galley');
 
             echo json_encode([
                 'ok' => true,
+                'saved_at' => $savedMeta['saved_at'] ?? '',
                 'message' => 'Berhasil disimpan langsung ke artikel #' . $submissionId . ': ' . implode(' & ', $createdItems),
             ], JSON_UNESCAPED_UNICODE);
         } catch (\Throwable $e) {
@@ -1352,7 +1553,7 @@ class KisiTypesetterHandler extends Handler
         // Auto-build APA Citation for Left Sidebar
         $firstAuthorLast = DocxGenerator::extractFirstAuthorLastName($authorsData);
         $citeTitle = $titleEn !== '' ? $titleEn : $titleId;
-        $journalTitle = $settings['journalTitle'] ?? 'Kisi Berkelanjutan: Sains Medis Dan Kesehatan';
+        $journalTitle = LanguageAuditor::normalizeJournalTitle($settings['journalTitle'] ?? 'Kisi Berkelanjutan: Sains Medis dan Kesehatan');
         $citation = sprintf(
             '%s et al., (%s). %s. %s, %s(%s), %s. %s',
             $firstAuthorLast,
@@ -2035,7 +2236,7 @@ class KisiTypesetterHandler extends Handler
         $defaults = [
             'geminiApiKey' => '',
             'geminiModel' => 'gemini-2.5-flash',
-            'journalTitle' => 'Kisi Berkelanjutan: Sains Medis Dan Kesehatan',
+            'journalTitle' => 'Kisi Berkelanjutan: Sains Medis dan Kesehatan',
             'journalShortFooter' => 'Kisi Berkelanjutan: SMK',
             'publisherName' => 'PT Karya Inovasi Berkelanjutan',
             'eissn' => '3062-9063',
@@ -2058,6 +2259,7 @@ class KisiTypesetterHandler extends Handler
                 $defaults[$k] = (string) $saved;
             }
         }
+        $defaults['journalTitle'] = LanguageAuditor::normalizeJournalTitle($defaults['journalTitle']);
         return $defaults;
     }
 

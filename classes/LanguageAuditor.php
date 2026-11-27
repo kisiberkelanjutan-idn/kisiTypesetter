@@ -867,6 +867,17 @@ class LanguageAuditor
     }
 
     /**
+     * Normalize official journal title conjunction casing ("Sains Medis Dan Kesehatan" -> "Sains Medis dan Kesehatan").
+     */
+    public static function normalizeJournalTitle(string $text): string
+    {
+        if ($text === '') {
+            return '';
+        }
+        return str_replace('Sains Medis Dan Kesehatan', 'Sains Medis dan Kesehatan', $text);
+    }
+
+    /**
      * Normalize spacing across every article text field, abstract, section block, table caption/footnote, and reference.
      */
     public static function normalizeArticleParagraphSpaces(array $articleData, int &$changesCount = 0): array
@@ -884,12 +895,21 @@ class LanguageAuditor
             'article_type', 'title_id', 'title_en', 'keywords_id', 'keywords_en',
             'sdgs_id', 'sdgs_en', 'citation', 'review_editor', 'received_date',
             'accepted_date', 'published_date', 'funding', 'competing_interests',
-            'contributor_roles', 'corresponding_name', 'journal_short_footer',
+            'contributor_roles', 'corresponding_name', 'journal_title', 'journal_short_footer',
             'footer_issue_line', 'retypeset_note',
         ];
         foreach ($topKeys as $k) {
             if (isset($articleData[$k]) && is_string($articleData[$k])) {
                 $articleData[$k] = $normField($articleData[$k]);
+            }
+        }
+        foreach (['citation', 'journal_title'] as $jKey) {
+            if (isset($articleData[$jKey]) && is_string($articleData[$jKey]) && $articleData[$jKey] !== '') {
+                $normTitle = self::normalizeJournalTitle($articleData[$jKey]);
+                if ($normTitle !== $articleData[$jKey]) {
+                    $articleData[$jKey] = $normTitle;
+                    $changesCount++;
+                }
             }
         }
         if (isset($articleData['footer_issue_line']) && is_string($articleData['footer_issue_line']) && $articleData['footer_issue_line'] !== '') {
