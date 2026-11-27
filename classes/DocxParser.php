@@ -178,6 +178,7 @@ class DocxParser
         $noAbstractType = LanguageAuditor::isNoAbstractArticleType((string) ($result['article_type'] ?? ''));
         $currentSection = '';
         $keywordsLabelSeen = false;
+        $pendingPreIntroKey = '';
         $pendingTableCaption = '';
         $lastTableRef = null;
         $tableCounter = 1;
@@ -254,7 +255,7 @@ class DocxParser
                 //    direct body paragraphs belong straight to 'badan_artikel' (no forced PENDAHULUAN heading).
                 //  - Only fall back to pre-intro metadata extraction for legacy raw files without a front-matter table.
                 if ($currentSection === '') {
-                    if ($hasFrontMatterTable || $noAbstractType) {
+                    if ($hasFrontMatterTable) {
                         $currentSection = 'badan_artikel';
                     } else {
                         if (preg_match('/^(DATA\s*REPORT|LETTER)$/iu', $text)) {
@@ -262,10 +263,9 @@ class DocxParser
                             $noAbstractType = true;
                             continue;
                         }
-                        // Metadata-only front matter (title, authors, keywords) has ended: the remaining
-                        // prose is the article body. Abstract-less categories (LETTER / DATA REPORT) often
-                        // arrive as plain paragraphs, without the front-matter table and without ABSTRAK/ABSTRACT.
-                        if (!self::parsePreIntroParagraph($text, $node, $xpath, $result, $keywordsLabelSeen)) {
+                        // Metadata-only front matter (titles, authors, SDGs, keywords) has ended: the remaining
+                        // prose is the article body, including raw (non-table) LETTER / DATA REPORT manuscripts.
+                        if (!self::parsePreIntroParagraph($text, $node, $xpath, $result, $keywordsLabelSeen, $pendingPreIntroKey)) {
                             continue;
                         }
                         $currentSection = 'badan_artikel';
@@ -452,22 +452,28 @@ class DocxParser
             }
         }
 
-        // Row 1 Cell 1: Titles (ID & EN)
+        // Row 1 Cell 1: Titles (ID & EN; supports multi-paragraph or single-paragraph <w:br/> line breaks)
         if ($rows->length > 1) {
             $c1 = $xpath->query('./w:tc[2]', $rows->item(1))->item(0);
             if ($c1) {
                 $nonEmpty = [];
                 foreach ($xpath->query('./w:p', $c1) as $p) {
-                    $t = trim(self::getElementText($p, $xpath));
-                    if ($t !== '') {
-                        $nonEmpty[] = $t;
+                    foreach (self::extractElementLines($p, $xpath) as $lineTxt) {
+                        $nonEmpty[] = $lineTxt;
                     }
                 }
-                if (isset($nonEmpty[0])) {
+                if (count($nonEmpty) >= 2) {
+                    $lang0 = LanguageAuditor::detectLanguage($nonEmpty[0]);
+                    $lang1 = LanguageAuditor::detectLanguage($nonEmpty[1]);
+                    if ($lang0 === 'en' && $lang1 === 'id') {
+                        $result['title_id'] = $nonEmpty[1];
+                        $result['title_en'] = $nonEmpty[0];
+                    } else {
+                        $result['title_id'] = $nonEmpty[0];
+                        $result['title_en'] = $nonEmpty[1];
+                    }
+                } elseif (isset($nonEmpty[0])) {
                     $result['title_id'] = $nonEmpty[0];
-                }
-                if (isset($nonEmpty[1])) {
-                    $result['title_en'] = $nonEmpty[1];
                 }
             }
         }
@@ -575,11 +581,12 @@ class DocxParser
             }
         }
 
-        // If front-matter table has only 1 title and English-Only cues (no ID abstract/keywords),
-        // map that single title to title_en instead of duplicating or misfiling into title_id.
+        // If front-matter table has only 1 title and that title is genuinely English (plus English-Only cues),
+        // map that single title to title_en instead of misfiling into title_id; preserve genuinely Indonesian titles.
         if (
             $result['title_en'] === ''
             && $result['title_id'] !== ''
+            && LanguageAuditor::detectLanguage($result['title_id']) === 'en'
             && (
                 $hasCorrespondingEn
                 || (
@@ -696,32 +703,42 @@ class DocxParser
      * @return bool True when the paragraph is the start of the article body, so the caller routes it
      *              (and everything after it) to 'badan_artikel' instead of the abstract fields.
      */
-    private static function parsePreIntroParagraph(string $text, DOMElement $p, DOMXPath $xpath, array &$result, bool &$keywordsLabelSeen): bool
+    private static function parsePreIntroParagraph(string $text, DOMElement $p, DOMXPath $xpath, array &$result, bool &$keywordsLabelSeen, string &$pendingPreIntroKey = ''): bool
     {
+        if (preg_match('/^Kontribusi\s+terhadap\s+Target\s+Pembangunan\s+Berkelanjutan/iu', $text)) {
+            $pendingPreIntroKey = 'sdgs_id';
+            return false;
+        }
+        if (preg_match('/^Contribution\s+to\s+Sustainable\s+Development\s+Goals/iu', $text)) {
+            $pendingPreIntroKey = 'sdgs_en';
+            return false;
+        }
         if (preg_match('/^Kata\s+Kunci\s*:\s*(.+)$/iu', $text, $m)) {
+            $pendingPreIntroKey = '';
             $result['keywords_id'] = rtrim(trim($m[1]), '.');
             $keywordsLabelSeen = true;
             return false;
         }
         if (preg_match('/^Keywords\s*:\s*(.+)$/iu', $text, $m)) {
+            $pendingPreIntroKey = '';
             $result['keywords_en'] = rtrim(trim($m[1]), '.');
             $keywordsLabelSeen = true;
             return false;
         }
         if (preg_match('/^(?:Kata\s+Kunci|Keywords)\s*:\s*$/iu', $text)) {
             // Label-only line; the keyword list follows on the next paragraph.
+            $pendingPreIntroKey = '';
             $keywordsLabelSeen = true;
             return false;
         }
         if (strcasecmp($text, 'ABSTRAK') === 0 || strcasecmp($text, 'ABSTRACT') === 0) {
-            return false;
-        }
-        if ($result['title_id'] === '' && strlen($text) > 15 && strlen($text) < 300) {
-            $result['title_id'] = $text;
+            $pendingPreIntroKey = '';
             return false;
         }
 
-        if (mb_strlen($text) <= 250) {
+        if ($pendingPreIntroKey === 'sdgs_id' || $pendingPreIntroKey === 'sdgs_en') {
+            $result[$pendingPreIntroKey] = trim(($result[$pendingPreIntroKey] ?? '') . ' ' . $text);
+            $pendingPreIntroKey = '';
             return false;
         }
 
@@ -731,10 +748,51 @@ class DocxParser
         $absIdFilled = trim((string) ($result['abstract_id']['raw'] ?? '')) !== '';
         $absEnFilled = trim((string) ($result['abstract_en']['raw'] ?? '')) !== '';
 
-        // Front matter (title/authors/keywords) is already consumed, or both abstract slots are full:
-        // this prose is the article body, not an abstract.
-        if ($hasKeywords || ($absIdFilled && $absEnFilled)) {
+        // Front matter (titles/authors/keywords) is already consumed, or both abstract slots are full:
+        // this prose starts the article body.
+        if (($hasKeywords || ($absIdFilled && $absEnFilled)) && (mb_strlen($text, 'UTF-8') > 120 || preg_match('/[\.\?\!]$/u', $text))) {
             return true;
+        }
+
+        if (!$hasKeywords && ($result['title_id'] === '' || $result['title_en'] === '')) {
+            $consumedTitleLine = false;
+            foreach (self::extractElementLines($p, $xpath) as $line) {
+                if (
+                    strpos($line, '@') !== false
+                    || preg_match('/^(?:\*\s*)?(?:Penulis\s+koresponden|Corresponding\s+author|Program\s+Studi|Jurusan|Fakultas|Universitas|Poltekkes|Department|Faculty|University|Institute|Hospital|RSUD|Puskesmas)\b/iu', $line)
+                    || preg_match('/\p{L}\d{1,2}\*?(?:\s*,\s*[\p{L}]|$)/u', $line)
+                ) {
+                    continue;
+                }
+                $lineLen = mb_strlen($line, 'UTF-8');
+                if ($lineLen > 15 && $lineLen < 300) {
+                    $detected = LanguageAuditor::detectLanguage($line);
+                    if ($detected === 'en') {
+                        if ($result['title_en'] === '') {
+                            $result['title_en'] = $line;
+                            $consumedTitleLine = true;
+                        } elseif ($result['title_id'] === '') {
+                            $result['title_id'] = $line;
+                            $consumedTitleLine = true;
+                        }
+                    } else {
+                        if ($result['title_id'] === '') {
+                            $result['title_id'] = $line;
+                            $consumedTitleLine = true;
+                        } elseif ($result['title_en'] === '') {
+                            $result['title_en'] = $line;
+                            $consumedTitleLine = true;
+                        }
+                    }
+                }
+            }
+            if ($consumedTitleLine) {
+                return false;
+            }
+        }
+
+        if (mb_strlen($text) <= 250) {
+            return false;
         }
 
         if ($result['abstract_id']['raw'] === '') {
@@ -1081,6 +1139,43 @@ class DocxParser
             }
         }
         return implode('', $texts);
+    }
+
+    /**
+     * Extract trimmed non-empty lines from an element, splitting on Word <w:br/> and <w:cr/> breaks.
+     */
+    private static function extractElementLines(DOMElement $el, DOMXPath $xpath): array
+    {
+        $lines = [];
+        $buf = '';
+        foreach ($xpath->query('.//w:t | .//w:br | .//w:cr', $el) as $node) {
+            $parent = $node->parentNode;
+            $inFallback = false;
+            while ($parent && $parent !== $el) {
+                if ($parent->localName === 'Fallback') {
+                    $inFallback = true;
+                    break;
+                }
+                $parent = $parent->parentNode;
+            }
+            if ($inFallback) {
+                continue;
+            }
+            if ($node->localName === 'br' || $node->localName === 'cr') {
+                $trimmed = trim($buf);
+                if ($trimmed !== '') {
+                    $lines[] = $trimmed;
+                }
+                $buf = '';
+            } else {
+                $buf .= $node->nodeValue;
+            }
+        }
+        $trimmed = trim($buf);
+        if ($trimmed !== '') {
+            $lines[] = $trimmed;
+        }
+        return $lines;
     }
 
     /**

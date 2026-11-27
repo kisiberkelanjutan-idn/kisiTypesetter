@@ -990,6 +990,100 @@ assertTrue(
     'Studio UI uses multipart gzipped payload uploads and fetch Blob download instead of URL-encoded hidden form POST'
 );
 
+// 16. Verify Indonesian Title extraction & ordering before English Title across raw LETTER DOCX, <w:br/> title cells, and ID-only front-matter tables
+$buildMinimalDocx = static function (string $bodyInnerXml): string {
+    $path = tempnam(sys_get_temp_dir(), 'kisi_raw_') . '.docx';
+    $z = new ZipArchive();
+    $z->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+    $z->addFromString('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
+    $z->addFromString('_rels/.rels', '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
+    $z->addFromString('word/document.xml', '<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' . $bodyInnerXml . '</w:body></w:document>');
+    $z->close();
+    return $path;
+};
+
+// Case A: Raw non-table LETTER DOCX with bilingual titles, authors, TPB/SDGs, Kata Kunci, SDGs, Keywords, and prose
+$rawLetterXml = ''
+    . '<w:p><w:r><w:t>LETTER</w:t></w:r></w:p>'
+    . '<w:p><w:r><w:t>Edukasi Kesehatan Pemanfaatan Rebusan Daun Binahong sebagai Terapi Non-Farmakologis Anemia Ibu Hamil</w:t></w:r></w:p>'
+    . '<w:p><w:r><w:t>Health Education on the Utilization of Binahong Leaf Decoction for Anemia in Pregnant Women</w:t></w:r></w:p>'
+    . '<w:p><w:r><w:t>Endah Saraswati1*, Malahayati Nurdjaya1, Halijah1</w:t></w:r></w:p>'
+    . '<w:p><w:r><w:t>Program Studi Diploma Tiga Kebidanan, Poltekkes Kemenkes Kendari</w:t></w:r></w:p>'
+    . '<w:p><w:r><w:t>Kontribusi terhadap Target Pembangunan Berkelanjutan (TPB/SDGs)</w:t></w:r></w:p>'
+    . '<w:p><w:r><w:t>Kegiatan ini mendukung SDGs Tujuan 3 dalam menurunkan angka kematian ibu.</w:t></w:r></w:p>'
+    . '<w:p><w:r><w:t>Kata Kunci: Edukasi; Daun binahong; Anemia</w:t></w:r></w:p>'
+    . '<w:p><w:r><w:t>Contribution to Sustainable Development Goals (SDGs)</w:t></w:r></w:p>'
+    . '<w:p><w:r><w:t>This activity supports SDG 3 to reduce maternal mortality ratio.</w:t></w:r></w:p>'
+    . '<w:p><w:r><w:t>Keywords: Anemia; Binahong leaf; Health education</w:t></w:r></w:p>'
+    . '<w:p><w:r><w:t>Anemia pada kehamilan masih menjadi masalah kesehatan masyarakat global.</w:t></w:r></w:p>';
+
+$tmpRawLetter = $buildMinimalDocx($rawLetterXml);
+$parsedRawLetter = DocxParser::parse($tmpRawLetter);
+@unlink($tmpRawLetter);
+
+assertTrue(
+    ($parsedRawLetter['article_type'] ?? '') === 'LETTER'
+        && strpos($parsedRawLetter['title_id'] ?? '', 'Edukasi Kesehatan Pemanfaatan Rebusan Daun Binahong') !== false
+        && strpos($parsedRawLetter['title_en'] ?? '', 'Health Education on the Utilization of Binahong Leaf Decoction') !== false
+        && strpos($parsedRawLetter['sdgs_id'] ?? '', 'SDGs Tujuan 3') !== false
+        && strpos($parsedRawLetter['sdgs_en'] ?? '', 'SDG 3') !== false
+        && strpos($parsedRawLetter['keywords_id'] ?? '', 'Daun binahong') !== false
+        && strpos($parsedRawLetter['keywords_en'] ?? '', 'Binahong leaf') !== false
+        && count($parsedRawLetter['sections']['badan_artikel'] ?? []) === 1
+        && strpos($parsedRawLetter['sections']['badan_artikel'][0]['text'] ?? '', 'Anemia pada kehamilan') !== false,
+    'DocxParser extracts BOTH ID & EN titles, SDGs, Keywords, and direct body from raw non-table LETTER DOCX'
+);
+
+// Verify generated LETTER DOCX renders Indonesian title BEFORE English title
+$tmpRawOut = tempnam(sys_get_temp_dir(), 'kisi_rawout_') . '.docx';
+assertTrue(DocxGenerator::generate($parsedRawLetter, $masterDocx, $tmpRawOut), 'DocxGenerator builds DOCX from parsed raw LETTER with bilingual titles');
+$rawOutZip = new ZipArchive();
+$rawOutXml = ($rawOutZip->open($tmpRawOut) === true) ? (string) $rawOutZip->getFromName('word/document.xml') : '';
+if ($rawOutZip->numFiles > 0) {
+    $rawOutZip->close();
+}
+@unlink($tmpRawOut);
+assertTrue(
+    strpos($rawOutXml, 'Edukasi Kesehatan Pemanfaatan Rebusan Daun Binahong') !== false
+        && strpos($rawOutXml, 'Health Education on the Utilization of Binahong Leaf Decoction') !== false
+        && strpos($rawOutXml, 'Edukasi Kesehatan Pemanfaatan Rebusan Daun Binahong') < strpos($rawOutXml, 'Health Education on the Utilization of Binahong Leaf Decoction'),
+    'DocxGenerator renders Indonesian Title before English Title in LETTER DOCX/PDF output'
+);
+
+// Case B: Front-matter table Row 1 using a single paragraph with <w:br/> soft break between ID and EN titles
+$brTableXml = '<w:tbl>'
+    . '<w:tr><w:tc><w:p><w:r><w:t>OPEN ACCESS</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>LETTER</w:t></w:r></w:p></w:tc></w:tr>'
+    . '<w:tr><w:tc><w:p/></w:tc><w:tc><w:p><w:r><w:t>Judul Bahasa Indonesia Artikel Uji</w:t><w:br/><w:t>English Title of Test Article</w:t></w:r></w:p></w:tc></w:tr>'
+    . '<w:tr><w:tc><w:p/></w:tc><w:tc><w:p/></w:tc></w:tr>'
+    . '<w:tr><w:tc><w:p/></w:tc><w:tc><w:p><w:r><w:t>Endah Saraswati1*</w:t></w:r></w:p><w:p><w:r><w:t>Poltekkes Kendari</w:t></w:r></w:p></w:tc></w:tr>'
+    . '<w:tr><w:tc><w:p/></w:tc><w:tc><w:p><w:r><w:t>* Corresponding author: Endah Saraswati (endah@example.ac.id)</w:t></w:r></w:p></w:tc></w:tr>'
+    . '</w:tbl><w:p><w:r><w:t>Isi surat ilmiah langsung pada badan artikel.</w:t></w:r></w:p>';
+$tmpBrDocx = $buildMinimalDocx($brTableXml);
+$parsedBr = DocxParser::parse($tmpBrDocx);
+@unlink($tmpBrDocx);
+assertTrue(
+    ($parsedBr['title_id'] ?? '') === 'Judul Bahasa Indonesia Artikel Uji'
+        && ($parsedBr['title_en'] ?? '') === 'English Title of Test Article',
+    'DocxParser splits Row 1 single-paragraph <w:br/> soft breaks into title_id and title_en'
+);
+
+// Case C: Front-matter table with genuinely Indonesian single title and * Corresponding author: preserves title_id
+$idOnlyTableXml = '<w:tbl>'
+    . '<w:tr><w:tc><w:p><w:r><w:t>OPEN ACCESS</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>LETTER</w:t></w:r></w:p></w:tc></w:tr>'
+    . '<w:tr><w:tc><w:p/></w:tc><w:tc><w:p><w:r><w:t>Edukasi Kesehatan Ibu Hamil di Wilayah Pesisir</w:t></w:r></w:p></w:tc></w:tr>'
+    . '<w:tr><w:tc><w:p/></w:tc><w:tc><w:p/></w:tc></w:tr>'
+    . '<w:tr><w:tc><w:p/></w:tc><w:tc><w:p><w:r><w:t>Endah Saraswati1*</w:t></w:r></w:p></w:tc></w:tr>'
+    . '<w:tr><w:tc><w:p/></w:tc><w:tc><w:p><w:r><w:t>* Corresponding author: Endah Saraswati (endah@example.ac.id)</w:t></w:r></w:p></w:tc></w:tr>'
+    . '</w:tbl><w:p><w:r><w:t>Isi surat ilmiah langsung pada badan artikel.</w:t></w:r></w:p>';
+$tmpIdOnlyDocx = $buildMinimalDocx($idOnlyTableXml);
+$parsedIdOnly = DocxParser::parse($tmpIdOnlyDocx);
+@unlink($tmpIdOnlyDocx);
+assertTrue(
+    ($parsedIdOnly['title_id'] ?? '') === 'Edukasi Kesehatan Ibu Hamil di Wilayah Pesisir'
+        && ($parsedIdOnly['title_en'] ?? '') === '',
+    'DocxParser preserves genuinely Indonesian single title even when Corresponding author label is English'
+);
+
 if ($failures > 0) {
     fwrite(STDERR, "\nTotal test failures: {$failures}\n");
     exit(1);

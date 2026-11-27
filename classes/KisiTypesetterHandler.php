@@ -1308,9 +1308,22 @@ class KisiTypesetterHandler extends Handler
         ]);
 
         if ($effectiveFormMode === 'en') {
+            if ($titleId !== '' && $titleEn !== '' && strcasecmp($titleId, $titleEn) === 0 && LanguageAuditor::detectLanguage($titleId) === 'en') {
+                $titleId = '';
+            }
+            if ($titleEn === '' && $titleId !== '' && LanguageAuditor::detectLanguage($titleId) === 'en') {
+                $titleEn = $titleId;
+                $titleId = '';
+            }
             if ($titleEn === '') {
                 $fallbackTitle = self::cleanHtmlText(self::pickLocaleValue($titles, ['en', 'en_US', 'id', 'id_ID'], true));
-                $titleEn = $titleId !== '' ? $titleId : $fallbackTitle;
+                if ($fallbackTitle !== '') {
+                    if (LanguageAuditor::detectLanguage($fallbackTitle) === 'en') {
+                        $titleEn = $fallbackTitle;
+                    } elseif ($titleId === '') {
+                        $titleId = $fallbackTitle;
+                    }
+                }
             }
             if ($absEnRaw === '' && $absIdRaw !== '' && LanguageAuditor::detectLanguage($absIdRaw) === 'en') {
                 $absEnRaw = $absIdRaw;
@@ -1330,8 +1343,7 @@ class KisiTypesetterHandler extends Handler
                     $kwEn = $anyKw;
                 }
             }
-            // JATS XML English-only mode: DOCX/JATS still print the single English title, but the Indonesian
-            // title, abstract and keywords stay populated so they remain editable in the Studio form.
+            // JATS XML English-only mode: JATS outputs English title, while Studio & DOCX/PDF retain Indonesian + English titles.
         } elseif ($titleId === '') {
             $fallbackTitle = self::cleanHtmlText(self::pickLocaleValue($titles, ['id', 'id_ID', 'en', 'en_US'], true));
             $titleId = $titleEn !== '' ? $titleEn : $fallbackTitle;
@@ -1425,24 +1437,12 @@ class KisiTypesetterHandler extends Handler
      */
     protected function mergeOjsAndDocxData(array $ojsData, array $docxData): array
     {
-        $formMode = strtolower(trim((string) ($ojsData['form_mode'] ?? 'en')));
-        $enOnly = ($formMode === 'en');
-
-        if ($enOnly) {
-            if (($ojsData['title_en'] ?? '') === '') {
-                $ojsData['title_en'] = ($docxData['title_en'] ?? '') !== '' ? $docxData['title_en'] : ($docxData['title_id'] ?? '');
-            }
-            // Keep the Indonesian title for the Studio form; the English-only generators ignore it.
-            if (($ojsData['title_id'] ?? '') === '' && ($docxData['title_id'] ?? '') !== '') {
-                $ojsData['title_id'] = $docxData['title_id'];
-            }
-        } else {
-            if ($ojsData['title_id'] === '' && $docxData['title_id'] !== '') {
-                $ojsData['title_id'] = $docxData['title_id'];
-            }
-            if ($ojsData['title_en'] === '' && $docxData['title_en'] !== '') {
-                $ojsData['title_en'] = $docxData['title_en'];
-            }
+        // Always preserve both Indonesian & English titles independently (DOCX/PDF prints ID then EN; JATS XML uses EN in 'en' mode)
+        if (($ojsData['title_id'] ?? '') === '' && ($docxData['title_id'] ?? '') !== '') {
+            $ojsData['title_id'] = $docxData['title_id'];
+        }
+        if (($ojsData['title_en'] ?? '') === '' && ($docxData['title_en'] ?? '') !== '') {
+            $ojsData['title_en'] = $docxData['title_en'];
         }
         if ($ojsData['review_editor'] === '' && $docxData['review_editor'] !== '') {
             $ojsData['review_editor'] = $docxData['review_editor'];

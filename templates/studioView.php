@@ -869,7 +869,7 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
             <div id="titleFieldsRow" class="row-2">
                 <div class="field-group" id="titleIdGroup">
                     <label id="titleIdLabel"><?php echo $initialEnOnly ? 'Judul Artikel (Indonesia — Bold 14pt · Khusus DOCX/PDF)' : 'Judul Artikel (Indonesia — Bold 14pt)'; ?></label>
-                    <textarea id="f_title_id" rows="2" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
+                    <textarea id="f_title_id" rows="2" placeholder="Judul Bahasa Indonesia (tercetak Bold di atas Judul Bahasa Inggris pada file DOCX/PDF)..." oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                 </div>
                 <div class="field-group" id="titleEnGroup">
                     <label id="titleEnLabel"><?php echo $initialEnOnly ? 'Judul Artikel (Inggris — Italic 14pt · PDF &amp; JATS XML)' : 'Judul Artikel (Inggris — Italic 14pt)'; ?></label>
@@ -2793,17 +2793,9 @@ async function sendParseDocxRequest(formData) {
             return;
         }
         const p = data.parsed;
-        const enOnly = (getActiveFormLanguageModeJs() === 'en');
         if (p.article_type && (!articleState.article_type || articleState.article_type === 'ORIGINAL ARTICLE')) articleState.article_type = p.article_type;
-        if (enOnly) {
-            const parsedEnTitle = p.title_en || p.title_id || '';
-            if (parsedEnTitle && !articleState.title_en) articleState.title_en = parsedEnTitle;
-            // Keep the Indonesian title field filled even though the English-only output prints just the English title.
-            if (p.title_id && !articleState.title_id) articleState.title_id = p.title_id;
-        } else {
-            if (p.title_id && !articleState.title_id) articleState.title_id = p.title_id;
-            if (p.title_en && !articleState.title_en) articleState.title_en = p.title_en;
-        }
+        if (p.title_id && !articleState.title_id) articleState.title_id = p.title_id;
+        if (p.title_en && !articleState.title_en) articleState.title_en = p.title_en;
         if (p.review_editor && !articleState.review_editor) articleState.review_editor = p.review_editor;
         if (p.received_date && !articleState.received_date) articleState.received_date = p.received_date;
         if (p.accepted_date && !articleState.accepted_date) articleState.accepted_date = p.accepted_date;
@@ -3040,7 +3032,11 @@ async function downloadGeneratedFile(endpointOp) {
         a.click();
         document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(objUrl), 2000);
-        showToast(isDocx ? '📄 File DOCX Template 2026 berhasil diunduh!' : '🧬 File AmeliCA JATS XML berhasil diunduh!', 'success');
+        if (isDocx && !String(articleState.title_id || '').trim() && String(articleState.title_en || '').trim()) {
+            showToast('📄 File DOCX diunduh. Catatan: kolom Judul Artikel (Indonesia) masih kosong — isi atau klik ✨ Rapikan AI agar Judul Indonesia ikut tercetak sebelum Judul Inggris.', 'info');
+        } else {
+            showToast(isDocx ? '📄 File DOCX Template 2026 berhasil diunduh!' : '🧬 File AmeliCA JATS XML berhasil diunduh!', 'success');
+        }
     } catch (e) {
         showToast('Error jaringan saat mengunduh file: ' + e.message, 'error');
     }
