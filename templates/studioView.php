@@ -645,7 +645,7 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
         </div>
         <div class="row-2">
             <div class="field-group" style="margin-bottom:0;">
-                <label>Mode Output JATS XML &amp; Bahasa Formulir <span class="hint">(Studio &amp; PDF tetap tampilkan Abstrak ID &amp; EN)</span></label>
+                <label>Mode Output JATS XML &amp; Bahasa Formulir <span class="hint">(Studio &amp; PDF tetap tampilkan Judul/Abstrak/SDGs ID &amp; EN)</span></label>
                 <select id="cfg_formLanguageMode" onchange="applyFormLanguageMode(); syncStateFromInputs();">
                     <option value="en" <?php echo (($settings['formLanguageMode'] ?? 'en') === 'en') ? 'selected' : ''; ?>>🇬🇧 JATS English-Only (1 Abstrak, Judul, Keyword &amp; SDGs EN — Studio/PDF tetap ID &amp; EN)</option>
                     <option value="auto" <?php echo (($settings['formLanguageMode'] ?? 'en') === 'auto') ? 'selected' : ''; ?>>🔄 Otomatis Ikuti Konten JATS</option>
@@ -654,7 +654,7 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
             </div>
             <div class="field-group" style="margin-bottom:0;display:flex;align-items:flex-end;">
                 <div style="font-size:11.5px;color:var(--kisi-muted);background:#f8fafc;border:1px solid var(--kisi-border);padding:7px 10px;border-radius:7px;width:100%;">
-                    💡 Dalam mode standar <strong>JATS English-Only</strong>, form Abstrak Indonesia tetap tersedia di Studio agar muncul di file DOCX/PDF, sedangkan output JATS XML hanya memuat 1 abstrak, judul, kata kunci, &amp; SDGs berbahasa Inggris (<code>xml:lang=&quot;en&quot;</code>).
+                    💡 Dalam mode standar <strong>JATS English-Only</strong>, form Judul, Abstrak, SDGs, &amp; Kata Kunci Indonesia tetap tersedia di Studio agar ikut tercetak &amp; ter-parse di DOCX/PDF, sedangkan output JATS XML hanya memuat versi Bahasa Inggris (<code>xml:lang=&quot;en&quot;</code>).
                 </div>
             </div>
         </div>
@@ -865,14 +865,14 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
                 <h2>📝 Editor Naskah, Abstrak &amp; Struktur (DOCX + JATS XML)</h2>
             </div>
 
-            <!-- Article Titles (English-Only or Bilingual depending on Form Mode) -->
+            <!-- Article Titles (Always show both ID & EN in Studio so DOCX/PDF parser & exporter retain bilingual titles) -->
             <div id="titleFieldsRow" class="row-2">
                 <div class="field-group" id="titleIdGroup">
-                    <label>Judul Artikel (Indonesia — Bold 14pt)</label>
+                    <label id="titleIdLabel"><?php echo $initialEnOnly ? 'Judul Artikel (Indonesia — Bold 14pt · Khusus DOCX/PDF)' : 'Judul Artikel (Indonesia — Bold 14pt)'; ?></label>
                     <textarea id="f_title_id" rows="2" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                 </div>
                 <div class="field-group" id="titleEnGroup">
-                    <label id="titleEnLabel"><?php echo $initialEnOnly ? 'Article Title / Judul Artikel (English — Bold 14pt)' : 'Judul Artikel (Inggris — Italic 14pt)'; ?></label>
+                    <label id="titleEnLabel"><?php echo $initialEnOnly ? 'Judul Artikel (Inggris — Italic 14pt · PDF &amp; JATS XML)' : 'Judul Artikel (Inggris — Italic 14pt)'; ?></label>
                     <textarea id="f_title_en" rows="2" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                 </div>
             </div>
@@ -929,27 +929,29 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
                     <!-- Indonesian Abstract (Always visible in Studio for DOCX/PDF rendering) -->
                     <div id="abstractIdCard" style="background:#f8fafc;padding:10px 12px;border-radius:8px;border:1px solid var(--kisi-border);">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:6px;flex-wrap:wrap;">
-                            <h3 style="margin:0;font-size:13px;color:var(--kisi-navy);">🇮🇩 ABSTRAK (Indonesia — <span id="abstractIdRoleHint"><?php echo $initialEnOnly ? 'Khusus DOCX/PDF' : 'PDF &amp; JATS XML'; ?></span>)</h3>
+                            <h3 style="margin:0;font-size:13px;color:var(--kisi-navy);">🇮🇩 ABSTRAK &amp; SDGs (Indonesia — <span id="abstractIdRoleHint"><?php echo $initialEnOnly ? 'Khusus DOCX/PDF' : 'PDF &amp; JATS XML'; ?></span>)</h3>
                             <span id="idAbsWordCount" class="word-badge">0 kata</span>
                         </div>
-                        <div class="field-group">
-                            <label>Pendahuluan dan Metode</label>
-                            <textarea id="f_ab_id_pm" rows="4" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
-                        </div>
-                        <div class="field-group">
-                            <label>Hasil</label>
-                            <textarea id="f_ab_id_hasil" rows="3" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
-                        </div>
-                        <div class="field-group">
-                            <label>Kesimpulan dan Saran</label>
-                            <textarea id="f_ab_id_kes" rows="3" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
+                        <div class="abstract-only-fields">
+                            <div class="field-group">
+                                <label>Pendahuluan dan Metode</label>
+                                <textarea id="f_ab_id_pm" rows="4" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
+                            </div>
+                            <div class="field-group">
+                                <label>Hasil</label>
+                                <textarea id="f_ab_id_hasil" rows="3" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
+                            </div>
+                            <div class="field-group">
+                                <label>Kesimpulan dan Saran</label>
+                                <textarea id="f_ab_id_kes" rows="3" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
+                            </div>
                         </div>
                         <div class="field-group">
                             <label>Kata Kunci <span class="hint">(Pisah titik koma ;)</span></label>
                             <input type="text" id="f_keywords_id" placeholder="Sosial budaya; Pemberian ASI" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)">
                         </div>
                         <div class="field-group" id="vol3SdgsIdGroup" style="display:none;margin-bottom:0;">
-                            <label>Kontribusi terhadap Target Pembangunan Berkelanjutan (TPB/SDGs) <span class="hint">(Vol 3+)</span></label>
+                            <label>Kontribusi terhadap Target Pembangunan Berkelanjutan (TPB/SDGs) <span class="hint">(Vol 3+ / Letter)</span></label>
                             <textarea id="f_sdgs_id" rows="2" placeholder="Penelitian ini berkontribusi pada pencapaian Tujuan Pembangunan Berkelanjutan (TPB/SDGs)..." oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                         </div>
                     </div>
@@ -960,24 +962,26 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
                             <h3 id="abstractEnHeading" style="margin:0;font-size:13px;color:var(--kisi-navy);"><?php echo $initialEnOnly ? '🇬🇧 ABSTRACT (English — PDF &amp; JATS XML)' : '🇬🇧 ABSTRACT (English — Italic)'; ?></h3>
                             <span id="enAbsWordCount" class="word-badge">0 words</span>
                         </div>
-                        <div class="field-group">
-                            <label>Introduction and Methods</label>
-                            <textarea id="f_ab_en_im" rows="4" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
-                        </div>
-                        <div class="field-group">
-                            <label>Results</label>
-                            <textarea id="f_ab_en_res" rows="3" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
-                        </div>
-                        <div class="field-group">
-                            <label>Conclusions and Recommendations</label>
-                            <textarea id="f_ab_en_conc" rows="3" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
+                        <div class="abstract-only-fields">
+                            <div class="field-group">
+                                <label>Introduction and Methods</label>
+                                <textarea id="f_ab_en_im" rows="4" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
+                            </div>
+                            <div class="field-group">
+                                <label>Results</label>
+                                <textarea id="f_ab_en_res" rows="3" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
+                            </div>
+                            <div class="field-group">
+                                <label>Conclusions and Recommendations</label>
+                                <textarea id="f_ab_en_conc" rows="3" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
+                            </div>
                         </div>
                         <div class="field-group">
                             <label>Keywords <span class="hint">(Separate with ;)</span></label>
                             <input type="text" id="f_keywords_en" placeholder="Breastfeeding; Socio-cultural" oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)">
                         </div>
                         <div class="field-group" id="vol3SdgsEnGroup" style="display:none;margin-bottom:0;">
-                            <label>Contribution to Sustainable Development Goals (SDGs) <span class="hint">(Vol 3+ — Italic)</span></label>
+                            <label>Contribution to Sustainable Development Goals (SDGs) <span class="hint">(Vol 3+ / Letter — Italic)</span></label>
                             <textarea id="f_sdgs_en" rows="2" placeholder="This study contributes to achieving the Sustainable Development Goals (SDGs)..." oninput="syncStateFromInputs()" onblur="autoNormalizeInputElement(this)"></textarea>
                         </div>
                     </div>
@@ -1107,11 +1111,6 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
     </div>
 </div>
 
-<!-- Hidden form for file downloads -->
-<form id="downloadForm" method="post" target="_blank" style="display:none;">
-    <input type="hidden" name="articleJson" id="downloadArticleJson">
-</form>
-
 <script>
 const BASE_URL = <?php echo json_encode($baseUrl, JSON_UNESCAPED_UNICODE); ?>;
 let articleState = <?php echo json_encode($defaultArticle, JSON_UNESCAPED_UNICODE); ?>;
@@ -1186,6 +1185,8 @@ function applyArticleTypeLayoutMode(userInitiated = false) {
     const catLbl = document.getElementById('noAbstractCatLabel');
     const absGrid = document.getElementById('abstractInputsGrid');
     const absBadge = document.getElementById('absTabStatusBadge');
+    const idCountEl = document.getElementById('idAbsWordCount');
+    const enCountEl = document.getElementById('enAbsWordCount');
 
     if (notice) notice.style.display = noAbs ? 'block' : 'none';
     if (catLbl) catLbl.textContent = String(articleState.article_type || 'DATA REPORT / LETTER').toUpperCase();
@@ -1194,6 +1195,12 @@ function applyArticleTypeLayoutMode(userInitiated = false) {
         absGrid.style.opacity = '1';
         absGrid.style.pointerEvents = 'auto';
     }
+    document.querySelectorAll('.abstract-only-fields').forEach(el => {
+        el.style.display = noAbs ? 'none' : 'block';
+    });
+    if (idCountEl) idCountEl.style.display = noAbs ? 'none' : 'inline-block';
+    if (enCountEl) enCountEl.style.display = noAbs ? 'none' : 'inline-block';
+
     if (absBadge) {
         const modeLabel = (getActiveFormLanguageModeJs() === 'en') ? '(ID PDF & EN JATS)' : '(ID & EN)';
         absBadge.textContent = noAbs ? '(Keywords & TPB/SDGs)' : modeLabel;
@@ -1202,6 +1209,7 @@ function applyArticleTypeLayoutMode(userInitiated = false) {
     if (userInitiated && noAbs) {
         showToast(`Mode ${articleState.article_type}: abstrak naratif tidak dicetak, tetapi Keywords & TPB/SDGs tetap wajib diisi.`, 'info');
     }
+    applyVolumeTemplateMode();
     applyFormLanguageMode();
     renderBodySectionsEditor();
 }
@@ -1349,10 +1357,11 @@ function applyVolumeTemplateMode() {
             badge.style.border = '1px solid #cbd5e1';
         }
     }
+    const showSdgs = vol3Plus || isNoAbstractType(articleState.article_type);
     if (datesRow) datesRow.style.display = vol3Plus ? 'grid' : 'none';
     if (rolesGrp) rolesGrp.style.display = vol3Plus ? 'block' : 'none';
-    if (sdgsIdGrp) sdgsIdGrp.style.display = vol3Plus ? 'block' : 'none';
-    if (sdgsEnGrp) sdgsEnGrp.style.display = vol3Plus ? 'block' : 'none';
+    if (sdgsIdGrp) sdgsIdGrp.style.display = showSdgs ? 'block' : 'none';
+    if (sdgsEnGrp) sdgsEnGrp.style.display = showSdgs ? 'block' : 'none';
     if (retNoteGrp) retNoteGrp.style.opacity = vol3Plus ? '0.45' : '1';
     if (retNoteHint) retNoteHint.textContent = vol3Plus ? '(Otomatis dihapus di Vol 3+)' : '(Vol 1–2 Arsip)';
 }
@@ -1376,6 +1385,7 @@ function applyFormLanguageMode() {
 
     const titleRow = document.getElementById('titleFieldsRow');
     const titleIdGrp = document.getElementById('titleIdGroup');
+    const titleIdLbl = document.getElementById('titleIdLabel');
     const titleEnLbl = document.getElementById('titleEnLabel');
     const absGrid = document.getElementById('abstractInputsGrid');
     const absIdCard = document.getElementById('abstractIdCard');
@@ -1383,12 +1393,17 @@ function applyFormLanguageMode() {
     const absEnHead = document.getElementById('abstractEnHeading');
     const absBadge = document.getElementById('absTabStatusBadge');
 
-    // Indonesian title field stays visible in every mode: English-Only JATS/DOCX still print the English title only.
+    // Keep both Indonesian & English title inputs visible in Studio so DOCX/PDF retains bilingual titles
     if (titleIdGrp) titleIdGrp.style.display = 'block';
     if (titleRow) titleRow.style.gridTemplateColumns = '';
+    if (titleIdLbl) {
+        titleIdLbl.textContent = enOnly
+            ? 'Judul Artikel (Indonesia — Bold 14pt · Khusus DOCX/PDF)'
+            : 'Judul Artikel (Indonesia — Bold 14pt)';
+    }
     if (titleEnLbl) {
         titleEnLbl.textContent = enOnly
-            ? 'Article Title / Judul Artikel (English — Bold 14pt)'
+            ? 'Judul Artikel (Inggris — Italic 14pt · PDF & JATS XML)'
             : 'Judul Artikel (Inggris — Italic 14pt)';
     }
 
@@ -1608,10 +1623,9 @@ async function formatVancouverReferencesAjax() {
     syncStateFromInputs();
     syncReferencesFromInput();
     showToast('Mengonversi & menyinkronkan Sumber Pustaka ke gaya referensi jurnal...', 'info');
-    const fd = new FormData();
-    fd.append('articleJson', serializeArticleForServer());
+    const fd = await buildArticleFormData();
     try {
-        const res = await fetch(BASE_URL + '/formatVancouverReferences', { method: 'POST', body: fd });
+        const res = await fetch(BASE_URL + '/formatVancouverReferences', { method: 'POST', body: fd, credentials: 'same-origin' });
         const data = await res.json();
         if (data.ok && data.article) {
             articleState = data.article;
@@ -1629,10 +1643,9 @@ async function syncReferencesToOjsMenu() {
     syncStateFromInputs();
     syncReferencesFromInput();
     showToast('📤 Memparser daftar pustaka langsung ke menu References OJS...', 'info');
-    const fd = new FormData();
-    fd.append('articleJson', serializeArticleForServer());
+    const fd = await buildArticleFormData();
     try {
-        const res = await fetch(BASE_URL + '/syncReferencesToOjs', { method: 'POST', body: fd });
+        const res = await fetch(BASE_URL + '/syncReferencesToOjs', { method: 'POST', body: fd, credentials: 'same-origin' });
         const data = await res.json();
         if (data.ok) {
             if (data.article) {
@@ -2275,12 +2288,12 @@ function removeLastTableColumn(secKey, bIdx) {
 async function formatAllTablesHealthStandard(forceReclassify = true) {
     syncStateFromInputs();
     showToast('🏥 Memformat seluruh tabel sesuai standar ilmiah kesehatan...', 'info');
-    const fd = new FormData();
-    fd.append('articleJson', serializeArticleForServer());
-    fd.append('forceReclassify', forceReclassify ? '1' : '0');
-    fd.append('suggestFootnote', '1');
+    const fd = await buildArticleFormData({
+        forceReclassify: forceReclassify ? '1' : '0',
+        suggestFootnote: '1'
+    });
     try {
-        const res = await fetch(BASE_URL + '/formatHealthTables', { method: 'POST', body: fd });
+        const res = await fetch(BASE_URL + '/formatHealthTables', { method: 'POST', body: fd, credentials: 'same-origin' });
         const data = await res.json();
         if (data.ok && data.article) {
             articleState = data.article;
@@ -2379,6 +2392,17 @@ function serializeArticleForServer() {
     } catch (e) {
         return JSON.stringify(articleState);
     }
+    if (snapshot && typeof snapshot === 'object') {
+        delete snapshot.raw_text_for_ai;
+        delete snapshot._ai_status;
+        delete snapshot._loaded_docx_name;
+        if (snapshot.abstract_id && typeof snapshot.abstract_id === 'object' && String(snapshot.abstract_id.pendahuluan_metode || '').trim() !== '') {
+            delete snapshot.abstract_id.raw;
+        }
+        if (snapshot.abstract_en && typeof snapshot.abstract_en === 'object' && String(snapshot.abstract_en.intro_methods || '').trim() !== '') {
+            delete snapshot.abstract_en.raw;
+        }
+    }
     const sections = snapshot && snapshot.sections;
     if (sections) {
         Object.keys(sections).forEach(k => {
@@ -2398,7 +2422,7 @@ function serializeArticleForServer() {
 async function uploadBlockImageFile(file) {
     const fd = new FormData();
     fd.append('image_file', file);
-    const res = await fetch(BASE_URL + '/uploadImage', { method: 'POST', body: fd });
+    const res = await fetch(BASE_URL + '/uploadImage', { method: 'POST', body: fd, credentials: 'same-origin' });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Gagal menyimpan gambar ke server.');
     return data;
@@ -2494,14 +2518,14 @@ async function runLanguageAudit() {
     const box = document.getElementById('languageAuditResultsBox');
     box.innerHTML = '<div style="padding:28px;text-align:center;color:#64748b;">⏳ Memeriksa ejaan &amp; kata baku (KBBI VI, EYD V, SCOWL US English, AMA Style)...</div>';
 
-    const fd = new FormData();
-    fd.append('articleJson', serializeArticleForServer());
-    fd.append('bodyLang', document.getElementById('auditBodyLang').value);
-    fd.append('useLanguageTool', document.getElementById('auditUseLanguageTool').checked ? '1' : '0');
-    fd.append('useGemini', document.getElementById('auditUseGemini').checked ? '1' : '0');
+    const fd = await buildArticleFormData({
+        bodyLang: document.getElementById('auditBodyLang').value,
+        useLanguageTool: document.getElementById('auditUseLanguageTool').checked ? '1' : '0',
+        useGemini: document.getElementById('auditUseGemini').checked ? '1' : '0'
+    });
 
     try {
-        const res = await fetch(BASE_URL + '/auditLanguage', { method: 'POST', body: fd });
+        const res = await fetch(BASE_URL + '/auditLanguage', { method: 'POST', body: fd, credentials: 'same-origin' });
         const data = await res.json();
         if (!data.ok || !data.audit) {
             box.innerHTML = '<div style="color:#b91c1c;padding:14px;">Gagal menjalankan audit bahasa: ' + escapeHtml(data.error || 'Unknown error') + '</div>';
@@ -2817,10 +2841,9 @@ async function sendParseDocxRequest(formData) {
 async function runAiRestructure() {
     syncStateFromInputs();
     showToast('✨ Memproses restrukturisasi abstrak & metadata dengan AI...', 'info');
-    const fd = new FormData();
-    fd.append('articleJson', serializeArticleForServer());
+    const fd = await buildArticleFormData();
     try {
-        const res = await fetch(BASE_URL + '/aiRestructure', { method: 'POST', body: fd });
+        const res = await fetch(BASE_URL + '/aiRestructure', { method: 'POST', body: fd, credentials: 'same-origin' });
         const data = await res.json();
         if (data.ok && data.article) {
             const keptMode = getActiveFormLanguageModeJs();
@@ -2942,23 +2965,94 @@ function normalizeAllArticleSpacing(showNotice = true) {
     return changes;
 }
 
-function downloadGeneratedFile(endpointOp) {
+async function buildArticleFormData(extraFields = {}) {
+    const fd = new FormData();
+    Object.keys(extraFields || {}).forEach(k => {
+        if (extraFields[k] !== undefined && extraFields[k] !== null) {
+            fd.append(k, String(extraFields[k]));
+        }
+    });
+    const jsonStr = serializeArticleForServer();
+    if (typeof CompressionStream === 'function') {
+        try {
+            const bytes = new TextEncoder().encode(jsonStr);
+            const compressedStream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip'));
+            const gzBlob = await new Response(compressedStream).blob();
+            const gzBuffer = await gzBlob.arrayBuffer();
+            fd.append('articlePayloadFile', new Blob([gzBuffer], { type: 'application/gzip' }), 'article.json.gz');
+            fd.append('articlePayloadEncoding', 'gzip');
+            return fd;
+        } catch (_gzErr) {
+            // Fall through to uncompressed multipart JSON blob
+        }
+    }
+    fd.append('articlePayloadFile', new Blob([jsonStr], { type: 'application/json' }), 'article.json');
+    fd.append('articlePayloadEncoding', 'plain');
+    return fd;
+}
+
+async function downloadGeneratedFile(endpointOp) {
     normalizeAllArticleSpacing(false);
-    const form = document.getElementById('downloadForm');
-    form.action = BASE_URL + '/' + endpointOp;
-    document.getElementById('downloadArticleJson').value = serializeArticleForServer();
-    form.submit();
-    showToast(endpointOp === 'generateDocx' ? '📄 Mengunduh file DOCX Template 2026...' : '🧬 Mengunduh file AmeliCA JATS XML...', 'success');
+    const isDocx = endpointOp === 'generateDocx';
+    showToast(isDocx ? '⏳ Menyiapkan file DOCX Template 2026...' : '⏳ Menyiapkan file AmeliCA JATS XML...', 'info');
+    const safeEloc = String(articleState.elocation_id || ('e' + (articleState.submission_id || '76'))).replace(/[^a-zA-Z0-9_-]/g, '') || 'e76';
+    const fallbackName = isDocx ? `Kisi_Berkelanjutan_${safeEloc}_Layout2026.docx` : `Kisi_Berkelanjutan_${safeEloc}_JATS.xml`;
+
+    try {
+        const fd = await buildArticleFormData();
+        const res = await fetch(BASE_URL + '/' + endpointOp, {
+            method: 'POST',
+            body: fd,
+            credentials: 'same-origin'
+        });
+        if (!res.ok) {
+            showToast(`Gagal mengunduh file (HTTP ${res.status}). Periksa sesi login OJS atau batas ukuran unggahan server.`, 'error');
+            return;
+        }
+        const contentType = (res.headers.get('Content-Type') || '').toLowerCase();
+        if (contentType.includes('text/html')) {
+            showToast('Sesi login OJS kemungkinan telah berakhir. Muat ulang halaman lalu login kembali.', 'error');
+            return;
+        }
+
+        let fileName = fallbackName;
+        const cd = res.headers.get('Content-Disposition') || '';
+        const mUtf8 = cd.match(/filename\*=UTF-8''([^;\r\n]+)/i);
+        const mPlain = cd.match(/filename="?([^";\r\n]+)"?/i);
+        if (mUtf8 && mUtf8[1]) {
+            try { fileName = decodeURIComponent(mUtf8[1].trim()); } catch (_e) { fileName = mUtf8[1].trim(); }
+        } else if (mPlain && mPlain[1]) {
+            fileName = mPlain[1].trim();
+        }
+
+        const blob = await res.blob();
+        if (!blob || blob.size === 0) {
+            showToast('File hasil unduhan kosong. Silakan coba kembali.', 'error');
+            return;
+        }
+
+        const objUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objUrl;
+        a.download = fileName;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(objUrl), 2000);
+        showToast(isDocx ? '📄 File DOCX Template 2026 berhasil diunduh!' : '🧬 File AmeliCA JATS XML berhasil diunduh!', 'success');
+    } catch (e) {
+        showToast('Error jaringan saat mengunduh file: ' + e.message, 'error');
+    }
 }
 
 async function loadFullTextDigestPreview() {
     normalizeAllArticleSpacing(false);
     const box = document.getElementById('fullTextDigestPreviewBox');
     box.innerHTML = '<div style="padding:30px;text-align:center;color:#64748b;">⏳ Membangun JATS 1.2 XML &amp; me-render Full-Text HTML...</div>';
-    const fd = new FormData();
-    fd.append('articleJson', serializeArticleForServer());
     try {
-        const res = await fetch(BASE_URL + '/previewFullText', { method: 'POST', body: fd });
+        const fd = await buildArticleFormData();
+        const res = await fetch(BASE_URL + '/previewFullText', { method: 'POST', body: fd, credentials: 'same-origin' });
         const data = await res.json();
         if (data.ok && data.html) {
             box.innerHTML = data.html;
@@ -2973,11 +3067,9 @@ async function loadFullTextDigestPreview() {
 async function saveDirectlyToOjsGalley() {
     normalizeAllArticleSpacing(false);
     showToast('🚀 Menyimpan JATS XML, DOCX, dan References ke OJS 3.5...', 'info');
-    const fd = new FormData();
-    fd.append('articleJson', serializeArticleForServer());
-    fd.append('syncReferences', '1');
     try {
-        const res = await fetch(BASE_URL + '/saveToGalley', { method: 'POST', body: fd });
+        const fd = await buildArticleFormData({ syncReferences: '1' });
+        const res = await fetch(BASE_URL + '/saveToGalley', { method: 'POST', body: fd, credentials: 'same-origin' });
         const data = await res.json();
         if (data.ok) {
             showToast(data.message, 'success');

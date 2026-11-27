@@ -243,13 +243,12 @@ class LanguageAuditor
             $issues[] = $issue;
         };
 
-        // 1. Fixed-language front-matter fields (omit Indonesian fields in English-only mode; omit narrative abstracts for DATA REPORT & LETTER)
-        $isEnglishOnly = self::isEnglishOnlyArticle($articleData);
-        $fixedFields = [];
-        if (!$isEnglishOnly) {
-            $fixedFields[] = ['path' => 'title_id', 'label' => 'Judul Artikel (ID)', 'lang' => 'id', 'text' => (string) ($articleData['title_id'] ?? '')];
-        }
-        $fixedFields[] = ['path' => 'title_en', 'label' => 'Article Title (EN)', 'lang' => 'en', 'text' => (string) ($articleData['title_en'] ?? '')];
+        // 1. Fixed-language front-matter fields (audit ID & EN titles whenever filled; omit narrative abstracts for DATA REPORT & LETTER while keeping Keywords & SDGs)
+        $includeSdgs = self::isVolume3Plus($articleData['volume'] ?? '1') || $noAbstract;
+        $fixedFields = [
+            ['path' => 'title_id', 'label' => 'Judul Artikel (ID)', 'lang' => 'id', 'text' => (string) ($articleData['title_id'] ?? '')],
+            ['path' => 'title_en', 'label' => 'Article Title (EN)', 'lang' => 'en', 'text' => (string) ($articleData['title_en'] ?? '')],
+        ];
 
         if (!$noAbstract) {
             // Audit Indonesian abstract fields whenever filled in Studio (used for DOCX/PDF even in English-Only JATS mode)
@@ -261,7 +260,7 @@ class LanguageAuditor
         }
         // Keywords & TPB/SDGs stay mandatory for every category, including DATA REPORT & LETTER
         $fixedFields[] = ['path' => 'keywords_id', 'label' => 'Kata Kunci (ID)', 'lang' => 'id', 'text' => (string) ($articleData['keywords_id'] ?? '')];
-        if (self::isVolume3Plus($articleData['volume'] ?? '1')) {
+        if ($includeSdgs) {
             $fixedFields[] = ['path' => 'sdgs_id', 'label' => 'Kontribusi TPB/SDGs (ID)', 'lang' => 'id', 'text' => (string) ($articleData['sdgs_id'] ?? '')];
         }
         if (!$noAbstract) {
@@ -272,7 +271,7 @@ class LanguageAuditor
             ]);
         }
         $fixedFields[] = ['path' => 'keywords_en', 'label' => 'Keywords (EN)', 'lang' => 'en', 'text' => (string) ($articleData['keywords_en'] ?? '')];
-        if (self::isVolume3Plus($articleData['volume'] ?? '1')) {
+        if ($includeSdgs) {
             $fixedFields[] = ['path' => 'sdgs_en', 'label' => 'Contribution to SDGs (EN)', 'lang' => 'en', 'text' => (string) ($articleData['sdgs_en'] ?? '')];
         }
 
@@ -1692,5 +1691,28 @@ PROMPT;
         }
 
         return [$map, $buckets];
+    }
+
+    /**
+     * Decode an article JSON payload (supports raw UTF-8 JSON or gzip-compressed binary bytes).
+     */
+    public static function decodeArticlePayload(string $rawBytes): ?array
+    {
+        if ($rawBytes === '') {
+            return null;
+        }
+        $jsonText = $rawBytes;
+        if (strlen($rawBytes) >= 2 && substr($rawBytes, 0, 2) === "\x1f\x8b") {
+            $decodedGz = function_exists('gzdecode') ? @gzdecode($rawBytes) : false;
+            if ($decodedGz === false && strlen($rawBytes) > 18 && function_exists('gzinflate')) {
+                $decodedGz = @gzinflate(substr($rawBytes, 10, -8));
+            }
+            if (!is_string($decodedGz) || $decodedGz === '') {
+                return null;
+            }
+            $jsonText = $decodedGz;
+        }
+        $parsed = json_decode($jsonText, true);
+        return is_array($parsed) ? $parsed : null;
     }
 }

@@ -196,16 +196,15 @@ class DocxGenerator
             $typeCell->appendChild(self::createStyledPara($dom, '', ['sz' => '22']));
         }
 
-        // --- C. Row 1 Cell 1: Titles (ID & EN or Single English Title when Indonesian form unused) ---
+        // --- C. Row 1 Cell 1: Titles (Render ID Bold + EN Italic when both exist; single Bold when only 1 exists) ---
         $isEnglishOnly = LanguageAuditor::isEnglishOnlyArticle($data);
         $titleCell = $xpath->query('./w:tc[2]', $rows->item(1))->item(0);
         if ($titleCell instanceof DOMElement) {
             self::clearCellParagraphs($titleCell, $xpath);
             $titleId = trim($data['title_id'] ?? '');
             $titleEn = trim($data['title_en'] ?? '');
-            if ($isEnglishOnly || ($titleId === '' && $titleEn !== '')) {
-                $primaryTitle = $titleEn !== '' ? $titleEn : $titleId;
-                $titleCell->appendChild(self::createStyledPara($dom, $primaryTitle, ['sz' => '28', 'bold' => true]));
+            if ($titleId === '' && $titleEn !== '') {
+                $titleCell->appendChild(self::createStyledPara($dom, $titleEn, ['sz' => '28', 'bold' => true]));
                 $titleCell->appendChild(self::createStyledPara($dom, '', ['sz' => '28', 'bold' => true]));
             } else {
                 $titleCell->appendChild(self::createStyledPara($dom, $titleId, ['sz' => '28', 'bold' => true]));
@@ -332,72 +331,67 @@ class DocxGenerator
             $corrCell->appendChild(self::createStyledPara($dom, $corrLine, ['sz' => '22', 'italic' => true]));
         }
 
-        // For DATA REPORT & LETTER: the narrative ABSTRAK/ABSTRACT rows (6..8) are removed so front-matter
-        // ends after Corresponding Author, but Keywords and the TPB/SDGs contribution statement stay
-        // mandatory and are printed as full-width rows cloned from the gridSpan=2 English abstract row.
+        // For DATA REPORT & LETTER: omit narrative ABSTRAK/ABSTRACT rows (7..8) and place
+        // TPB/SDGs + Kata Kunci (Row 5) and SDGs + Keywords (Row 6) in the right column beside the sidebar.
         if (LanguageAuditor::isNoAbstractArticleType($articleType)) {
-            $metaRowTemplate = $rows->item(8);
-            for ($ri = $rows->length - 1; $ri >= 6; $ri--) {
+            $row5 = $rows->item(5);
+            $row6 = $rows->item(6);
+            for ($ri = $rows->length - 1; $ri >= 7; $ri--) {
                 $rowNode = $rows->item($ri);
                 if ($rowNode instanceof DOMElement && $rowNode->parentNode === $tbl) {
                     $tbl->removeChild($rowNode);
                 }
             }
 
-            if ($metaRowTemplate instanceof DOMElement) {
-                $isVol3Plus = LanguageAuditor::isVolume3Plus($data['volume'] ?? '1');
+            $kwId = rtrim(trim((string) ($data['keywords_id'] ?? '')), '.');
+            $sdgsId = trim((string) ($data['sdgs_id'] ?? ''));
+            $kwEn = rtrim(trim((string) ($data['keywords_en'] ?? '')), '.');
+            $sdgsEn = trim((string) ($data['sdgs_en'] ?? ''));
 
-                $appendMetaRow = static function (array $paras) use ($dom, $xpath, $tbl, $metaRowTemplate): void {
-                    $newRow = $metaRowTemplate->cloneNode(true);
-                    if (!($newRow instanceof DOMElement)) {
-                        return;
-                    }
-                    $cell = $xpath->query('./w:tc[1]', $newRow)->item(0);
-                    if (!($cell instanceof DOMElement)) {
-                        return;
-                    }
-                    self::clearCellParagraphs($cell, $xpath);
-                    foreach ($paras as $para) {
-                        if ($para instanceof DOMElement) {
-                            $cell->appendChild($para);
+            if ($row6 instanceof DOMElement) {
+                $enNoAbsCell = $xpath->query('./w:tc[2]', $row6)->item(0);
+                if (($sdgsEn !== '' || $kwEn !== '') && $enNoAbsCell instanceof DOMElement) {
+                    self::clearCellParagraphs($enNoAbsCell, $xpath);
+                    $tcPr = $xpath->query('./w:tcPr', $enNoAbsCell)->item(0);
+                    if ($tcPr instanceof DOMElement) {
+                        $oldShd = $xpath->query('./w:shd', $tcPr)->item(0);
+                        if ($oldShd) {
+                            $tcPr->removeChild($oldShd);
                         }
                     }
-                    $cell->appendChild(self::createStyledPara($dom, '', []));
-                    $tbl->appendChild($newRow);
-                };
+                    if ($sdgsEn !== '') {
+                        $enNoAbsCell->appendChild(self::createStyledPara($dom, 'Contribution to Sustainable Development Goals (SDGs)', ['bold' => true, 'italic' => true, 'jc' => 'both']));
+                        $enNoAbsCell->appendChild(self::createStyledPara($dom, $sdgsEn, ['italic' => true, 'jc' => 'both']));
+                    }
+                    if ($kwEn !== '') {
+                        $pKwEn = self::createStyledPara($dom, '', ['italic' => true, 'jc' => 'both']);
+                        $pKwEn->appendChild(self::createRun($dom, 'Keywords', ['bold' => true, 'italic' => true]));
+                        $pKwEn->appendChild(self::createRun($dom, ': ' . $kwEn . '.', ['italic' => true]));
+                        $enNoAbsCell->appendChild($pKwEn);
+                    }
+                    $enNoAbsCell->appendChild(self::createStyledPara($dom, '', ['italic' => true, 'jc' => 'both']));
+                } elseif ($row6->parentNode === $tbl) {
+                    $tbl->removeChild($row6);
+                }
+            }
 
-                $kwId = rtrim(trim((string) ($data['keywords_id'] ?? '')), '.');
-                $sdgsId = trim((string) ($data['sdgs_id'] ?? ''));
-                $idParas = [];
-                if ($kwId !== '') {
-                    $pKwId = self::createStyledPara($dom, '', ['jc' => 'both']);
-                    $pKwId->appendChild(self::createRun($dom, 'Kata Kunci', ['bold' => true]));
-                    $pKwId->appendChild(self::createRun($dom, ': ' . $kwId . '.', []));
-                    $idParas[] = $pKwId;
-                }
-                if ($isVol3Plus && $sdgsId !== '') {
-                    $idParas[] = self::createStyledPara($dom, 'Kontribusi terhadap Target Pembangunan Berkelanjutan (TPB/SDGs)', ['bold' => true]);
-                    $idParas[] = self::createStyledPara($dom, $sdgsId, ['jc' => 'both']);
-                }
-                if (!empty($idParas)) {
-                    $appendMetaRow($idParas);
-                }
-
-                $kwEn = rtrim(trim((string) ($data['keywords_en'] ?? '')), '.');
-                $sdgsEn = trim((string) ($data['sdgs_en'] ?? ''));
-                $enParas = [];
-                if ($kwEn !== '') {
-                    $pKwEn = self::createStyledPara($dom, '', ['italic' => true, 'jc' => 'both']);
-                    $pKwEn->appendChild(self::createRun($dom, 'Keywords', ['bold' => true, 'italic' => true]));
-                    $pKwEn->appendChild(self::createRun($dom, ': ' . $kwEn . '.', ['italic' => true]));
-                    $enParas[] = $pKwEn;
-                }
-                if ($isVol3Plus && $sdgsEn !== '') {
-                    $enParas[] = self::createStyledPara($dom, 'Contribution to Sustainable Development Goals (SDGs)', ['bold' => true, 'italic' => true]);
-                    $enParas[] = self::createStyledPara($dom, $sdgsEn, ['italic' => true, 'jc' => 'both']);
-                }
-                if (!empty($enParas)) {
-                    $appendMetaRow($enParas);
+            if ($row5 instanceof DOMElement) {
+                $idNoAbsCell = $xpath->query('./w:tc[2]', $row5)->item(0);
+                if (($sdgsId !== '' || $kwId !== '') && $idNoAbsCell instanceof DOMElement) {
+                    self::clearCellParagraphs($idNoAbsCell, $xpath);
+                    if ($sdgsId !== '') {
+                        $idNoAbsCell->appendChild(self::createStyledPara($dom, 'Kontribusi terhadap Target Pembangunan Berkelanjutan (TPB/SDGs)', ['bold' => true, 'jc' => 'both']));
+                        $idNoAbsCell->appendChild(self::createStyledPara($dom, $sdgsId, ['jc' => 'both']));
+                    }
+                    if ($kwId !== '') {
+                        $pKwId = self::createStyledPara($dom, '', ['jc' => 'both']);
+                        $pKwId->appendChild(self::createRun($dom, 'Kata Kunci', ['bold' => true]));
+                        $pKwId->appendChild(self::createRun($dom, ': ' . $kwId . '.', []));
+                        $idNoAbsCell->appendChild($pKwId);
+                    }
+                    $idNoAbsCell->appendChild(self::createStyledPara($dom, '', ['jc' => 'both']));
+                } elseif ($row5->parentNode === $tbl) {
+                    $tbl->removeChild($row5);
                 }
             }
             return;

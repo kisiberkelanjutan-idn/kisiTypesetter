@@ -295,6 +295,54 @@ class KisiTypesetterHandler extends Handler
     }
 
     /**
+     * Decode article JSON payload from multipart gzip/json upload, base64-gzip field, plain field, or raw request body.
+     */
+    protected function extractArticlePayload(Request $request): ?array
+    {
+        if (
+            !empty($_FILES['articlePayloadFile']['tmp_name'])
+            && (int) ($_FILES['articlePayloadFile']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK
+        ) {
+            $bytes = @file_get_contents((string) $_FILES['articlePayloadFile']['tmp_name']);
+            if (is_string($bytes) && $bytes !== '') {
+                $decoded = LanguageAuditor::decodeArticlePayload($bytes);
+                if ($decoded !== null) {
+                    return $decoded;
+                }
+            }
+        }
+
+        $gzB64 = trim((string) $request->getUserVar('articleJsonGz'));
+        if ($gzB64 !== '') {
+            $bin = base64_decode($gzB64, true);
+            if (is_string($bin) && $bin !== '') {
+                $decoded = LanguageAuditor::decodeArticlePayload($bin);
+                if ($decoded !== null) {
+                    return $decoded;
+                }
+            }
+        }
+
+        $rawPayload = (string) $request->getUserVar('articleJson');
+        if ($rawPayload !== '') {
+            $decoded = LanguageAuditor::decodeArticlePayload($rawPayload);
+            if ($decoded !== null) {
+                return $decoded;
+            }
+        }
+
+        $phpInput = (string) @file_get_contents('php://input');
+        if ($phpInput !== '') {
+            $decoded = LanguageAuditor::decodeArticlePayload($phpInput);
+            if ($decoded !== null) {
+                return $decoded;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * AJAX POST: Run Gemini AI (or local heuristic fallback) to split abstracts & structure sections
      */
     public function aiRestructure($args, $request)
@@ -309,8 +357,7 @@ class KisiTypesetterHandler extends Handler
         $plugin = $this->getPluginInstance();
         $settings = $this->getSettingsArray($contextId, $plugin);
 
-        $rawPayload = (string) $request->getUserVar('articleJson');
-        $articleData = json_decode($rawPayload, true);
+        $articleData = $this->extractArticlePayload($request);
         if (is_array($articleData)) {
             $articleData = $this->hydrateArticleImages($articleData);
         }
@@ -347,8 +394,7 @@ class KisiTypesetterHandler extends Handler
         $plugin = $this->getPluginInstance();
         $settings = $this->getSettingsArray($contextId, $plugin);
 
-        $rawPayload = (string) $request->getUserVar('articleJson');
-        $articleData = json_decode($rawPayload, true);
+        $articleData = $this->extractArticlePayload($request);
         if (is_array($articleData)) {
             $articleData = $this->hydrateArticleImages($articleData);
         }
@@ -385,8 +431,7 @@ class KisiTypesetterHandler extends Handler
         }
         header('Content-Type: application/json; charset=UTF-8');
 
-        $rawPayload = (string) $request->getUserVar('articleJson');
-        $articleData = json_decode($rawPayload, true);
+        $articleData = $this->extractArticlePayload($request);
         if (is_array($articleData)) {
             $articleData = $this->hydrateArticleImages($articleData);
         }
@@ -430,8 +475,7 @@ class KisiTypesetterHandler extends Handler
         }
         header('Content-Type: application/json; charset=UTF-8');
 
-        $rawPayload = (string) $request->getUserVar('articleJson');
-        $articleData = json_decode($rawPayload, true);
+        $articleData = $this->extractArticlePayload($request);
         if (is_array($articleData)) {
             $articleData = $this->hydrateArticleImages($articleData);
         }
@@ -469,8 +513,7 @@ class KisiTypesetterHandler extends Handler
         $settings = $this->getSettingsArray($contextId, $plugin);
         $journalStyle = $this->resolveJournalReferenceStyle($context, $settings);
 
-        $rawPayload = (string) $request->getUserVar('articleJson');
-        $articleData = json_decode($rawPayload, true);
+        $articleData = $this->extractArticlePayload($request);
         if (is_array($articleData)) {
             $articleData = $this->hydrateArticleImages($articleData);
         }
@@ -540,8 +583,7 @@ class KisiTypesetterHandler extends Handler
         $settings = $this->getSettingsArray($contextId, $plugin);
         $journalStyle = $this->resolveJournalReferenceStyle($context, $settings);
 
-        $rawPayload = (string) $request->getUserVar('articleJson');
-        $articleData = json_decode($rawPayload, true);
+        $articleData = $this->extractArticlePayload($request);
         if (is_array($articleData)) {
             $articleData = $this->hydrateArticleImages($articleData);
         }
@@ -718,8 +760,7 @@ class KisiTypesetterHandler extends Handler
         }
 
         $plugin = $this->getPluginInstance();
-        $rawPayload = (string) $request->getUserVar('articleJson');
-        $articleData = json_decode($rawPayload, true);
+        $articleData = $this->extractArticlePayload($request);
         if (is_array($articleData)) {
             $articleData = $this->hydrateArticleImages($articleData);
         }
@@ -742,9 +783,14 @@ class KisiTypesetterHandler extends Handler
         $eloc = preg_replace('/[^a-zA-Z0-9_-]/', '', (string) ($articleData['elocation_id'] ?? 'e76'));
         $downloadName = 'Kisi_Berkelanjutan_' . $eloc . '_Layout2026.docx';
 
+        while (ob_get_level() > 0) {
+            @ob_end_clean();
+        }
         header('Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document');
         header('Content-Disposition: attachment; filename="' . $downloadName . '"');
         header('Content-Length: ' . filesize($tmpOut));
+        header('Cache-Control: no-store, no-cache, must-revalidate');
+        header('X-Content-Type-Options: nosniff');
         readfile($tmpOut);
         @unlink($tmpOut);
         exit;
@@ -760,8 +806,7 @@ class KisiTypesetterHandler extends Handler
         }
         header('Content-Type: application/json; charset=UTF-8');
 
-        $rawPayload = (string) $request->getUserVar('articleJson');
-        $articleData = json_decode($rawPayload, true);
+        $articleData = $this->extractArticlePayload($request);
         if (is_array($articleData)) {
             $articleData = $this->hydrateArticleImages($articleData);
         }
@@ -792,8 +837,7 @@ class KisiTypesetterHandler extends Handler
             return;
         }
 
-        $rawPayload = (string) $request->getUserVar('articleJson');
-        $articleData = json_decode($rawPayload, true);
+        $articleData = $this->extractArticlePayload($request);
         if (is_array($articleData)) {
             $articleData = $this->hydrateArticleImages($articleData);
         }
@@ -807,9 +851,14 @@ class KisiTypesetterHandler extends Handler
         $eloc = preg_replace('/[^a-zA-Z0-9_-]/', '', (string) ($articleData['elocation_id'] ?? 'e76'));
         $downloadName = 'Kisi_Berkelanjutan_' . $eloc . '_JATS.xml';
 
+        while (ob_get_level() > 0) {
+            @ob_end_clean();
+        }
         header('Content-Type: application/xml; charset=UTF-8');
         header('Content-Disposition: attachment; filename="' . $downloadName . '"');
         header('Content-Length: ' . strlen($xmlString));
+        header('Cache-Control: no-store, no-cache, must-revalidate');
+        header('X-Content-Type-Options: nosniff');
         echo $xmlString;
         exit;
     }
@@ -826,8 +875,7 @@ class KisiTypesetterHandler extends Handler
 
         $context = $request->getContext();
         $plugin = $this->getPluginInstance();
-        $rawPayload = (string) $request->getUserVar('articleJson');
-        $articleData = json_decode($rawPayload, true);
+        $articleData = $this->extractArticlePayload($request);
         if (is_array($articleData)) {
             $articleData = $this->hydrateArticleImages($articleData);
         }

@@ -529,10 +529,10 @@ class DocxParser
             }
         }
 
-        // Rows 6+: ABSTRAK (ID), optional TPB/SDGs (ID), and ABSTRACT / SDGs (EN)
-        // Scan dynamically by cell content so English-Only templates (fewer rows) parse cleanly too.
+        // Rows 5+: optional TPB/SDGs + Keywords (LETTER/DATA REPORT), ABSTRAK (ID), and ABSTRACT / SDGs (EN)
+        // Scan dynamically by cell content so both no-abstract and English-Only templates parse cleanly.
         $pendingAbstractLang = '';
-        for ($rIdx = 6; $rIdx < $rows->length; $rIdx++) {
+        for ($rIdx = 5; $rIdx < $rows->length; $rIdx++) {
             $rowCells = $xpath->query('./w:tc', $rows->item($rIdx));
             if ($rowCells->length === 0) {
                 continue;

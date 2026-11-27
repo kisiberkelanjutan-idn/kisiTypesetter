@@ -437,9 +437,15 @@ class JatsXmlGenerator
             $am->appendChild($kwgEn);
         }
 
-        // TPB/SDGs statements for abstract-exempt categories (no <abstract> element to host them)
-        if ($noAbstract && $isVol3Plus) {
-            $sdgsId = trim((string) ($data['sdgs_id'] ?? ''));
+        // Funding
+        $funding = trim($data['funding'] ?? 'none');
+        $fg = $dom->createElement('funding-group');
+        $fg->appendChild($dom->createElement('funding-statement', $funding));
+        $am->appendChild($fg);
+
+        // TPB/SDGs statements for abstract-exempt categories (valid JATS 1.2 DTD position at tail of <article-meta>)
+        if ($noAbstract) {
+            $sdgsId = $isEnglishOnly ? '' : trim((string) ($data['sdgs_id'] ?? ''));
             $sdgsEn = trim((string) ($data['sdgs_en'] ?? ''));
             if ($sdgsId !== '' || $sdgsEn !== '') {
                 $cmg = $dom->createElement('custom-meta-group');
@@ -455,12 +461,6 @@ class JatsXmlGenerator
                 $am->appendChild($cmg);
             }
         }
-
-        // Funding
-        $funding = trim($data['funding'] ?? 'none');
-        $fg = $dom->createElement('funding-group');
-        $fg->appendChild($dom->createElement('funding-statement', $funding));
-        $am->appendChild($fg);
     }
 
     /**

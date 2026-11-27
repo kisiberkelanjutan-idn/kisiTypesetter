@@ -566,34 +566,35 @@ JS;
         $formLangMode = strtolower(trim((string) ($options['form_language_mode'] ?? 'auto')));
         $englishOnly = ($formLangMode === 'en' || !empty($options['english_only']));
 
+        $hasIdBlock = !$englishOnly && ($sdgsId !== '' || !empty($kwId));
+        $hasEnBlock = ($sdgsEn !== '' || !empty($kwEn));
+        if (!$hasIdBlock && !$hasEnBlock) {
+            return '';
+        }
+
         $html = '<section id="kisi-sec-abstract" class="kisi-jats-section kisi-jats-abstract-box">';
-        if ($englishOnly && !empty($kwEn)) {
-            $html .= '<p class="kisi-abs-keywords"><strong>Keywords:</strong> ' . htmlspecialchars(implode('; ', $kwEn) . '.', ENT_QUOTES, 'UTF-8') . '</p>';
-        } elseif (!empty($kwId) || !empty($kwEn)) {
+        if ($hasIdBlock) {
+            $html .= '<div style="' . ($hasEnBlock ? 'margin-bottom:14px;' : '') . 'padding:10px 12px;background:#eef2f7;border-radius:6px;">';
+            if ($sdgsId !== '') {
+                $html .= '<h4 class="kisi-abs-subhead" style="margin-top:0;">Kontribusi terhadap Target Pembangunan Berkelanjutan (TPB/SDGs)</h4>';
+                $html .= '<p class="kisi-abs-p"' . (empty($kwId) ? ' style="margin-bottom:0;"' : '') . '>' . htmlspecialchars($sdgsId, ENT_QUOTES, 'UTF-8') . '</p>';
+            }
             if (!empty($kwId)) {
-                $html .= '<p class="kisi-abs-keywords"><strong>Kata Kunci:</strong> ' . htmlspecialchars(implode('; ', $kwId) . '.', ENT_QUOTES, 'UTF-8') . '</p>';
+                $html .= '<p class="kisi-abs-keywords" style="margin-bottom:0;"><strong>Kata Kunci:</strong> ' . htmlspecialchars(implode('; ', $kwId) . '.', ENT_QUOTES, 'UTF-8') . '</p>';
+            }
+            $html .= '</div>';
+        }
+        if ($hasEnBlock) {
+            $html .= '<div>';
+            if ($sdgsEn !== '') {
+                $html .= '<h4 class="kisi-abs-subhead"><em>Contribution to Sustainable Development Goals (SDGs)</em></h4>';
+                $html .= '<p class="kisi-abs-p"><em>' . htmlspecialchars($sdgsEn, ENT_QUOTES, 'UTF-8') . '</em></p>';
             }
             if (!empty($kwEn)) {
                 $html .= '<p class="kisi-abs-keywords"><em><strong>Keywords:</strong> ' . htmlspecialchars(implode('; ', $kwEn) . '.', ENT_QUOTES, 'UTF-8') . '</em></p>';
             }
+            $html .= '</div>';
         }
-
-        $appendSdgs = static function (string $title, string $body, bool $isEnglish) use (&$html): void {
-            if ($body === '') {
-                return;
-            }
-            if (!$isEnglish) {
-                $html .= '<div style="margin-top:10px;padding:10px 12px;background:#eef2f7;border-radius:6px;">';
-            }
-            $html .= '<h4 class="kisi-abs-subhead"' . (!$isEnglish ? ' style="margin-top:0;"' : '') . '>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</h4>';
-            $bodyHtml = htmlspecialchars($body, ENT_QUOTES, 'UTF-8');
-            $html .= '<p class="kisi-abs-p"' . (!$isEnglish ? ' style="margin-bottom:0;"' : '') . '>' . ($isEnglish ? '<em>' . $bodyHtml . '</em>' : $bodyHtml) . '</p>';
-            if (!$isEnglish) {
-                $html .= '</div>';
-            }
-        };
-        $appendSdgs('Kontribusi terhadap Target Pembangunan Berkelanjutan (TPB/SDGs)', $sdgsId, false);
-        $appendSdgs('Contribution to Sustainable Development Goals (SDGs)', $sdgsEn, true);
 
         $html .= '</section>';
         return $html;

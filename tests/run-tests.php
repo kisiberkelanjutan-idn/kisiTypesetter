@@ -275,9 +275,46 @@ $letterV3Data = array_merge($letterData, [
     'sdgs_en' => 'This activity contributes to SDG 3: good health and well-being.',
 ]);
 $letterV3Xml = JatsXmlGenerator::generate($letterV3Data);
+$letterV3Dom = new DOMDocument();
+assertTrue($letterV3Dom->loadXML($letterV3Xml) !== false, 'JatsXmlGenerator generates well-formed XML for Vol 3+ LETTER');
 assertTrue(strpos($letterV3Xml, 'SDGs Contribution (ID)') !== false && strpos($letterV3Xml, 'SDGs Contribution (EN)') !== false, 'JATS XML keeps mandatory TPB/SDGs contribution for LETTER (Vol 3+)');
+assertTrue(strpos($letterV3Xml, '</funding-group>') < strpos($letterV3Xml, '<custom-meta-group>'), 'JATS XML emits <custom-meta-group> after <funding-group> per JATS 1.2 DTD');
 $letterV3Html = JatsHtmlRenderer::renderFullTextHtml($letterV3Xml, ['include_abstract' => true]);
-assertTrue(strpos($letterV3Html, 'Kontribusi terhadap Target Pembangunan Berkelanjutan') !== false, 'JatsHtmlRenderer renders TPB/SDGs contribution for LETTER (Vol 3+)');
+assertTrue(
+    strpos($letterV3Html, 'Kontribusi terhadap Target Pembangunan Berkelanjutan') !== false
+        && strpos($letterV3Html, 'Kontribusi terhadap Target Pembangunan Berkelanjutan') < strpos($letterV3Html, 'Kata Kunci:'),
+    'JatsHtmlRenderer renders TPB/SDGs contribution before Keywords for LETTER (Vol 3+)'
+);
+
+$tmpLetterV3Docx = tempnam(sys_get_temp_dir(), 'kisi_lv3_') . '.docx';
+assertTrue(DocxGenerator::generate($letterV3Data, $masterDocx, $tmpLetterV3Docx), 'DocxGenerator builds LETTER Vol 3+ DOCX with SDGs + Keywords rows');
+$lv3Zip = new ZipArchive();
+$lv3DocXml = ($lv3Zip->open($tmpLetterV3Docx) === true) ? (string) $lv3Zip->getFromName('word/document.xml') : '';
+if ($lv3Zip->numFiles > 0) {
+    $lv3Zip->close();
+}
+assertTrue(
+    $lv3DocXml !== ''
+        && strpos($lv3DocXml, 'ABSTRAK') === false
+        && strpos($lv3DocXml, 'ABSTRACT') === false
+        && strpos($lv3DocXml, 'Kontribusi terhadap Target Pembangunan Berkelanjutan (TPB/SDGs)') !== false
+        && strpos($lv3DocXml, 'Contribution to Sustainable Development Goals (SDGs)') !== false
+        && strpos($lv3DocXml, 'Kontribusi terhadap Target Pembangunan Berkelanjutan (TPB/SDGs)') < strpos($lv3DocXml, 'Kata Kunci')
+        && strpos($lv3DocXml, 'Contribution to Sustainable Development Goals (SDGs)') < strpos($lv3DocXml, 'Keywords'),
+    'LETTER Vol 3+ DOCX places TPB/SDGs before Kata Kunci (Row 5) and SDGs before Keywords (Row 6) without narrative ABSTRAK/ABSTRACT'
+);
+$lv3Parsed = DocxParser::parse($tmpLetterV3Docx);
+assertTrue(
+    strpos($lv3Parsed['title_id'] ?? '', 'Sosialisasi Dampak') !== false
+        && strpos($lv3Parsed['title_en'] ?? '', 'Health Education on the Impacts') !== false
+        && strpos($lv3Parsed['sdgs_id'] ?? '', 'Tujuan 3') !== false
+        && strpos($lv3Parsed['sdgs_en'] ?? '', 'SDG 3') !== false
+        && strpos($lv3Parsed['keywords_id'] ?? '', 'Tuberkulosis') !== false
+        && strpos($lv3Parsed['keywords_en'] ?? '', 'Tuberculosis') !== false
+        && !empty($lv3Parsed['sections']['badan_artikel']),
+    'DocxParser round-trips bilingual titles, TPB/SDGs, Keywords, and direct body from LETTER DOCX'
+);
+@unlink($tmpLetterV3Docx);
 
 $dataReportData = array_merge($letterData, [
     'article_type' => 'DATA REPORT',
@@ -812,8 +849,9 @@ assertTrue(
     'JatsHtmlRenderer::renderStandaloneReaderPage produces complete XML Galley reader page including Abstract and References'
 );
 
-// 14. Verify Hybrid Mode: Studio & DOCX/PDF include ID & EN abstracts + SDGs, while JATS XML stays English-Only (1 EN abstract, EN title, EN keywords, EN SDGs)
+// 14. Verify Hybrid Mode: Studio & DOCX/PDF include ID & EN titles, abstracts, & SDGs, while JATS XML stays English-Only
 $hybridArticle = $enFormArticle;
+$hybridArticle['title_id'] = 'Efektivitas Telemonitoring Kebidanan Komunitas pada Pelayanan Ibu di Pedesaan';
 $hybridArticle['abstract_id'] = [
     'pendahuluan_metode' => '',
     'hasil' => '',
@@ -843,7 +881,7 @@ assertTrue(
 );
 
 $tmpHybridDocx = tempnam(sys_get_temp_dir(), 'kisi_hybrid_') . '.docx';
-assertTrue(DocxGenerator::generate($hybridRestructured, $masterDocx, $tmpHybridDocx), 'DocxGenerator builds hybrid Vol 3+ DOCX (single EN title + ID & EN abstracts for PDF)');
+assertTrue(DocxGenerator::generate($hybridRestructured, $masterDocx, $tmpHybridDocx), 'DocxGenerator builds hybrid Vol 3+ DOCX (ID & EN titles + ID & EN abstracts for PDF)');
 $hyZip = new ZipArchive();
 $hyDocXml = '';
 if ($hyZip->open($tmpHybridDocx) === true) {
@@ -851,24 +889,25 @@ if ($hyZip->open($tmpHybridDocx) === true) {
     $hyZip->close();
 }
 assertTrue(
-    substr_count($hyDocXml, 'Effectiveness of Community Midwifery Telemonitoring in Rural Maternal Care') === 1
+    strpos($hyDocXml, 'Efektivitas Telemonitoring Kebidanan Komunitas') !== false
+        && substr_count($hyDocXml, 'Effectiveness of Community Midwifery Telemonitoring in Rural Maternal Care') === 1
         && strpos($hyDocXml, '>ABSTRAK<') !== false
         && strpos($hyDocXml, 'Telemonitoring meningkatkan kepatuhan') !== false
         && strpos($hyDocXml, 'Kontribusi terhadap Target Pembangunan Berkelanjutan (TPB/SDGs)') !== false
         && strpos($hyDocXml, '>ABSTRACT<') !== false
         && strpos($hyDocXml, 'Contribution to Sustainable Development Goals (SDGs)') !== false,
-    'Hybrid Vol 3+ DOCX/PDF includes single English title plus both Indonesian ABSTRAK/TPB-SDGs and English ABSTRACT/SDGs'
+    'Hybrid Vol 3+ DOCX/PDF includes both ID & EN titles plus both Indonesian ABSTRAK/TPB-SDGs and English ABSTRACT/SDGs'
 );
 
 $hyParsed = DocxParser::parse($tmpHybridDocx);
 assertTrue(
-    strpos($hyParsed['title_en'] ?? '', 'Effectiveness of Community Midwifery Telemonitoring') !== false
-        && trim((string) ($hyParsed['title_id'] ?? '')) === ''
+    strpos($hyParsed['title_id'] ?? '', 'Efektivitas Telemonitoring Kebidanan Komunitas') !== false
+        && strpos($hyParsed['title_en'] ?? '', 'Effectiveness of Community Midwifery Telemonitoring') !== false
         && strpos($hyParsed['abstract_id']['pendahuluan_metode'] ?? '', 'Telemonitoring meningkatkan kepatuhan') !== false
         && strpos($hyParsed['abstract_en']['intro_methods'] ?? '', 'Telemonitoring improves antenatal follow-up') !== false
         && strpos($hyParsed['sdgs_id'] ?? '', 'Tujuan Pembangunan Berkelanjutan') !== false
         && strpos($hyParsed['sdgs_en'] ?? '', 'Sustainable Development Goals') !== false,
-    'DocxParser round-trips single EN title and both ID & EN abstracts/SDGs from hybrid Vol 3+ DOCX'
+    'DocxParser round-trips BOTH ID & EN titles and both ID & EN abstracts/SDGs from hybrid Vol 3+ DOCX'
 );
 @unlink($tmpHybridDocx);
 
@@ -877,6 +916,7 @@ $hybridDom = new DOMDocument();
 assertTrue($hybridDom->loadXML($hybridJatsXml) !== false, 'JatsXmlGenerator generates well-formed XML in hybrid mode');
 assertTrue(
     preg_match('/<article\b[^>]*\bxml:lang="en"/i', $hybridJatsXml) === 1
+        && strpos($hybridJatsXml, 'Efektivitas Telemonitoring') === false
         && strpos($hybridJatsXml, '<trans-title-group') === false
         && strpos($hybridJatsXml, '<abstract xml:lang="id">') === false
         && strpos($hybridJatsXml, '<trans-abstract') === false
@@ -887,6 +927,68 @@ assertTrue(
         && strpos($hybridJatsXml, 'Tujuan Pembangunan Berkelanjutan') === false
         && strpos($hybridJatsXml, 'Contribution to Sustainable Development Goals (SDGs)') !== false,
     'Hybrid JATS XML outputs strictly 1 English abstract, English title, English keywords, and English SDGs (no ID metadata)'
+);
+
+// Hybrid LETTER check: JATS XML emits strictly EN SDGs + EN Keywords with NO <abstract> and NO ID metadata
+$hybridLetter = array_merge($letterV3Data, [
+    'form_mode' => 'en',
+]);
+$hybridLetterXml = JatsXmlGenerator::generate($hybridLetter);
+assertTrue(
+    strpos($hybridLetterXml, '<abstract') === false
+        && strpos($hybridLetterXml, 'Sosialisasi Dampak') === false
+        && strpos($hybridLetterXml, '<kwd-group xml:lang="id">') === false
+        && strpos($hybridLetterXml, '<kwd-group xml:lang="en">') !== false
+        && strpos($hybridLetterXml, 'SDGs Contribution (ID)') === false
+        && strpos($hybridLetterXml, 'SDGs Contribution (EN)') !== false
+        && strpos($hybridLetterXml, '</funding-group>') < strpos($hybridLetterXml, '<custom-meta-group>'),
+    'Hybrid LETTER JATS XML emits English title, English SDGs custom-meta (after funding-group), and English keywords without ID metadata or <abstract>'
+);
+
+// 15. Verify Large Article Payload Gzip Compression & Decoding (Prevents 413 Request Entity Too Large on cPanel/ModSecurity)
+$largePayloadArticle = $hybridRestructured;
+$repeatedBlocks = [];
+for ($bi = 0; $bi < 180; $bi++) {
+    $repeatedBlocks[] = [
+        'type' => 'paragraph',
+        'text' => "Paragraph {$bi}: Maternal telemonitoring and community health workers substantially improved antenatal follow-up adherence across rural primary health centers with sustained longitudinal outcomes [1].",
+    ];
+}
+$largePayloadArticle['sections']['hasil'] = $repeatedBlocks;
+$largePayloadArticle['referensi'] = array_fill(0, 120, 'Ahmed SOM, Ashgar RI, Abdelgader AAM. Exclusive breastfeeding and neonatal growth outcomes across coastal clinics. Clin Nutr Open Sci. 2023;51:44-51. doi:10.1016/j.nutos.2023.08.003');
+
+$rawLargeJson = json_encode($largePayloadArticle, JSON_UNESCAPED_UNICODE);
+$gzLargePayload = gzencode((string) $rawLargeJson, 6);
+assertTrue(
+    is_string($rawLargeJson) && strlen($rawLargeJson) > 65000 && is_string($gzLargePayload) && strlen($gzLargePayload) < (strlen($rawLargeJson) * 0.25),
+    'Large article JSON payload compresses below 25% via gzip to stay safely under cPanel ModSecurity limits'
+);
+
+$decodedPlain = LanguageAuditor::decodeArticlePayload((string) $rawLargeJson);
+$decodedGz = LanguageAuditor::decodeArticlePayload((string) $gzLargePayload);
+assertTrue(
+    is_array($decodedPlain)
+        && is_array($decodedGz)
+        && (int) ($decodedGz['submission_id'] ?? 0) === 105
+        && ($decodedGz['title_en'] ?? '') === ($largePayloadArticle['title_en'] ?? '')
+        && count($decodedGz['sections']['hasil'] ?? []) === 180,
+    'LanguageAuditor::decodeArticlePayload losslessly decodes both plain JSON and gzip-compressed binary payloads'
+);
+
+assertTrue(
+    LanguageAuditor::decodeArticlePayload('not-valid-json') === null
+        && LanguageAuditor::decodeArticlePayload("\x1f\x8bcorrupt") === null
+        && LanguageAuditor::decodeArticlePayload('') === null,
+    'LanguageAuditor::decodeArticlePayload safely returns null for empty, malformed JSON, or corrupt gzip streams'
+);
+
+$studioSource = (string) file_get_contents($root . '/templates/studioView.php');
+assertTrue(
+    strpos($studioSource, 'buildArticleFormData') !== false
+        && strpos($studioSource, 'articlePayloadFile') !== false
+        && strpos($studioSource, 'CompressionStream') !== false
+        && strpos($studioSource, 'id="downloadForm"') === false,
+    'Studio UI uses multipart gzipped payload uploads and fetch Blob download instead of URL-encoded hidden form POST'
 );
 
 if ($failures > 0) {
