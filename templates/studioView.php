@@ -1611,7 +1611,7 @@ async function formatVancouverReferencesAjax() {
     syncReferencesFromInput();
     showToast('Mengonversi & menyinkronkan Sumber Pustaka ke gaya referensi jurnal...', 'info');
     const fd = new FormData();
-    fd.append('articleJson', JSON.stringify(articleState));
+    fd.append('articleJson', serializeArticleForServer());
     try {
         const res = await fetch(BASE_URL + '/formatVancouverReferences', { method: 'POST', body: fd });
         const data = await res.json();
@@ -1632,7 +1632,7 @@ async function syncReferencesToOjsMenu() {
     syncReferencesFromInput();
     showToast('📤 Memparser daftar pustaka langsung ke menu References OJS...', 'info');
     const fd = new FormData();
-    fd.append('articleJson', JSON.stringify(articleState));
+    fd.append('articleJson', serializeArticleForServer());
     try {
         const res = await fetch(BASE_URL + '/syncReferencesToOjs', { method: 'POST', body: fd });
         const data = await res.json();
@@ -2261,7 +2261,7 @@ async function formatAllTablesHealthStandard(forceReclassify = true) {
     syncStateFromInputs();
     showToast('🏥 Memformat seluruh tabel sesuai standar ilmiah kesehatan...', 'info');
     const fd = new FormData();
-    fd.append('articleJson', JSON.stringify(articleState));
+    fd.append('articleJson', serializeArticleForServer());
     fd.append('forceReclassify', forceReclassify ? '1' : '0');
     fd.append('suggestFootnote', '1');
     try {
@@ -2344,30 +2344,93 @@ function countAllFigures() {
     return count;
 }
 
+/**
+ * Build the article JSON that is posted to the server.
+ *
+ * Figures live on the server (content-addressed media_key); their base64 data URI is kept
+ * in the browser for the live preview only. Sending it back with every action used to blow
+ * past the web server request limit and produce 413 Request Entity Too Large.
+ */
+function serializeArticleForServer() {
+    let snapshot;
+    try {
+        snapshot = JSON.parse(JSON.stringify(articleState));
+    } catch (e) {
+        return JSON.stringify(articleState);
+    }
+    const sections = snapshot && snapshot.sections;
+    if (sections) {
+        Object.keys(sections).forEach(k => {
+            const blocks = sections[k];
+            if (!Array.isArray(blocks)) return;
+            blocks.forEach(b => {
+                if (b && b.type === 'image' && b.media_key) {
+                    b.data = '';
+                    b.src = '';
+                }
+            });
+        });
+    }
+    return JSON.stringify(snapshot);
+}
+
+async function uploadBlockImageFile(file) {
+    const fd = new FormData();
+    fd.append('image_file', file);
+    const res = await fetch(BASE_URL + '/uploadImage', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Gagal menyimpan gambar ke server.');
+    return data;
+}
+
 function setBlockImageFromFile(secKey, bIdx, inputEl) {
     const file = (inputEl && inputEl.files) ? inputEl.files[0] : null;
     if (!file) return;
     const blk = articleState.sections[secKey] && articleState.sections[secKey][bIdx];
     if (!blk) return;
 
-    const applyImage = (dataUri, width, height) => {
+    const applyImage = (dataUri, width, height, mediaKey) => {
         blk.data = dataUri;
         blk.src = '';
+        blk.media_key = mediaKey || '';
         blk.filename = file.name;
         blk.mime = file.type || 'image/png';
         blk.ext = (String(file.name).split('.').pop() || 'png').toLowerCase();
         blk.width = width || 0;
         blk.height = height || 0;
-        renderBodySectionsEditor({ sec: secKey, idx: bIdx });
-        showToast('Gambar disisipkan. Panjang/isi caption dapat diubah di bawah pratinjau.', 'success');
+    };
+
+    const persistImage = async () => {
+        try {
+            const uploaded = await uploadBlockImageFile(file);
+            const current = articleState.sections[secKey] && articleState.sections[secKey][bIdx];
+            if (current) {
+                current.media_key = uploaded.media_key || '';
+                if (uploaded.data) current.data = uploaded.data;
+                if (uploaded.mime) current.mime = uploaded.mime;
+                if (uploaded.ext) current.ext = uploaded.ext;
+            }
+            showToast('Gambar disisipkan & tersimpan di server. Caption dapat diubah di bawah pratinjau.', 'success');
+        } catch (e) {
+            showToast('Gambar tampil di pratinjau, tetapi gagal disimpan di server: ' + e.message, 'error');
+        }
     };
 
     const reader = new FileReader();
     reader.onload = () => {
         const dataUri = String(reader.result || '');
         const probe = new Image();
-        probe.onload = () => applyImage(dataUri, probe.naturalWidth, probe.naturalHeight);
-        probe.onerror = () => applyImage(dataUri, 0, 0);
+        probe.onload = () => {
+            applyImage(dataUri, probe.naturalWidth, probe.naturalHeight, '');
+            renderBodySectionsEditor({ sec: secKey, idx: bIdx });
+            persistImage();
+        };
+        probe.onerror = () => {
+            // Some formats (e.g. TIFF) cannot be decoded by the browser but are still valid figures.
+            applyImage(dataUri, 0, 0, '');
+            renderBodySectionsEditor({ sec: secKey, idx: bIdx });
+            persistImage();
+        };
         probe.src = dataUri;
     };
     reader.readAsDataURL(file);
@@ -2377,6 +2440,8 @@ function clearBlockImage(secKey, bIdx) {
     const blk = articleState.sections[secKey] && articleState.sections[secKey][bIdx];
     if (!blk) return;
     blk.data = '';
+    blk.src = '';
+    blk.media_key = '';
     blk.width = 0;
     blk.height = 0;
     renderBodySectionsEditor({ sec: secKey, idx: bIdx });
@@ -2407,7 +2472,7 @@ async function runLanguageAudit() {
     box.innerHTML = '<div style="padding:28px;text-align:center;color:#64748b;">⏳ Memeriksa ejaan &amp; kata baku (KBBI VI, EYD V, SCOWL US English, AMA Style)...</div>';
 
     const fd = new FormData();
-    fd.append('articleJson', JSON.stringify(articleState));
+    fd.append('articleJson', serializeArticleForServer());
     fd.append('bodyLang', document.getElementById('auditBodyLang').value);
     fd.append('useLanguageTool', document.getElementById('auditUseLanguageTool').checked ? '1' : '0');
     fd.append('useGemini', document.getElementById('auditUseGemini').checked ? '1' : '0');
@@ -2729,7 +2794,7 @@ async function runAiRestructure() {
     syncStateFromInputs();
     showToast('✨ Memproses restrukturisasi abstrak & metadata dengan AI...', 'info');
     const fd = new FormData();
-    fd.append('articleJson', JSON.stringify(articleState));
+    fd.append('articleJson', serializeArticleForServer());
     try {
         const res = await fetch(BASE_URL + '/aiRestructure', { method: 'POST', body: fd });
         const data = await res.json();
@@ -2857,7 +2922,7 @@ function downloadGeneratedFile(endpointOp) {
     normalizeAllArticleSpacing(false);
     const form = document.getElementById('downloadForm');
     form.action = BASE_URL + '/' + endpointOp;
-    document.getElementById('downloadArticleJson').value = JSON.stringify(articleState);
+    document.getElementById('downloadArticleJson').value = serializeArticleForServer();
     form.submit();
     showToast(endpointOp === 'generateDocx' ? '📄 Mengunduh file DOCX Template 2026...' : '🧬 Mengunduh file AmeliCA JATS XML...', 'success');
 }
@@ -2867,7 +2932,7 @@ async function loadFullTextDigestPreview() {
     const box = document.getElementById('fullTextDigestPreviewBox');
     box.innerHTML = '<div style="padding:30px;text-align:center;color:#64748b;">⏳ Membangun JATS 1.2 XML &amp; me-render Full-Text HTML...</div>';
     const fd = new FormData();
-    fd.append('articleJson', JSON.stringify(articleState));
+    fd.append('articleJson', serializeArticleForServer());
     try {
         const res = await fetch(BASE_URL + '/previewFullText', { method: 'POST', body: fd });
         const data = await res.json();
@@ -2885,7 +2950,7 @@ async function saveDirectlyToOjsGalley() {
     normalizeAllArticleSpacing(false);
     showToast('🚀 Menyimpan JATS XML, DOCX, dan References ke OJS 3.5...', 'info');
     const fd = new FormData();
-    fd.append('articleJson', JSON.stringify(articleState));
+    fd.append('articleJson', serializeArticleForServer());
     fd.append('syncReferences', '1');
     try {
         const res = await fetch(BASE_URL + '/saveToGalley', { method: 'POST', body: fd });

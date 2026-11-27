@@ -19,6 +19,7 @@ use PKP\security\Validation;
 use PKP\submissionFile\SubmissionFile;
 
 require_once __DIR__ . '/VancouverFormatter.php';
+require_once __DIR__ . '/MediaStore.php';
 
 class KisiTypesetterHandler extends Handler
 {
@@ -122,7 +123,7 @@ class KisiTypesetterHandler extends Handler
                         }
                     }
                     if ($loadedPath !== '') {
-                        $parsedDocx = DocxParser::parse($loadedPath);
+                        $parsedDocx = $this->attachMediaKeys(DocxParser::parse($loadedPath));
                         $activeArticleData = $this->mergeOjsAndDocxData($activeArticleData, $parsedDocx);
                         $activeArticleData['_loaded_docx_name'] = $firstDocx['name'];
                     }
@@ -282,7 +283,7 @@ class KisiTypesetterHandler extends Handler
             return;
         }
 
-        $parsed = DocxParser::parse($docxPath);
+        $parsed = $this->attachMediaKeys(DocxParser::parse($docxPath));
         if ($tempToUnlink !== '' && file_exists($tempToUnlink)) {
             @unlink($tempToUnlink);
         }
@@ -310,6 +311,9 @@ class KisiTypesetterHandler extends Handler
 
         $rawPayload = (string) $request->getUserVar('articleJson');
         $articleData = json_decode($rawPayload, true);
+        if (is_array($articleData)) {
+            $articleData = $this->hydrateArticleImages($articleData);
+        }
         if (!is_array($articleData)) {
             echo json_encode(['ok' => false, 'error' => 'Data artikel JSON tidak valid.']);
             return;
@@ -345,6 +349,9 @@ class KisiTypesetterHandler extends Handler
 
         $rawPayload = (string) $request->getUserVar('articleJson');
         $articleData = json_decode($rawPayload, true);
+        if (is_array($articleData)) {
+            $articleData = $this->hydrateArticleImages($articleData);
+        }
         if (!is_array($articleData)) {
             echo json_encode(['ok' => false, 'error' => 'Data artikel JSON tidak valid.']);
             return;
@@ -380,6 +387,9 @@ class KisiTypesetterHandler extends Handler
 
         $rawPayload = (string) $request->getUserVar('articleJson');
         $articleData = json_decode($rawPayload, true);
+        if (is_array($articleData)) {
+            $articleData = $this->hydrateArticleImages($articleData);
+        }
         if (!is_array($articleData)) {
             echo json_encode(['ok' => false, 'error' => 'Data artikel JSON tidak valid.']);
             return;
@@ -422,6 +432,9 @@ class KisiTypesetterHandler extends Handler
 
         $rawPayload = (string) $request->getUserVar('articleJson');
         $articleData = json_decode($rawPayload, true);
+        if (is_array($articleData)) {
+            $articleData = $this->hydrateArticleImages($articleData);
+        }
         if (!is_array($articleData)) {
             echo json_encode(['ok' => false, 'error' => 'Data artikel JSON tidak valid.']);
             return;
@@ -458,6 +471,9 @@ class KisiTypesetterHandler extends Handler
 
         $rawPayload = (string) $request->getUserVar('articleJson');
         $articleData = json_decode($rawPayload, true);
+        if (is_array($articleData)) {
+            $articleData = $this->hydrateArticleImages($articleData);
+        }
         if (!is_array($articleData)) {
             echo json_encode(['ok' => false, 'error' => 'Data artikel JSON tidak valid.']);
             return;
@@ -526,6 +542,9 @@ class KisiTypesetterHandler extends Handler
 
         $rawPayload = (string) $request->getUserVar('articleJson');
         $articleData = json_decode($rawPayload, true);
+        if (is_array($articleData)) {
+            $articleData = $this->hydrateArticleImages($articleData);
+        }
         if (!is_array($articleData)) {
             echo json_encode(['ok' => false, 'error' => 'Data artikel JSON tidak valid.']);
             return;
@@ -554,6 +573,132 @@ class KisiTypesetterHandler extends Handler
     }
 
     /**
+     * AJAX POST: Store a figure picked in Studio and return its media_key (plus a data URI).
+     */
+    public function uploadImage($args, $request)
+    {
+        if (!$this->ensureAuthorized($request)) {
+            return;
+        }
+        header('Content-Type: application/json; charset=UTF-8');
+
+        $tmpPath = (string) ($_FILES['image_file']['tmp_name'] ?? '');
+        if ($tmpPath === '' || !is_uploaded_file($tmpPath)) {
+            echo json_encode(['ok' => false, 'error' => 'File gambar tidak ditemukan pada unggahan.']);
+            return;
+        }
+
+        $originalName = (string) ($_FILES['image_file']['name'] ?? 'gambar');
+        $binary = @file_get_contents($tmpPath);
+        if ($binary === false || $binary === '') {
+            echo json_encode(['ok' => false, 'error' => 'File gambar kosong atau gagal dibaca.']);
+            return;
+        }
+
+        $ext = MediaStore::normalizeExt((string) pathinfo($originalName, PATHINFO_EXTENSION));
+        if ($ext === '' && function_exists('getimagesizefromstring')) {
+            $info = @getimagesizefromstring($binary);
+            $ext = is_array($info) ? MediaStore::extFromMime((string) ($info['mime'] ?? '')) : '';
+        }
+        if ($ext === '') {
+            echo json_encode(['ok' => false, 'error' => 'Format gambar tidak didukung. Gunakan PNG, JPG, GIF, BMP, atau TIFF.']);
+            return;
+        }
+
+        $mediaKey = MediaStore::putBinary($binary, $ext);
+        $stored = $mediaKey !== null ? MediaStore::read($mediaKey) : null;
+        if ($stored === null) {
+            echo json_encode(['ok' => false, 'error' => 'Gambar gagal disimpan di server. Periksa izin tulis folder files OJS.']);
+            return;
+        }
+
+        echo json_encode([
+            'ok' => true,
+            'media_key' => $mediaKey,
+            'data' => $stored['data_uri'],
+            'mime' => $stored['mime'],
+            'ext' => $stored['ext'],
+            'filename' => $originalName,
+            'bytes' => strlen($binary),
+        ], JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * Persist every embedded base64 figure of a freshly parsed .docx and add its media_key.
+     *
+     * Studio keeps the data URI for the on-screen preview but drops it before posting the
+     * article back, so the reference has to exist from the very first response onwards.
+     */
+    protected function attachMediaKeys(array $articleData): array
+    {
+        if (empty($articleData['sections']) || !is_array($articleData['sections'])) {
+            return $articleData;
+        }
+
+        foreach ($articleData['sections'] as $sectionKey => $blocks) {
+            if (!is_array($blocks)) {
+                continue;
+            }
+            foreach ($blocks as $index => $block) {
+                if (!is_array($block) || ($block['type'] ?? '') !== 'image' || !empty($block['media_key'])) {
+                    continue;
+                }
+                $dataUri = (string) ($block['data'] ?? '');
+                if ($dataUri === '' || stripos($dataUri, 'data:') !== 0) {
+                    continue;
+                }
+                $mediaKey = MediaStore::putDataUri($dataUri);
+                if ($mediaKey !== null) {
+                    $articleData['sections'][$sectionKey][$index]['media_key'] = $mediaKey;
+                }
+            }
+        }
+
+        return $articleData;
+    }
+
+    /**
+     * Restore figure bytes from the media store when the browser sent only its media_key.
+     */
+    protected function hydrateArticleImages(array $articleData): array
+    {
+        if (empty($articleData['sections']) || !is_array($articleData['sections'])) {
+            return $articleData;
+        }
+
+        foreach ($articleData['sections'] as $sectionKey => $blocks) {
+            if (!is_array($blocks)) {
+                continue;
+            }
+            foreach ($blocks as $index => $block) {
+                if (!is_array($block) || ($block['type'] ?? '') !== 'image') {
+                    continue;
+                }
+                if (trim((string) ($block['data'] ?? '')) !== '') {
+                    continue;
+                }
+                $mediaKey = (string) ($block['media_key'] ?? '');
+                if ($mediaKey === '') {
+                    continue;
+                }
+                $stored = MediaStore::read($mediaKey);
+                if ($stored === null) {
+                    continue;
+                }
+                $articleData['sections'][$sectionKey][$index]['data'] = $stored['data_uri'];
+                if (empty($block['mime'])) {
+                    $articleData['sections'][$sectionKey][$index]['mime'] = $stored['mime'];
+                }
+                if (empty($block['ext'])) {
+                    $articleData['sections'][$sectionKey][$index]['ext'] = $stored['ext'];
+                }
+            }
+        }
+
+        return $articleData;
+    }
+
+    /**
      * POST: Generate and download the re-layouted .docx file (2026 Template)
      */
     public function generateDocx($args, $request)
@@ -565,6 +710,9 @@ class KisiTypesetterHandler extends Handler
         $plugin = $this->getPluginInstance();
         $rawPayload = (string) $request->getUserVar('articleJson');
         $articleData = json_decode($rawPayload, true);
+        if (is_array($articleData)) {
+            $articleData = $this->hydrateArticleImages($articleData);
+        }
         if (!is_array($articleData)) {
             http_response_code(400);
             echo 'Invalid article data JSON';
@@ -604,6 +752,9 @@ class KisiTypesetterHandler extends Handler
 
         $rawPayload = (string) $request->getUserVar('articleJson');
         $articleData = json_decode($rawPayload, true);
+        if (is_array($articleData)) {
+            $articleData = $this->hydrateArticleImages($articleData);
+        }
         if (!is_array($articleData)) {
             echo json_encode(['ok' => false, 'error' => 'Data artikel JSON tidak valid.']);
             return;
@@ -633,6 +784,9 @@ class KisiTypesetterHandler extends Handler
 
         $rawPayload = (string) $request->getUserVar('articleJson');
         $articleData = json_decode($rawPayload, true);
+        if (is_array($articleData)) {
+            $articleData = $this->hydrateArticleImages($articleData);
+        }
         if (!is_array($articleData)) {
             http_response_code(400);
             echo 'Invalid article data JSON';
@@ -664,6 +818,9 @@ class KisiTypesetterHandler extends Handler
         $plugin = $this->getPluginInstance();
         $rawPayload = (string) $request->getUserVar('articleJson');
         $articleData = json_decode($rawPayload, true);
+        if (is_array($articleData)) {
+            $articleData = $this->hydrateArticleImages($articleData);
+        }
 
         if (!is_array($articleData)) {
             echo json_encode(['ok' => false, 'error' => 'Data artikel JSON tidak valid.']);

@@ -85,6 +85,7 @@ class KisiTypesetterPlugin extends GenericPlugin
         require_once($this->getPluginPath() . '/classes/HealthTableFormatter.php');
         require_once($this->getPluginPath() . '/classes/LanguageAuditor.php');
         require_once($this->getPluginPath() . '/classes/VancouverFormatter.php');
+        require_once($this->getPluginPath() . '/classes/MediaStore.php');
         require_once($this->getPluginPath() . '/classes/DocxParser.php');
         require_once($this->getPluginPath() . '/classes/DocxGenerator.php');
         require_once($this->getPluginPath() . '/classes/JatsXmlGenerator.php');
