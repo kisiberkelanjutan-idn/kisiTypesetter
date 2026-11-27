@@ -1890,22 +1890,39 @@ function renderBodySectionsEditor(flashTarget = null) {
                 `;
             } else if (blk.type === 'image') {
                 const imgSrc = blk.data || blk.src || '';
+                const imgSrc2 = blk.data2 || blk.src2 || '';
                 const imgPreview = imgSrc
                     ? `<img src="${escapeHtml(imgSrc)}" alt="${escapeHtml(blk.alt || blk.caption || 'Gambar')}" style="max-width:100%;max-height:280px;display:block;margin:0 auto 8px;border:1px solid #e2e8f0;border-radius:6px;">`
                     : '<div style="padding:18px;text-align:center;color:#94a3b8;border:1px dashed #cbd5e1;border-radius:6px;margin-bottom:8px;">Belum ada gambar. Pilih file gambar di bawah ini.</div>';
+                const imgPreview2 = imgSrc2
+                    ? `<img src="${escapeHtml(imgSrc2)}" alt="${escapeHtml(blk.alt2 || blk.caption || 'Gambar')}" style="max-width:100%;max-height:280px;display:block;margin:0 auto 8px;border:1px solid #e2e8f0;border-radius:6px;">`
+                    : '<div style="padding:12px;text-align:center;color:#94a3b8;border:1px dashed #cbd5e1;border-radius:6px;margin-bottom:8px;font-size:11.5px;">Gambar kedua (opsional) belum dipilih.</div>';
                 item.innerHTML = blockHeaderHtml + `
                     ${imgPreview}
                     <div class="field-group" style="margin-bottom:8px;">
-                        <label>Ganti / Pilih Gambar (PNG, JPG, GIF, BMP, TIFF — tersimpan di dalam DOCX, JATS &amp; HTML)</label>
-                        <input type="file" accept="image/png,image/jpeg,image/gif,image/bmp,image/tiff" onchange="setBlockImageFromFile('${secKey}', ${bIdx}, this)">
-                        ${imgSrc ? `<div style="margin-top:6px;"><button type="button" class="btn btn-outline btn-xs" onclick="clearBlockImage('${secKey}', ${bIdx})">🗑️ Hapus Gambar</button></div>` : ''}
+                        <label>Gambar 1 (PNG, JPG, GIF, BMP, TIFF — tersimpan di dalam DOCX, JATS &amp; HTML)</label>
+                        <input type="file" accept="image/png,image/jpeg,image/gif,image/bmp,image/tiff" onchange="setBlockImageFromFile('${secKey}', ${bIdx}, this, 1)">
+                        ${imgSrc ? `<div style="margin-top:6px;"><button type="button" class="btn btn-outline btn-xs" onclick="clearBlockImage('${secKey}', ${bIdx}, 1)">🗑️ Hapus Gambar 1</button></div>` : ''}
+                    </div>
+                    <div style="border-top:1px dashed #cbd5e1;margin:10px 0 8px;padding-top:8px;">
+                        <div style="font-size:11.5px;font-weight:700;color:#334155;margin-bottom:6px;">Gambar 2 (opsional — 1 kolom / 1 caption)</div>
+                        ${imgPreview2}
+                        <div class="field-group" style="margin-bottom:8px;">
+                            <label>Gambar 2 (PNG, JPG, GIF, BMP, TIFF)</label>
+                            <input type="file" accept="image/png,image/jpeg,image/gif,image/bmp,image/tiff" onchange="setBlockImageFromFile('${secKey}', ${bIdx}, this, 2)">
+                            ${imgSrc2 ? `<div style="margin-top:6px;"><button type="button" class="btn btn-outline btn-xs" onclick="clearBlockImage('${secKey}', ${bIdx}, 2)">🗑️ Hapus Gambar 2</button></div>` : ''}
+                        </div>
+                        <div class="field-group" style="margin-bottom:0;">
+                            <label>Teks Alternatif Gambar 2</label>
+                            <input type="text" value="${escapeHtml(blk.alt2 || '')}" placeholder="Deskripsi singkat isi gambar 2" oninput="articleState.sections['${secKey}'][${bIdx}].alt2 = this.value">
+                        </div>
                     </div>
                     <div class="field-group" style="margin-bottom:8px;">
                         <label>Judul Gambar (Caption — otomatis di bawah gambar, bold pada "Gambar N.")</label>
                         <input type="text" value="${escapeHtml(blk.caption || '')}" placeholder="Gambar 1. Distribusi responden berdasarkan kelompok umur" oninput="articleState.sections['${secKey}'][${bIdx}].caption = this.value">
                     </div>
                     <div class="field-group" style="margin-bottom:0;">
-                        <label>Teks Alternatif (Alt Text — untuk aksesibilitas HTML)</label>
+                        <label>Teks Alternatif Gambar 1 (Alt Text — untuk aksesibilitas HTML)</label>
                         <input type="text" value="${escapeHtml(blk.alt || '')}" placeholder="Deskripsi singkat isi gambar" oninput="articleState.sections['${secKey}'][${bIdx}].alt = this.value">
                     </div>
                 `;
@@ -2314,7 +2331,13 @@ function addSectionBlock(secKey, type) {
             caption: `Gambar ${countAllFigures() + 1}. `,
             alt: '',
             width: 0,
-            height: 0
+            height: 0,
+            data2: '',
+            src2: '',
+            alt2: '',
+            width2: 0,
+            height2: 0,
+            media_key2: ''
         });
     } else {
         articleState.sections[secKey].push({ type: type, text: '' });
@@ -2362,9 +2385,9 @@ function serializeArticleForServer() {
             const blocks = sections[k];
             if (!Array.isArray(blocks)) return;
             blocks.forEach(b => {
-                if (b && b.type === 'image' && b.media_key) {
-                    b.data = '';
-                    b.src = '';
+                if (b && b.type === 'image') {
+                    if (b.media_key) { b.data = ''; b.src = ''; }
+                    if (b.media_key2) { b.data2 = ''; b.src2 = ''; }
                 }
             });
         });
@@ -2381,21 +2404,22 @@ async function uploadBlockImageFile(file) {
     return data;
 }
 
-function setBlockImageFromFile(secKey, bIdx, inputEl) {
+function setBlockImageFromFile(secKey, bIdx, inputEl, slot = 1) {
     const file = (inputEl && inputEl.files) ? inputEl.files[0] : null;
     if (!file) return;
     const blk = articleState.sections[secKey] && articleState.sections[secKey][bIdx];
     if (!blk) return;
+    const suf = slot === 2 ? '2' : '';
 
     const applyImage = (dataUri, width, height, mediaKey) => {
-        blk.data = dataUri;
-        blk.src = '';
-        blk.media_key = mediaKey || '';
-        blk.filename = file.name;
-        blk.mime = file.type || 'image/png';
-        blk.ext = (String(file.name).split('.').pop() || 'png').toLowerCase();
-        blk.width = width || 0;
-        blk.height = height || 0;
+        blk['data' + suf] = dataUri;
+        blk['src' + suf] = '';
+        blk['media_key' + suf] = mediaKey || '';
+        blk['filename' + suf] = file.name;
+        blk['mime' + suf] = file.type || 'image/png';
+        blk['ext' + suf] = (String(file.name).split('.').pop() || 'png').toLowerCase();
+        blk['width' + suf] = width || 0;
+        blk['height' + suf] = height || 0;
     };
 
     const persistImage = async () => {
@@ -2403,10 +2427,10 @@ function setBlockImageFromFile(secKey, bIdx, inputEl) {
             const uploaded = await uploadBlockImageFile(file);
             const current = articleState.sections[secKey] && articleState.sections[secKey][bIdx];
             if (current) {
-                current.media_key = uploaded.media_key || '';
-                if (uploaded.data) current.data = uploaded.data;
-                if (uploaded.mime) current.mime = uploaded.mime;
-                if (uploaded.ext) current.ext = uploaded.ext;
+                current['media_key' + suf] = uploaded.media_key || '';
+                if (uploaded.data) current['data' + suf] = uploaded.data;
+                if (uploaded.mime) current['mime' + suf] = uploaded.mime;
+                if (uploaded.ext) current['ext' + suf] = uploaded.ext;
             }
             showToast('Gambar disisipkan & tersimpan di server. Caption dapat diubah di bawah pratinjau.', 'success');
         } catch (e) {
@@ -2434,14 +2458,15 @@ function setBlockImageFromFile(secKey, bIdx, inputEl) {
     reader.readAsDataURL(file);
 }
 
-function clearBlockImage(secKey, bIdx) {
+function clearBlockImage(secKey, bIdx, slot = 1) {
     const blk = articleState.sections[secKey] && articleState.sections[secKey][bIdx];
     if (!blk) return;
-    blk.data = '';
-    blk.src = '';
-    blk.media_key = '';
-    blk.width = 0;
-    blk.height = 0;
+    const suf = slot === 2 ? '2' : '';
+    blk['data' + suf] = '';
+    blk['src' + suf] = '';
+    blk['media_key' + suf] = '';
+    blk['width' + suf] = 0;
+    blk['height' + suf] = 0;
     renderBodySectionsEditor({ sec: secKey, idx: bIdx });
 }
 

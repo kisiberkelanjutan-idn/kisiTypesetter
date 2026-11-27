@@ -774,6 +774,17 @@ class JatsXmlGenerator
         $graphic->setAttributeNS(self::NS_XLINK, 'xlink:href', $href);
         $fig->appendChild($graphic);
 
+        // Optional second image sharing the same figure/caption.
+        $href2 = trim((string) ($block['src2'] ?? ''));
+        if ($href2 === '') {
+            $href2 = trim((string) ($block['data2'] ?? ''));
+        }
+        if ($href2 !== '') {
+            $graphic2 = $dom->createElement('graphic');
+            $graphic2->setAttributeNS(self::NS_XLINK, 'xlink:href', $href2);
+            $fig->appendChild($graphic2);
+        }
+
         return $fig;
     }
 

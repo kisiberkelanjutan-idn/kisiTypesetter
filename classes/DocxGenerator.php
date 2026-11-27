@@ -682,17 +682,27 @@ class DocxGenerator
                         $body->insertBefore(self::createTableFootnotePara($dom, $footnote), $publisherNoteNode);
                     }
                 } elseif ($bType === 'image') {
-                    $image = self::prepareImageBlock($block);
-                    if ($image === null) {
+                    $image1 = self::prepareImageBlock($block);
+                    if ($image1 === null) {
                         continue;
                     }
                     $figureCounter++;
-                    $rid = 'rId' . $nextRelId++;
-                    $image['media_name'] = 'kisi_figure_' . $figureCounter . '.' . $image['ext'];
-                    $imageParts[$rid] = $image;
+                    $rid1 = 'rId' . $nextRelId++;
+                    $image1['media_name'] = 'kisi_figure_' . $figureCounter . '.' . $image1['ext'];
+                    $imageParts[$rid1] = $image1;
 
                     $caption = trim((string) ($block['caption'] ?? ''));
-                    $body->insertBefore(self::createFigureImagePara($dom, $image, $rid, $drawingId++, $figureCounter), $publisherNoteNode);
+                    $body->insertBefore(self::createFigureImagePara($dom, $image1, $rid1, $drawingId++, $figureCounter), $publisherNoteNode);
+
+                    // Optional second image in the same figure column (shares one caption).
+                    $image2 = self::prepareImageBlock($block, '2');
+                    if ($image2 !== null) {
+                        $rid2 = 'rId' . $nextRelId++;
+                        $image2['media_name'] = 'kisi_figure_' . $figureCounter . 'b.' . $image2['ext'];
+                        $imageParts[$rid2] = $image2;
+                        $body->insertBefore(self::createFigureImagePara($dom, $image2, $rid2, $drawingId++, $figureCounter), $publisherNoteNode);
+                    }
+
                     if ($caption !== '') {
                         $body->insertBefore(self::createFigureCaptionPara($dom, $caption, $figureCounter), $publisherNoteNode);
                     }
@@ -782,9 +792,13 @@ class DocxGenerator
      * Normalize an image block (data URI) into binary + EMU dimensions ready for the DOCX package.
      * Returns null for missing/corrupt data and for formats Word cannot embed directly (SVG/WebP).
      */
-    private static function prepareImageBlock(array $block): ?array
+    private static function prepareImageBlock(array $block, string $suffix = ''): ?array
     {
-        $src = trim((string) ($block['data'] ?? ''));
+        $src = trim((string) ($block['data' . $suffix] ?? ''));
+        if ($src === '') {
+            $src = trim((string) ($block['src' . $suffix] ?? ''));
+        }
+        // src may be a hosted URL, not a data URI; only embedded data URIs are supported here.
         if ($src === '' || !preg_match('#^data:(image/[a-z0-9.+-]+);base64,(.+)$#is', $src, $m)) {
             return null;
         }
@@ -812,8 +826,8 @@ class DocxGenerator
             return null;
         }
 
-        $widthPx = (int) ($block['width'] ?? 0);
-        $heightPx = (int) ($block['height'] ?? 0);
+        $widthPx = (int) ($block['width' . $suffix] ?? 0);
+        $heightPx = (int) ($block['height' . $suffix] ?? 0);
         if (($widthPx <= 0 || $heightPx <= 0) && function_exists('getimagesizefromstring')) {
             $info = @getimagesizefromstring($binary);
             if (is_array($info) && !empty($info[0]) && !empty($info[1])) {
@@ -846,7 +860,7 @@ class DocxGenerator
             'mime' => $mime,
             'cx' => $cx,
             'cy' => $cy,
-            'alt' => trim((string) ($block['alt'] ?? '')),
+            'alt' => trim((string) ($block['alt' . $suffix] ?? '')),
         ];
     }
 

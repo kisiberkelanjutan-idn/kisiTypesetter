@@ -824,25 +824,29 @@ JS;
             ?: self::getNodeText($xpath, './caption/p', $figNode);
         $altText = self::getNodeText($xpath, './alt-text', $figNode);
 
-        $graphic = $xpath->query('./graphic', $figNode)->item(0);
-        if (!$graphic instanceof DOMElement) {
-            $graphic = $xpath->query('./media', $figNode)->item(0);
+        $graphics = $xpath->query('./graphic', $figNode);
+        if ($graphics->length === 0) {
+            $graphics = $xpath->query('./media', $figNode);
         }
-        if (!$graphic instanceof DOMElement) {
-            return '';
-        }
-
-        $href = $graphic->getAttributeNS('http://www.w3.org/1999/xlink', 'href')
-            ?: $graphic->getAttribute('xlink:href');
-        if (trim($href) === '') {
+        if ($graphics->length === 0) {
             return '';
         }
 
         $alt = $altText !== '' ? $altText : ($captionTitle !== '' ? $captionTitle : $label);
 
         $html = '<figure class="kisi-jats-figure">';
-        $html .= '<img src="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '" alt="'
-            . htmlspecialchars($alt, ENT_QUOTES, 'UTF-8') . '" loading="lazy">';
+        foreach ($graphics as $graphic) {
+            if (!($graphic instanceof DOMElement)) {
+                continue;
+            }
+            $href = $graphic->getAttributeNS('http://www.w3.org/1999/xlink', 'href')
+                ?: $graphic->getAttribute('xlink:href');
+            if (trim($href) === '') {
+                continue;
+            }
+            $html .= '<img src="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '" alt="'
+                . htmlspecialchars($alt, ENT_QUOTES, 'UTF-8') . '" loading="lazy">';
+        }
         if ($label !== '' || $captionTitle !== '') {
             $html .= '<figcaption class="kisi-jats-figure-caption">';
             if ($label !== '') {

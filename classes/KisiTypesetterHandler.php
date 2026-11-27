@@ -640,16 +640,21 @@ class KisiTypesetterHandler extends Handler
                 continue;
             }
             foreach ($blocks as $index => $block) {
-                if (!is_array($block) || ($block['type'] ?? '') !== 'image' || !empty($block['media_key'])) {
+                if (!is_array($block) || ($block['type'] ?? '') !== 'image') {
                     continue;
                 }
-                $dataUri = (string) ($block['data'] ?? '');
-                if ($dataUri === '' || stripos($dataUri, 'data:') !== 0) {
-                    continue;
-                }
-                $mediaKey = MediaStore::putDataUri($dataUri);
-                if ($mediaKey !== null) {
-                    $articleData['sections'][$sectionKey][$index]['media_key'] = $mediaKey;
+                foreach (['' => 'media_key', '2' => 'media_key2'] as $suffix => $mediaField) {
+                    if (!empty($block[$mediaField])) {
+                        continue;
+                    }
+                    $dataUri = (string) ($block['data' . $suffix] ?? '');
+                    if ($dataUri === '' || stripos($dataUri, 'data:') !== 0) {
+                        continue;
+                    }
+                    $mediaKey = MediaStore::putDataUri($dataUri);
+                    if ($mediaKey !== null) {
+                        $articleData['sections'][$sectionKey][$index][$mediaField] = $mediaKey;
+                    }
                 }
             }
         }
@@ -674,23 +679,28 @@ class KisiTypesetterHandler extends Handler
                 if (!is_array($block) || ($block['type'] ?? '') !== 'image') {
                     continue;
                 }
-                if (trim((string) ($block['data'] ?? '')) !== '') {
-                    continue;
-                }
-                $mediaKey = (string) ($block['media_key'] ?? '');
-                if ($mediaKey === '') {
-                    continue;
-                }
-                $stored = MediaStore::read($mediaKey);
-                if ($stored === null) {
-                    continue;
-                }
-                $articleData['sections'][$sectionKey][$index]['data'] = $stored['data_uri'];
-                if (empty($block['mime'])) {
-                    $articleData['sections'][$sectionKey][$index]['mime'] = $stored['mime'];
-                }
-                if (empty($block['ext'])) {
-                    $articleData['sections'][$sectionKey][$index]['ext'] = $stored['ext'];
+                foreach (['' => 'media_key', '2' => 'media_key2'] as $suffix => $mediaField) {
+                    $dataField = 'data' . $suffix;
+                    if (trim((string) ($block[$dataField] ?? '')) !== '') {
+                        continue;
+                    }
+                    $mediaKey = (string) ($block[$mediaField] ?? '');
+                    if ($mediaKey === '') {
+                        continue;
+                    }
+                    $stored = MediaStore::read($mediaKey);
+                    if ($stored === null) {
+                        continue;
+                    }
+                    $articleData['sections'][$sectionKey][$index][$dataField] = $stored['data_uri'];
+                    $mimeField = 'mime' . $suffix;
+                    $extField = 'ext' . $suffix;
+                    if (empty($block[$mimeField])) {
+                        $articleData['sections'][$sectionKey][$index][$mimeField] = $stored['mime'];
+                    }
+                    if (empty($block[$extField])) {
+                        $articleData['sections'][$sectionKey][$index][$extField] = $stored['ext'];
+                    }
                 }
             }
         }
