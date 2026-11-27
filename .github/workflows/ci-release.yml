@@ -12,6 +12,8 @@ jobs:
   test-and-package:
     name: PHP Lint, Unit Tests & Plugin Archive (${{ matrix.php }})
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     strategy:
       matrix:
         php: [ '8.2', '8.3' ]
