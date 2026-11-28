@@ -1160,8 +1160,13 @@ assertTrue(
         && strpos($handlerSource, 'function saveState(') !== false
         && strpos($handlerSource, 'function resetSavedState(') !== false
         && strpos($studioUpdatedSource, '/saveState') !== false
-        && strpos($studioUpdatedSource, '/resetSavedState') !== false,
-    'Handler, Studio UI, and JatsHtmlRenderer wire state persistence endpoints and lowercase journal conjunction "dan"'
+        && strpos($studioUpdatedSource, '/resetSavedState') !== false
+        && strpos($studioUpdatedSource, 'ABSTRAK') !== false
+        && strpos($studioUpdatedSource, 'ISI ARTIKEL') !== false
+        && strpos($studioUpdatedSource, 'SUMBER PUSTAKA') !== false
+        && strpos($studioUpdatedSource, 'PRATINJAU') !== false
+        && strpos($studioUpdatedSource, 'AUDIT BAHASA (experimental)') !== false,
+    'Handler, Studio UI, and JatsHtmlRenderer wire state persistence endpoints, lowercase journal conjunction "dan", and updated tab menu titles'
 );
 
 if ($failures > 0) {

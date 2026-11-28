@@ -908,19 +908,19 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
             <!-- Content Tabs -->
             <div class="tabs" style="margin-top:12px;flex-wrap:wrap;">
                 <button type="button" class="tab-btn active" data-tab="tab-abstracts" onclick="switchTab('tab-abstracts', this)">
-                    1. Abstrak <span id="absTabStatusBadge" style="font-weight:500;"><?php echo $initialEnOnly ? '(ID PDF &amp; EN JATS)' : '(ID &amp; EN)'; ?></span>
+                    ABSTRAK
                 </button>
                 <button type="button" class="tab-btn" data-tab="tab-body" onclick="switchTab('tab-body', this)">
-                    2. Isi &amp; Tabel Kesehatan
+                    ISI ARTIKEL
                 </button>
                 <button type="button" class="tab-btn" data-tab="tab-references" onclick="switchTab('tab-references', this)">
-                    3. Pustaka (<span id="refCountBadge">0</span>)
+                    SUMBER PUSTAKA
                 </button>
                 <button type="button" class="tab-btn" data-tab="tab-fulltext-preview" onclick="switchTab('tab-fulltext-preview', this); loadFullTextDigestPreview();">
-                    4. 👁️ Pratinjau Full-Text
+                    PRATINJAU
                 </button>
                 <button type="button" class="tab-btn" data-tab="tab-language-audit" onclick="switchTab('tab-language-audit', this)">
-                    5. 🔍 Audit Bahasa (<span id="auditCountBadge">0</span>)
+                    AUDIT BAHASA (experimental)
                 </button>
             </div>
 
@@ -930,7 +930,7 @@ $studioFaviconUrl = !empty($journalFaviconUrl) ? (string) $journalFaviconUrl : (
                     📄 <strong>Mode <span id="noAbstractCatLabel">DATA REPORT / LETTER</span>:</strong>
                     Sesuai template resmi, abstrak naratif <em>ABSTRAK</em>/<em>ABSTRACT</em> tidak dicetak pada DOCX maupun JATS XML.
                     Namun kolom <strong>Kata Kunci / Keywords</strong> dan <strong>Kontribusi TPB/SDGs</strong> tetap <strong>wajib diisi</strong> dan akan tercetak.
-                    Isi naskah utama di <strong>Tab 2 (Isi &amp; Tabel)</strong>.
+                    Isi naskah utama di <strong>Tab ISI ARTIKEL</strong>.
                 </div>
                 <div id="abstractInputsGrid" class="row-2">
                     <!-- Indonesian Abstract (Always visible in Studio for DOCX/PDF rendering) -->
@@ -1620,7 +1620,8 @@ function populateFormFromState() {
         const styleLbl = document.getElementById('journalRefStyleLabel');
         if (styleLbl) styleLbl.textContent = 'Gaya ' + activeRefStyle.toUpperCase();
         document.getElementById('f_referensi').value = formatRefsListForTextareaJs(cleanRefs, activeRefStyle);
-        document.getElementById('refCountBadge').textContent = cleanRefs.length;
+        const refBadge = document.getElementById('refCountBadge');
+        if (refBadge) refBadge.textContent = cleanRefs.length;
 
         applyVolumeTemplateMode();
         applyFormLanguageMode();
@@ -1822,7 +1823,8 @@ async function syncReferencesToOjsMenu() {
 function syncReferencesFromInput(silent = false) {
     const raw = document.getElementById('f_referensi').value;
     articleState.referensi = raw.split(/\r?\n/).map(s => stripRefPrefixJs(s)).filter(Boolean);
-    document.getElementById('refCountBadge').textContent = articleState.referensi.length;
+    const refBadge = document.getElementById('refCountBadge');
+    if (refBadge) refBadge.textContent = articleState.referensi.length;
     refreshVancouverSyncBannerJs();
     if (!silent) markArticleHistoryDirty();
 }
@@ -2733,7 +2735,8 @@ async function runLanguageAudit() {
 
 function renderLanguageAuditResults() {
     const issues = auditState.issues || [];
-    document.getElementById('auditCountBadge').textContent = issues.length;
+    const auditBadge = document.getElementById('auditCountBadge');
+    if (auditBadge) auditBadge.textContent = issues.length;
     const safeFixCount = issues.filter(i => i.auto_fixable && i.suggestions && i.suggestions.length > 0).length;
     const btnSafeAll = document.getElementById('btnApplyAllSafeFixes');
     if (btnSafeAll) {
